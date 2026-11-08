@@ -107,7 +107,8 @@ chooses coverage. Reply ONLY valid JSON:
 Each seconds is between 5.2 and max_clip_seconds, total no greater than max_seconds.
 mode is story or action. Every segment has a different progressing purpose.
 When segment_policy='dynamic', choose variable clip lengths at natural event and
-dialogue boundaries, using legal_clip_seconds. The maximum is a ceiling, not a
+dialogue boundaries, using legal_clip_seconds (10–15 seconds for new projects).
+Keep shorter camera shots inside a generation clip. The maximum is a ceiling, not a
 fixed length. Break a longer event into connected self-contained local commissions
 with distinct opening/exit states; do not copy the entire event into both clips.
 Complete spoken sentences within their clip. A generation clip may have many shots.
@@ -299,8 +300,9 @@ def validate_plan(raw,req,image_count):
         # than generating a longer utterance and chopping off its last syllable.
         requested=round(seconds*FPS)
         frames=5+((requested-5)//17)*17
-        if seconds<124/FPS-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<124:
-            raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {124/FPS:.6f}–{req['segment_seconds']:g} 秒。"
+        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
+        if seconds<minimum-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<math.ceil(minimum*FPS):
+            raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {minimum:.6f}–{req['segment_seconds']:g} 秒。"
                              '請拆分超限事件並保留因果、完整台詞與結束狀態；短鏡頭可放在同一生成段內。')
         if mode not in ('story','action') or not isinstance(brief,str) or not 20<=len(brief.strip())<=5000:
             raise ValueError('每段需有 story/action 模式及完整當段委託。')
@@ -336,8 +338,9 @@ def plan_film(cfg,job,originals):
             'style':req['visual_style'],'sound':req['sound_mode'],'intensity':req['intensity']}
     source.update(duration_contract(req))
     if req.get('planning_contract_version')==2:
-        source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=124/FPS,
-                      legal_clip_seconds=[frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17)])
+        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
+        source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=minimum,
+                      legal_clip_seconds=[frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17) if frames/FPS>=minimum-1e-8])
     if 'auto_director' in req:
         source['adaptation']=('AUTO: creatively develop the premise, keeping explicit events, dialogue and outcome.'
                               if req['auto_director'] else 'FAITHFUL: organize and stage only the supplied events and dialogue; do not invent new plot or lines.')
@@ -374,11 +377,11 @@ def plan_film(cfg,job,originals):
                 for i,row in enumerate(rejected.get('segments',[])):
                     seconds=row.get('seconds') if isinstance(row,dict) else None
                     if (isinstance(seconds,bool) or not isinstance(seconds,(int,float))
-                            or not math.isfinite(seconds) or not 124/FPS-1e-8<=seconds<=req['segment_seconds']+1e-8):
+                            or not math.isfinite(seconds) or not (req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS)-1e-8<=seconds<=req['segment_seconds']+1e-8):
                         invalid.append({'segment':i+1,'seconds':seconds})
             except (ValueError,TypeError,KeyError):pass
             repair={'error':str(error),'invalid_segments':invalid,'missing_reference_bindings':missing_bindings,
-                    'max_clip_seconds':req['segment_seconds'],'min_clip_seconds':124/FPS,
+                    'max_clip_seconds':req['segment_seconds'],'min_clip_seconds':(req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS),
                     'instruction':'修正剛才拒絕稿並回傳完整 JSON。所有超限段落都必須拆分成更多合法生成段；不要原樣交回，'
                                   '不要只縮短秒數卻塞入原來過量的動作或台詞，也不要把同一事件完整重複兩遍。'
                                   '保留必須事件、角色、原句、因果與結局。若故事總長不足，請新增有因果的後續事件再分段，'
@@ -451,7 +454,7 @@ def start(req):
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
     req.update(production='film',fixed_reference_version=1,target_seconds=float(maximum),max_seconds=180.0,segment_seconds=float(chunk),
-               segment_policy='dynamic' if dynamic else 'capped',planning_contract_version=2,film_motion_version=2,
+               segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','chain') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
