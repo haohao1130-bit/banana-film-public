@@ -158,26 +158,17 @@ misassigned an actor. Preserve unchanged events without preserving wrong identit
 Keep current expressions, blocking and clothing changes from this clip, not static
 reference poses. Cast does not have
 to attend merely because a picture was provided. No new plot beyond this commission.
-Before writing detailed_description, silently allocate the commissioned events
-across the EXACT clip duration in chronological order, then assign camera shots to
-that timeline. [Shot 1] MUST immediately film the commission's actual opening
-state or first assigned event; do not invent a setup incident, attack, gesture,
-reaction, scenic prelude or other narrative detour before the requested action.
-A framing or establishing view may occur WITH the commissioned action, never
-consume story time by making something else happen first.
-Each Shot describes ONLY the events occurring during its own time window, not
-an overview of the entire commission. Do not narrate future shot outcomes inside
-[Shot 1], then replay them in later shots. A completed action stays completed;
-subsequent shots advance its consequence, including during reaction inserts and
-parallel coverage. Never rewind an action to make a fresh angle or repeat an
-exchange just to fill time. For every cut, preserve the exact current positions,
-props, eyelines and ongoing actions; a new camera angle is not a new take of the
-story. Choose freely how many shots the event needs, including one continuous
-shot, but every explicit Shot start timestamp must be >= 0 and STRICTLY less
-than the supplied seconds; allocate enough real time for every described action
-and dialogue. If the commission is dense, cover it economically with flowing
-action and motivated cuts, not invented filler, repeated beats or timestamps
-outside the generation window. Do not create local opening or closing events.
+Follow the supplied MiniMax H3 reference-mode guide for detailed_description:
+describe each Shot in playback order, with the visible subjects, their current
+positions, actions and state changes, environment, camera and sound. [Shot 1]
+begins from the supplied current visual state and commissioned action. Later
+shots use sequential numbers and strictly increasing cut timestamps within
+seconds; each cut should provide a new view or information, while a small
+viewpoint change can use camera motion. Preserve character, prop and spatial
+continuity when the viewpoint changes. Do not replay an already described action
+as a new occurrence; represent simultaneous visible actions in the same shot
+when appropriate, or use motivated cuts. Shot count is not fixed. The local
+commission remains authoritative for which actions and outcomes happen.
 A camera cut changes the audience's viewpoint, NOT the event, performer, action
 target, possession or timeline. Never rewrite character business as camera business.
 Invent strong cinematic coverage: every Shot has a concrete viewpoint, shot size,
