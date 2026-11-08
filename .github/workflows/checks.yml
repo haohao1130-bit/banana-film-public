@@ -1,0 +1,24 @@
+name: Public Film Checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    env:
+      BANANA_DATA: /tmp/banana-film-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install Pillow numpy
+      - run: python tools/build_film_notebook.py
+      - run: git diff --exit-code -- Banana_Film_Studio.ipynb
+      - run: python -m compileall -q banana_mv tools
+      - run: python -m unittest discover -s tests
+      - run: node tests/check_film_ui.cjs
+      - run: node tests/check_ui.cjs

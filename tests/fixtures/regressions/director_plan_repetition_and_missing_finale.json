@@ -1,0 +1,107 @@
+{
+  "case_id": "director_plan_repetition_and_missing_finale",
+  "synthetic": true,
+  "problem": "Original run had 25 source events and 8 selected segments; segments 3..7 repeated a knockdown/referee-count beat while the belt-and-victory finale was omitted. This is a minimal synthetic reproduction, not the original private story.",
+  "source_events": [
+    {
+      "id": "intro",
+      "event": "A small challenger faces a taller champion in an arena.",
+      "mode": "action"
+    },
+    {
+      "id": "first_attack",
+      "event": "The champion jabs; the challenger ducks and counters.",
+      "mode": "action"
+    },
+    {
+      "id": "comedy_beat",
+      "event": "The challenger tumbles after an overcommitted punch and stands back up.",
+      "mode": "action"
+    },
+    {
+      "id": "referee_interruption",
+      "event": "The challenger accidentally runs behind the referee.",
+      "mode": "action"
+    },
+    {
+      "id": "final_exchange",
+      "event": "The challenger avoids a decisive punch and lands a clean counter.",
+      "mode": "action"
+    },
+    {
+      "id": "countdown",
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    },
+    {
+      "id": "victory",
+      "event": "The referee declares the challenger the winner.",
+      "mode": "action"
+    },
+    {
+      "id": "belt_gag",
+      "event": "An oversized championship belt slips off the challenger.",
+      "mode": "action"
+    },
+    {
+      "id": "finale",
+      "event": "The challenger stands on the belt and celebrates.",
+      "mode": "action"
+    },
+    {
+      "id": "parallel_performance",
+      "event": "The singer performs at a separate fixed concert stage.",
+      "mode": "performance"
+    }
+  ],
+  "segments": [
+    {
+      "index": 0,
+      "event": "A small challenger faces a taller champion in an arena.",
+      "mode": "action"
+    },
+    {
+      "index": 1,
+      "event": "The champion jabs; the challenger ducks and counters.",
+      "mode": "action"
+    },
+    {
+      "index": 2,
+      "event": "The champion jabs; the challenger ducks and counters.",
+      "mode": "action"
+    },
+    {
+      "index": 3,
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    },
+    {
+      "index": 4,
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    },
+    {
+      "index": 5,
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    },
+    {
+      "index": 6,
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    },
+    {
+      "index": 7,
+      "event": "The champion falls and the referee counts.",
+      "mode": "action"
+    }
+  ],
+  "expected_behavior": [
+    "Avoid repeating one-time plot beats across multiple segments.",
+    "Allow omission of optional detail, but retain narrative progress and a coherent closure when requested.",
+    "Keep parallel performance shots distinct from the combat location.",
+    "Do not force a finale to exist only in the very last segment; allow aftermath."
+  ],
+  "expected_regression": "Flag repeated non-repeatable event and missing conclusion; generate a distinct progression or report insufficiency rather than silently accepting the degenerate plan."
+}
+
