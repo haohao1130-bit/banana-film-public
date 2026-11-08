@@ -119,4 +119,33 @@ class DynamicFilmTests(unittest.TestCase):
             self.assertEqual(repair['missing_reference_bindings'],['<Picture 1>'])
 
 
+    def test_native_film_shot_times_follow_h3_guide(self):
+        valid='[Shot 1] The camera frames the actors.\\n[Shot 2] At 00:03.500, the view cuts to a reaction.'
+        self.assertEqual(film.validate_film_format(valid,8,'ambient'),valid)
+        for bad in [
+            '[Shot 1] Setup.\\n[Shot 2] At 00:09.000, late shot.',
+            '[Shot 1] Setup.\\n[Shot 2] At 00:03.500, cut.\\n[Shot 3] At 00:02.500, backward.',
+            '[Shot 1] Setup.\\n[Shot 2] An untimed cut.',
+            '[Shot 1] At 00:00.000, not the official opening form.',
+            '[Shot 1] Setup.\\n[Shot 3] At 00:02.500, skipped index.'
+        ]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                film.validate_film_format(bad,8,'ambient')
+
+    def test_native_film_speaker_ids_are_vocal_not_shot_local(self):
+        silent='[Shot 1] <Subject 2> watches <Subject 3> act.'
+        self.assertEqual(film.validate_film_format(silent,8,'ambient'),silent)
+        dialogue='[Shot 1] <Subject 2> (S1) says <d>[English] Hello.</d>'
+        self.assertEqual(film.validate_film_format(dialogue,8,'dialogue'),dialogue)
+        wrong=[
+            ('[Shot 1] <Subject 2> (S1) watches silently.', 'dialogue'),
+            ('[Shot 1] <Subject 2> (S1) says <d>[English] Hello.</d>','ambient'),
+            ('[Shot 1] <Subject 2> (S1) says <d>[English] Hi.</d> '
+             '<Subject 3> (S1) says <d>[English] Hey.</d>', 'dialogue')
+        ]
+        for bad,mode in wrong:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                film.validate_film_format(bad,8,mode)
+
+
 if __name__=='__main__':unittest.main()
