@@ -201,6 +201,17 @@ ongoing event early or mechanically hold a final pose. The delivery boundary is
 not a story ending. Preserve the commissioned local end state exactly, without
 adding a stop, resting stance, congratulation, resolved expression or teaser of
 later plot. Internal cuts are staging intentions, not guaranteed frame-accurate edit commands.
+Honor clip_opening: for EVERY clip after index 0, [Shot 1] begins at the
+exact ongoing narrative instant inherited from the preceding clip, not a new
+scene opening. Continue the current action, movement phase, physical positions,
+facing, eyelines, actor/prop ownership and emotional state as commissioned;
+never reset blocking, replay an attack or gesture, make actors stand apart,
+start another establishing introduction, or restart dialogue merely because a
+new generation window begins. You MAY cut immediately to any motivated camera
+angle, insert, reaction or location, but the cut must advance the SAME story
+timeline rather than restart it. If the commission explicitly calls for a true
+scene transition, time jump or new location, honor that change instead. This
+applies equally to the final clip's opening, every genre and quiet scenes.
 Honor clip_boundary: intermediate clips are excerpts from an ongoing film, not
 standalone mini-films. Preserve the commission's outgoing state without inventing
 a closing bow, mutual smile, farewell, resolved pose, fade, final wide shot or music
@@ -379,6 +390,9 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
           'current_clip_commission':brief}
     total=seg.get('segment_count') or len(job.get('segments',[])) or 1
     final=seg['index']==total-1
+    task['clip_opening']={'position':'first' if seg['index']==0 else 'continuation',
+        'instruction':('Begin the commissioned film opening.' if seg['index']==0 else
+                       'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
     task['clip_boundary']={'position':'final' if final else 'intermediate',
         'instruction':('Complete only the commissioned film ending.' if final else
                        'Continue the current scene through this production boundary. Do not invent a stop, closing beat or music ending. '
