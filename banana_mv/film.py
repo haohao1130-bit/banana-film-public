@@ -277,7 +277,7 @@ def inputs(job,cfg):
 def start(req):
     cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
     story=req.get('prompt','')
-    if not isinstance(story,str) or not 1<=len(story.strip())<=10000:raise ValueError('請填寫故事，最多 10000 字。')
+    if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
     maximum=req.get('max_seconds',60);chunk=req.get('segment_seconds',10)
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')

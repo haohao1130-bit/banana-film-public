@@ -290,7 +290,7 @@ class FilmTests(unittest.TestCase):
     def test_film_entry_validation_never_requires_a_song(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo,work,req,job,cfg=self.fixture(Path(tmp))
-            bad=[dict(req,max_seconds=181),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,segment_seconds=20)]
+            bad=[dict(req,max_seconds=181),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,prompt='a'*30001),dict(req,segment_seconds=20)]
             for r in bad:
                 with patch.object(app.backend,'load_config',return_value=cfg),self.assertRaises(ValueError):film.start(r)
             with ExitStack() as stack:
@@ -319,7 +319,8 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'write_state'))
                 stack.enter_context(patch.object(app.backend,'comfy',return_value={'queue_running':[],'queue_pending':[]}))
                 stack.enter_context(patch.object(film.threading,'Thread'))
-                started=film.start(dict(req,image_ids=[]))
+                started=film.start(dict(req,image_ids=[],prompt='a'*25000))
+                self.assertEqual(started['request']['prompt'],'a'*25000)
                 self.assertEqual(started['sources']['images'],[]);asset.assert_not_called()
                 graph=preflight.call_args.args[1]
                 self.assertFalse(any(n['class_type'] in ('LoadImage','LoadAudio') for n in graph.values()))

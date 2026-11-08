@@ -76,11 +76,29 @@ def restore_inputs(cfg):
     return restored
 
 
-def add_asset(cfg, filename, body):
+def add_asset(cfg, filename, body, *, image_only=False):
     suffix = Path(filename).suffix.lower()
     image = suffix in ('.png', '.jpg', '.jpeg', '.webp')
-    if not image and suffix not in ('.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.mp4', '.webm'):
-        raise ValueError('請上傳 PNG/JPEG/WebP 圖片或支援的音訊檔。')
+    audio = suffix in ('.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.mp4', '.webm')
+    # Browsers and downloaded files may omit or alter the extension.
+    # Identify supported images by their actual bytes, never rename arbitrary data.
+    if image_only or image or not audio:
+        import io
+        from PIL import Image
+        try:
+            with Image.open(io.BytesIO(body)) as pic:
+                detected = {'PNG': '.png', 'JPEG': '.jpg', 'WEBP': '.webp'}.get(pic.format)
+                if detected is None:
+                    raise ValueError('圖片格式不支援，請轉成 PNG、JPEG 或 WebP 後上傳。')
+                pic.verify()
+            suffix, image = detected, True
+        except (OSError, SyntaxError) as error:
+            if image_only or image:
+                raise ValueError('這個檔案無法讀取為 PNG/JPEG/WebP 圖片，請重新匯出後上傳。') from error
+    if image_only and not image:
+        raise ValueError('短片參考欄只接受 PNG/JPEG/WebP 圖片；聲音由 H3 生成，不需上傳音效。')
+    if not image and not audio:
+        raise ValueError('無法辨識檔案格式，請上傳 PNG/JPEG/WebP 圖片或支援的音訊檔。')
     LIBRARY.mkdir(parents=True, exist_ok=True)
     aid = uuid.uuid4().hex[:12]
     stored = LIBRARY/(aid+suffix)

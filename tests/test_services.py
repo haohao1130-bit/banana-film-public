@@ -9,6 +9,22 @@ from banana_mv import services
 
 
 class ServicesTests(unittest.TestCase):
+    def test_film_upload_identifies_images_without_extension_and_rejects_audio(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cfg={'comfy_input_dir':str(root/'input')}
+            body=io.BytesIO();Image.new('RGB',(12,8)).save(body,format='JPEG')
+            with patch.object(services,'LIBRARY',root/'library'):
+                for name in ('jpg','角色圖','角色圖.bin','角色圖.PNG'):
+                    row=services.add_asset(cfg,name,body.getvalue(),image_only=True)
+                    self.assertEqual(row['kind'],'image')
+                    self.assertTrue(row['file'].endswith('.jpg'))
+                    self.assertEqual(row['name'],name)
+                before=services.library_index()
+                with self.assertRaisesRegex(ValueError,'圖片'):
+                    services.add_asset(cfg,'sound.wav',b'RIFF-not-an-image',image_only=True)
+                self.assertEqual(services.library_index(),before)
+
     def test_existing_library_restore_and_path_safety(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);lib=root/'library';lib.mkdir();inp=root/'input'

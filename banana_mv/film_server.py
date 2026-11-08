@@ -22,6 +22,16 @@ class Handler(app.Handler):
 
     def do_POST(self):
         path=urllib.parse.urlparse(self.path).path
+        if path=='/api/upload':
+            try:
+                if not app.GPU_LOCK.acquire(blocking=False):
+                    raise ValueError('短片執行中，請完成後再上傳參考圖。')
+                try:
+                    filename=urllib.parse.unquote(self.headers.get('X-Filename',''))
+                    return self.send_json(app.backend.add_asset(app.backend.load_config(),filename,self.read_body(),image_only=True))
+                finally:
+                    app.GPU_LOCK.release()
+            except Exception as error:return self.send_json({'error':str(error)},400)
         if path in ('/api/film/start','/api/film/plan'):
             try:
                 body=self.body_json()

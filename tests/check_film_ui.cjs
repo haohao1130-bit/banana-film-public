@@ -43,6 +43,17 @@ vm.runInContext(fs.readFileSync('banana_mv/web/film_review.js','utf8'),context);
  await els.form.onsubmit({preventDefault(){},submitter:{id:'direct-render'}});
  assert.equal(posts.at(-1).script_review,false);assert.equal(creationRoutes.at(-1),'api/film/start');assert.equal(els['direct-render'].disabled,true);assert.equal(els.generate.disabled,true);
  status={...status,status:'done'};await vm.runInContext('poll()',context);assert.equal(els['direct-render'].disabled,false);
+ assert(html.indexOf('id="references"')<html.indexOf('id="prompt"'));
+ assert(!html.match(/<textarea[^>]*id="prompt"[^>]*maxlength=/));
+ els.prompt.selectionStart=1;els.prompt.selectionEnd=1;els.prompt.value='@';els.prompt.events.input({});
+ assert.equal(els['image-mentions'].hidden,false);assert.equal(els['image-mentions'].children.length,1);
+ assert.equal(els['image-mentions'].children[0].getAttribute('aria-label'),'@圖片3：three.jpg');
+ let prevented=false;els.prompt.events.keydown({key:'x',preventDefault(){prevented=true;}});assert.equal(prevented,false);
+ els.prompt.events.compositionstart();els.prompt.events.keydown({key:'Enter',isComposing:true,preventDefault(){prevented=true;}});assert.equal(prevented,false);assert.equal(els['image-mentions'].hidden,true);
+ els.prompt.value='@';els.prompt.selectionStart=1;els.prompt.selectionEnd=1;els.prompt.events.compositionend();
+ els.prompt.events.keydown({key:'Enter',preventDefault(){prevented=true;}});assert.equal(els.prompt.value,'@圖片3 ');
+ els.prompt.value='a'.repeat(25000);els.prompt.selectionStart=25000;els.prompt.selectionEnd=25000;els.prompt.events.input({});assert(els['prompt-count'].textContent.includes('25000 / 30000'));assert.equal(els.prompt.getAttribute('aria-invalid'),'false');
+ const requests=posts.length,uploaded=uploads.length;els.prompt.value='a'.repeat(30001);els.prompt.events.input({});await els.form.onsubmit({preventDefault(){}});assert.equal(posts.length,requests);assert.equal(uploads.length,uploaded);assert(els.status.textContent.includes('30000'));assert.equal(els.prompt.getAttribute('aria-invalid'),'true');
  console.log('Film UI checks passed: story-only request, fixed image slots, zero seed, planning, native audio previews, stable correction drafts, versions and selective retakes.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 

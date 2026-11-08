@@ -24,3 +24,7 @@ jobs:
       - run: python -m unittest discover -s tests
       - run: node tests/check_film_ui.cjs
       - run: node tests/check_ui.cjs
+      - name: Install browser test driver
+        run: npm install --no-save playwright@1.56.1
+      - name: Real Chromium input and mention checks
+        run: node tests/check_film_browser.cjs
