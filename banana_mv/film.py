@@ -15,7 +15,26 @@ from banana_mv import server as app, masters
 from banana_mv.core import FPS, dimensions, output_dimensions, map_image_mentions, reference_images
 from banana_mv.film_media import trim_native, require_audio
 from banana_mv.scene_state import parse_object, rewrite_retry_count, atomic_json
-from banana_mv.shoot_plan import _pictures, _text, CLIP_INTENSITY
+from banana_mv.shoot_plan import _pictures, _text
+
+FILM_INTENSITY={
+    'normal':'''FILM PHOTOGRAPHY: NATURAL. Grounded performances, observational
+framing, motivated light and restrained movement. Choose clear cuts when useful;
+natural photography does not require one continuous take.''',
+    'high':'''FILM PHOTOGRAPHY: ASSERTIVE. Use deliberate camera placement, spatial
+depth, motivated tracking, shaped light and distinct editorial viewpoints. Keep
+real-time actions and reactions readable. Choose speed from the commissioned event,
+not this photography setting. Avoid continuous frantic camera movement.''',
+    'extreme':'''FILM PHOTOGRAPHY: CINEMATIC BURST. Create bold contrasts of scale,
+perspective, light and proximity, motivated reveals and purposeful editorial cuts.
+Intensity is photographic impact, not universally faster actors or camera motion.
+Maintain believable acceleration, deceleration, contact and response. Do not squeeze
+extra actions into each second or add obligatory slow motion. Choose shot durations
+from the event. Describe discrete cuts to newly placed cameras with distinct visual
+focus, rather than interpolating every viewpoint into one continuous rushing move.
+Honor an explicitly requested continuous take. No mandatory shot count or montage
+formula; comedy, intimacy, suspense, daily life and action have different rhythms.'''
+}
 
 PLANNER = """You are the screenwriter and director of a short film, not a music video.
 Read the user's story and references, develop a compelling complete film within the
@@ -45,6 +64,9 @@ Each event happens once. At every clip boundary, compare the outgoing state with
 the next opening: actor positions, facing/eyelines, held objects, completed actions
 and emotional intensity. Carry current consequences into the next local brief;
 do not restart an exchange. The final clip earns and completes the ending.
+Clip boundaries are production windows, not mandatory scene endings. An intermediate
+brief may end with an action or attention still developing; its exit state describes
+that instant and does not require the actors to stop, reset, bow or conclude.
 sound='ambient' means no speech, dialogue or vocals. sound='dialogue' permits concise
 dialogue as the story requires. Use environmental sound and effects; add a score
 only when explicitly requested by the story, not an obligatory background song.
@@ -78,7 +100,23 @@ chooses coverage. Reply ONLY valid JSON:
 {"title":"film title","shared_setup":"fixed reference identities and world, no plot chronology","segments":[{"seconds":10,"mode":"story",
 "brief":"self-contained local shooting commission"}]}.
 Each seconds is between 5.2 and max_clip_seconds, total no greater than max_seconds.
-mode is story or action. Every segment has a different progressing purpose."""
+mode is story or action. Every segment has a different progressing purpose.
+When segment_policy='dynamic', choose variable clip lengths at natural event and
+dialogue boundaries, using legal_clip_seconds. The maximum is a ceiling, not a
+fixed length. Break a longer event into connected self-contained local commissions
+with distinct opening/exit states; do not copy the entire event into both clips.
+Complete spoken sentences within their clip. A generation clip may have many shots.
+With AUTO, develop additional causal events and interactions within the user's
+premise to sustain target_seconds, preserving required events, lines and ending.
+Do not finish at minimum_duration_seconds simply because the numeric gate allows
+it. Aim close to target_seconds without padding or repeating a completed ending.
+This applies to every genre: each added beat changes the situation, relationship
+or viewer's understanding through visible behavior, new information, a choice or
+its consequences. Quiet reactions and daily-life events count when they develop
+the scene. Do not impose fights, villains, conflict or a mandatory escalation
+formula on stories that do not call for them. Shot changes, repeated dialogue,
+unmotivated waiting, slow motion or stretching a finished ending are not new plot.
+Keep shared_setup and local briefs concise enough to deliver the complete JSON."""
 
 WRITER = """Enhance ONE local film commission into a native MiniMax H3 ref2va prompt.
 Follow the supplied guide's output sections, but there is NO source audio or song.
@@ -131,6 +169,14 @@ angle. End dialogue before the clip ends without rushing or dropping assigned wo
 Allow a motivated emotional/comic pause; do not end the event early and mechanically
 hold a final pose. Preserve the commissioned local end state without previewing later
 plot. Internal cuts are staging intentions, not guaranteed frame-accurate edit commands.
+Honor clip_boundary: intermediate clips are excerpts from an ongoing film, not
+standalone mini-films. Preserve the commission's outgoing state without inventing
+a closing bow, mutual smile, farewell, resolved pose, fade, final wide shot or music
+stop merely because the generation window ends. If the event continues, carry its
+current action, gaze, movement or attention through the delivered boundary. A quiet
+scene can remain quiet; do not force physical action. Explicitly commissioned pauses,
+stops or scene resolutions remain valid. Only the final clip earns the whole-film
+ending, and it must still follow the commission. This applies to every genre.
 No subtitles or text overlays unless the user explicitly requested them. Shot times
 are clip-local and fit the duration. sound_mode='ambient' prohibits speech, dialogue,
 vocals and singing. No background score unless the commission explicitly calls for it.
@@ -184,7 +230,7 @@ def validate_plan(raw,req,image_count):
     if not isinstance(shared,str) or len(shared)>12000:
         raise ValueError('共用角色與場景設定需為文字，最多 12000 字。')
     shared=map_story(req,shared.strip(),image_count)
-    normalize_prompt(shared,image_count) if shared else None
+    if shared:shared=normalize_prompt(shared,image_count)
     if req.get('fixed_reference_version')==1:
         if not shared:raise ValueError('缺少 shared_setup 共用角色表與固定場景設定。')
         missing=[i for i in range(1,image_count+1) if f'<Picture {i}>' not in shared]
@@ -200,11 +246,12 @@ def validate_plan(raw,req,image_count):
         requested=round(seconds*FPS)
         frames=5+((requested-5)//17)*17
         if seconds<124/FPS-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<124:
-            raise ValueError('每段需介於 5.2 秒與所選分段上限。')
+            raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {124/FPS:.6f}–{req['segment_seconds']:g} 秒。"
+                             '請拆分超限事件並保留因果、完整台詞與結束狀態；短鏡頭可放在同一生成段內。')
         if mode not in ('story','action') or not isinstance(brief,str) or not 20<=len(brief.strip())<=5000:
             raise ValueError('每段需有 story/action 模式及完整當段委託。')
         brief=map_story(req,brief,image_count)
-        normalize_prompt(brief,image_count)
+        brief=normalize_prompt(brief,image_count)
         key=re.sub(r'\s+','',brief)
         if key in seen:raise ValueError('短片重複完整事件，請推進故事而非複製段落。')
         seen.add(key)
@@ -227,7 +274,8 @@ def duration_contract(req):
     # under the ceiling, including short targets with 6-second clip caps.
     achievable=max(n*124+17*((min(limit,n*cap)-n*124)//17)
                     for n in range(1,35) if n*124<=limit)
-    minimum=min(math.ceil(limit*.7),achievable)
+    ratio=.85 if req.get('planning_contract_version')==2 else .7
+    minimum=min(math.ceil(limit*ratio),achievable)
     return {'duration_policy':'target','target_seconds':req['max_seconds'],
             'minimum_duration_seconds':minimum/FPS}
 
@@ -250,6 +298,9 @@ def plan_film(cfg,job,originals):
             'max_seconds':req['max_seconds'],'max_clip_seconds':req['segment_seconds'],
             'style':req['visual_style'],'sound':req['sound_mode'],'intensity':req['intensity']}
     source.update(duration_contract(req))
+    if req.get('planning_contract_version')==2:
+        source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=124/FPS,
+                      legal_clip_seconds=[frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17)])
     if 'auto_director' in req:
         source['adaptation']=('AUTO: creatively develop the premise, keeping explicit events, dialogue and outcome.'
                               if req['auto_director'] else 'FAITHFUL: organize and stage only the supplied events and dialogue; do not invent new plot or lines.')
@@ -265,6 +316,7 @@ def plan_film(cfg,job,originals):
         if not saved.get('user_reviewed'):validate_planned_duration(verified,req)
         return verified
     parts=[('text',json.dumps(source,ensure_ascii=False))]+_pictures(originals)
+    original_parts=list(parts)
     for attempt in range(req['rewrite_retries']+1):
         raw=app.backend.rewrite_local(cfg,PLANNER,parts,uuid.uuid4().hex[:8])
         (work/f'director_attempt_{attempt:02d}.txt').write_text(raw,encoding='utf-8')
@@ -275,8 +327,29 @@ def plan_film(cfg,job,originals):
             return plan
         except (ValueError,TypeError,KeyError) as error:
             if attempt==req['rewrite_retries']:raise
-            parts=[*parts,('text','Previous rejected draft:\n'+raw),
-                   ('text','Correct the delivery and return the complete JSON only. Error: '+str(error))]
+            invalid=[];missing_bindings=[]
+            try:
+                rejected=parse_object(_text(raw))
+                shared=rejected.get('shared_setup','')
+                if isinstance(shared,str):
+                    shared=normalize_prompt(map_story(req,shared,len(originals)),len(originals)) if shared else ''
+                    missing_bindings=[f'<Picture {i}>' for i in range(1,len(originals)+1) if f'<Picture {i}>' not in shared]
+                for i,row in enumerate(rejected.get('segments',[])):
+                    seconds=row.get('seconds') if isinstance(row,dict) else None
+                    if (isinstance(seconds,bool) or not isinstance(seconds,(int,float))
+                            or not math.isfinite(seconds) or not 124/FPS-1e-8<=seconds<=req['segment_seconds']+1e-8):
+                        invalid.append({'segment':i+1,'seconds':seconds})
+            except (ValueError,TypeError,KeyError):pass
+            repair={'error':str(error),'invalid_segments':invalid,'missing_reference_bindings':missing_bindings,
+                    'max_clip_seconds':req['segment_seconds'],'min_clip_seconds':124/FPS,
+                    'instruction':'修正剛才拒絕稿並回傳完整 JSON。所有超限段落都必須拆分成更多合法生成段；不要原樣交回，'
+                                  '不要只縮短秒數卻塞入原來過量的動作或台詞，也不要把同一事件完整重複兩遍。'
+                                  '保留必須事件、角色、原句、因果與結局。若故事總長不足，請新增有因果的後續事件再分段，'
+                                  '不要只拉長原段落或重複結局。共用設定 shared_setup 必須用標準 <Picture N> 標籤'
+                                  '補齊 missing_reference_bindings 中所有已連接圖片的原始姓名／角色／用途對照；'
+                                  '依使用者故事與圖片判斷，不得交換身分，也不要求所有參考角色每段都出場。'}
+            parts=[*original_parts,('text','Previous rejected draft:\n'+raw),
+                   ('text','Correct the delivery and return the complete JSON only. '+json.dumps(repair,ensure_ascii=False))]
 
 
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
@@ -289,6 +362,12 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     task={'seconds':seg['seconds'],'style':req['visual_style'],'sound_mode':req['sound_mode'],
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
+    total=seg.get('segment_count') or len(job.get('segments',[])) or 1
+    final=seg['index']==total-1
+    task['clip_boundary']={'position':'final' if final else 'intermediate',
+        'instruction':('Complete only the commissioned film ending.' if final else
+                       'Continue the current scene through this production boundary. Do not invent a stop, closing beat or music ending. '
+                       'Preserve any pause or resolution explicitly required by the local commission.')}
     if fixed:task['fixed_reference_settings']=fixed
     if 'auto_director' in req:
         task['adaptation']='creative local staging' if req['auto_director'] else 'faithful staging; no new events or dialogue'
@@ -299,7 +378,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     if correction:task.update(original_prompt=base,local_correction=correction)
     text=json.dumps(task,ensure_ascii=False)
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
-    system=guide+'\n'+WRITER+'\n'+CLIP_INTENSITY[req['intensity']]
+    system=guide+'\n'+WRITER+'\n'+FILM_INTENSITY[req['intensity']]
     refs=([tail] if tail else [])+list(originals)
     if dest:atomic_json(Path(dest)/(artifact_prefix+'repair_request.json'),{'system':system,'user':text})
     for attempt in range(req['rewrite_retries']+1):
@@ -325,16 +404,19 @@ def start(req):
     cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
-    maximum=req.get('max_seconds',60);chunk=req.get('segment_seconds',10)
+    maximum=req.get('max_seconds',60);chunk=req.get('segment_seconds','auto')
+    dynamic=chunk=='auto'
+    if dynamic:chunk=15
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
     req.update(production='film',fixed_reference_version=1,max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
+               segment_policy='dynamic' if dynamic else 'capped',planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','chain') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
     req.setdefault('mode','chain');req.setdefault('intensity','high')
-    if req['intensity'] not in CLIP_INTENSITY:raise ValueError('未知攝影強度。')
+    if req['intensity'] not in FILM_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
     if req['sound_mode'] not in ('ambient','dialogue'):raise ValueError('未知聲音模式。')
     req['rewrite_retries']=rewrite_retry_count(req)

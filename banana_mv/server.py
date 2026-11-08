@@ -89,11 +89,14 @@ def graph_options(req, seconds, segment=None):
     steps=req.get('sampling_steps',8)
     if isinstance(steps,bool) or steps not in (6,8):
         raise ValueError('採樣步數僅支援 6 或 8。')
+    intensity=req.get('intensity','high')
+    if req.get('production')=='film' and req.get('film_motion_version')==2 and intensity=='extreme':
+        intensity='high'  # Cinematic photography is not an extra motion-LoRA boost.
     return ({'native_audio':True} if req.get('production')=='film' else {}) | {'steps':int(steps),'acceleration': req.get('acceleration', True),
             'kitchen_attention': req.get('kitchen_attention',req.get('acceleration',True)),
             'sparse_attention': req.get('sparse_attention',req.get('acceleration',True)),
             'motion_lora': req.get('motion_lora', True),
-            'director_mode': mode, 'intensity': req.get('intensity', 'high')}
+            'director_mode': mode, 'intensity': intensity}
 
 
 def local_prompt(cfg, req, segment, original, tail, *, scene_input=None, event_catalog=None,progress=None):
@@ -732,6 +735,11 @@ def resume(job_id,rewrite_retries=None):
         if queue.get('queue_running') or queue.get('queue_pending'):
             raise ValueError('ComfyUI 仍在執行工作，請等佇列清空再續跑。')
         originals,song,drive=project_inputs(job,cfg)
+        if (job['request'].get('production')=='film' and job.get('error_stage')=='planning_story'
+                and not job.get('segments') and not (job_dir(job_id)/'director_plan.json').exists()
+                and job['request'].get('auto_director') and job['request'].get('duration_policy')=='target'):
+            job['request']['planning_contract_version']=2
+            job['request'].setdefault('segment_policy','capped')
         repair_unstarted_timeline(job,song)
         restore_render_settings(job)
         missing=False
