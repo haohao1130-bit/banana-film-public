@@ -321,6 +321,7 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(film.threading,'Thread'))
                 started=film.start(dict(req,image_ids=[],prompt='a'*25000))
                 self.assertEqual(started['request']['prompt'],'a'*25000)
+                self.assertEqual(started['request']['fixed_reference_version'],1)
                 self.assertEqual(started['sources']['images'],[]);asset.assert_not_called()
                 graph=preflight.call_args.args[1]
                 self.assertFalse(any(n['class_type'] in ('LoadImage','LoadAudio') for n in graph.values()))

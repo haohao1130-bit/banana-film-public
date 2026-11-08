@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "9c8e82a70359a08f7d8c123fe60cfa13480a2c70331ebe0791b058813f84d7a8"
+      "sha256": "a7fd3e7fc2dccb5d27847f8e7b2a6af62a3f2c0f86b5959da36d690ef3439e08"
     },
     {
       "path": "banana_mv/film_media.py",
@@ -140,7 +140,7 @@
     },
     {
       "path": "docs/film_studio.md",
-      "sha256": "737646b304c0c6d7848b27d314c22809e3fd8a28a1a2cca5380449c4b34ba4bf"
+      "sha256": "12c11232c911966dab7faf6360035b71b7f4b8915e6760d72c9facb86c320eaf"
     },
     {
       "path": "tests/check_film_browser.cjs",
@@ -200,7 +200,11 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "86cb28bf497704b43d983b3440d78ee27d64786ab8aeef0d19681f13f453943d"
+      "sha256": "6c9f7d70afbed16fff21cd2747984fb91b72ef05ee4fad068ba71226de4fd11e"
+    },
+    {
+      "path": "tests/test_film_reference_settings.py",
+      "sha256": "18ca058bec2f41fc56eb55f271eecab1545c12f7a388bd402121cdf3f7f02129"
     },
     {
       "path": "tests/test_h3_prompt.py",

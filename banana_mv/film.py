@@ -62,9 +62,17 @@ clip. Use only reference_count connected images; when it is zero, design actors 
 places from the story without any <Picture N> tags. Do not split a spoken sentence
 at a clip boundary. When no dialogue is requested,
 use physical storytelling and environmental sound, not obligatory speech.
+Extract shared_setup as FIXED REFERENCE SETTINGS for every local director.
+Include explicit original name/role-to-<Picture N> bindings for every connected
+reference, fixed world/geography and requested original supporting character designs.
+Preserve names, roles and separate locations; do not reassign actors by appearance.
+These settings identify references, not a mandatory attendance list. Keep plot
+chronology, future events, the requested outcome and final shot OUT of shared_setup.
+Each local brief also names its active actors with their bound <Picture N> tags.
+Current clip states override reference expressions/poses and changed clothing.
 Keep briefs concise and executable. No camera shot list here; the local director
 chooses coverage. Reply ONLY valid JSON:
-{"title":"film title","segments":[{"seconds":10,"mode":"story",
+{"title":"film title","shared_setup":"fixed reference identities and world, no plot chronology","segments":[{"seconds":10,"mode":"story",
 "brief":"self-contained local shooting commission"}]}.
 Each seconds is between 5.2 and max_clip_seconds, total no greater than max_seconds.
 mode is story or action. Every segment has a different progressing purpose."""
@@ -73,7 +81,15 @@ WRITER = """Enhance ONE local film commission into a native MiniMax H3 ref2va pr
 Follow the supplied guide's output sections, but there is NO source audio or song.
 All sound is generated: describe environmental sound, effects and optional score in
 the sound sections. Do not reference <Audio N>, <Video N>, audio reuse, fully_copy or
-source-song lip sync. Use only connected <Picture N> references. Cast does not have
+source-song lip sync. Use only connected <Picture N> references. Honor fixed_reference_settings as the
+binding authority: names and roles stay attached to their assigned images. Never
+replace an absent actor with another supplied reference or infer a new role from
+image order. Original supporting actors may appear without invented Picture IDs.
+Fixed settings identify assets; the current commission chooses who is present.
+For corrections, these bindings remain authoritative even if an older original_prompt
+misassigned an actor. Preserve unchanged events without preserving wrong identities.
+Keep current expressions, blocking and clothing changes from this clip, not static
+reference poses. Cast does not have
 to attend merely because a picture was provided. No new plot beyond this commission.
 Invent strong cinematic coverage: every Shot has a concrete viewpoint, shot size,
 composition, spatial depth, motivated movement, light and visible action timing.
@@ -149,6 +165,15 @@ def normalize_prompt(text,count):
 def validate_plan(raw,req,image_count):
     data=parse_object(_text(raw));rows=data.get('segments')
     if not isinstance(rows,list) or not 1<=len(rows)<=34:raise ValueError('短片需有 1–34 段。')
+    shared=data.get('shared_setup','')
+    if not isinstance(shared,str) or len(shared)>12000:
+        raise ValueError('共用角色與場景設定需為文字，最多 12000 字。')
+    shared=map_story(req,shared.strip(),image_count)
+    normalize_prompt(shared,image_count) if shared else None
+    if req.get('fixed_reference_version')==1:
+        if not shared:raise ValueError('缺少 shared_setup 共用角色表與固定場景設定。')
+        missing=[i for i in range(1,image_count+1) if f'<Picture {i}>' not in shared]
+        if missing:raise ValueError('共用角色表漏掉圖片綁定：'+', '.join(map(str,missing)))
     result=[];start=0;seen=set()
     for i,row in enumerate(rows):
         if not isinstance(row,dict):raise ValueError('每個短片段落需為物件。')
@@ -173,8 +198,8 @@ def validate_plan(raw,req,image_count):
                        'director_mode':mode,'director_plan':{'index':i,'mode':mode,'event':brief}})
         start+=frames
     if start>math.floor(req['max_seconds']*FPS):raise ValueError('導演規劃超過片長上限。')
-    for seg in result:seg.update(song_seconds=start/FPS,segment_count=len(result))
-    return {'title':str(data.get('title') or '未命名短片')[:120],'duration':start/FPS,'segments':result}
+    for seg in result:seg.update(song_seconds=start/FPS,segment_count=len(result),fixed_reference_settings=shared)
+    return {'title':str(data.get('title') or '未命名短片')[:120],'duration':start/FPS,'segments':result,'shared_setup':shared}
 
 
 def duration_contract(req):
@@ -219,7 +244,7 @@ def plan_film(cfg,job,originals):
     if path.exists():
         saved=json.loads(path.read_text())
         if saved.get('input_sha256')!=fingerprint:raise ValueError('故事與已保存大綱不一致，請建立新作品。')
-        verified=validate_plan(json.dumps({'title':saved['title'],'segments':[
+        verified=validate_plan(json.dumps({'title':saved['title'],'shared_setup':saved.get('shared_setup',''),'segments':[
             {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']}
             for s in saved['segments']]}),req,len(originals))
         if not saved.get('user_reviewed'):validate_planned_duration(verified,req)
@@ -242,9 +267,14 @@ def plan_film(cfg,job,originals):
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
     req=job['request'];offset=int(bool(tail));brief=seg['director_plan']['event']
     brief=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',brief)
+    fixed=seg.get('fixed_reference_settings') or job.get('shared_setup','')
+    if req.get('fixed_reference_version')==1 and not fixed:
+        raise ValueError('當段缺少固定角色表與場景設定，請重新產生劇本。')
+    fixed=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',fixed)
     task={'seconds':seg['seconds'],'style':req['visual_style'],'sound_mode':req['sound_mode'],
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
+    if fixed:task['fixed_reference_settings']=fixed
     if 'auto_director' in req:
         task['adaptation']='creative local staging' if req['auto_director'] else 'faithful staging; no new events or dialogue'
         task['genres']=[GENRES[g] for g in req.get('genres',[])]
@@ -282,7 +312,7 @@ def start(req):
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    req.update(production='film',max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
+    req.update(production='film',fixed_reference_version=1,max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','independent') not in ('independent','chain'):raise ValueError('未知連續性模式。')
@@ -351,7 +381,7 @@ def save_script(job_id,draft,revision,render=False):
         if not isinstance(revision,str) or revision!=job.get('script_revision'):
             raise ValueError('劇本已有更新，請重新開啟作品後再確認，避免覆蓋新版。')
         if not isinstance(draft,dict):raise ValueError('缺少劇本。')
-        plan=validate_plan(json.dumps(draft,ensure_ascii=False),job['request'],len(job['images_comfy']))
+        plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
         if any(s.get('prompt_id') or s.get('prompt') for s in job['segments']):
             raise ValueError('已有生成稿，請建立新作品而非覆寫劇本。')
         cfg=copy.deepcopy(app.backend.load_config())
@@ -361,7 +391,7 @@ def save_script(job_id,draft,revision,render=False):
             app.preflight(cfg,app.build_workflow(job['images_comfy'],None,*job['size'],plan['segments'][0]['model_frames'],'',job['seed'],
                                                **app.graph_options(job['request'],plan['segments'][0]['seconds'],plan['segments'][0])))
         job.setdefault('script_history',[]).append({'revision':revision,'script':job.get('script_draft',review_draft(job)),'note':'確認開拍' if render else '手動儲存','created':time.time()})
-        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],
+        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],
                    script_revision=uuid.uuid4().hex,script_approved=render,resumed=time.time())
         job['script_draft']=review_draft(job)
         previous=json.loads((app.job_dir(job_id)/'director_plan.json').read_text())
@@ -391,10 +421,11 @@ def revise_script(job_id,draft,revision,instruction):
             raise ValueError('只有尚未開拍的劇本可以請導演細修。')
         if revision!=job.get('script_revision'):raise ValueError('劇本已有更新，請重新開啟作品。')
         req=job['request'];count=len(job['images_comfy'])
-        current=validate_plan(json.dumps(draft,ensure_ascii=False),req,count)
+        current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
         instruction=map_story(req,instruction,count)
         cfg=copy.deepcopy(app.backend.load_config());originals,_,_=inputs(job,cfg)
         source={'original_story':map_story(req,req['prompt'],count),
+                'fixed_reference_settings':current['shared_setup'],
                 'current_script':{'title':current['title'],'segments':[
                     {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']} for s in current['segments']]},
                 'revision_request':instruction,'max_seconds':req['max_seconds'],
@@ -413,7 +444,7 @@ def revise_script(job_id,draft,revision,instruction):
                 parts=[*parts,('text','Return corrected complete JSON. '+str(error))]
         history=job.setdefault('script_history',[])
         history.append({'revision':revision,'script':draft,'note':instruction,'created':time.time()})
-        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],script_revision=uuid.uuid4().hex)
+        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],script_revision=uuid.uuid4().hex)
         job['script_draft']=review_draft(job)
         path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text())
         atomic_json(path,dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
@@ -426,7 +457,7 @@ def worker(job,cfg,originals,song=None,drive=None):
         if not job['segments']:
             job['status']='planning_story';app.write_state(job)
             plan=plan_film(cfg,job,originals)
-            job.update(segments=plan['segments'],duration=plan['duration'])
+            job.update(segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'])
             if not job['request'].get('project_name'):job['title']=plan['title']
             app.write_state(job)
         if job['request'].get('script_review') and not job.get('script_approved'):
