@@ -159,79 +159,31 @@ misassigned an actor. Preserve unchanged events without preserving wrong identit
 Keep current expressions, blocking and clothing changes from this clip, not static
 reference poses. Cast does not have
 to attend merely because a picture was provided. No new plot beyond this commission.
-Follow the supplied MiniMax H3 reference-mode guide for detailed_description:
-describe each Shot in playback order, with the visible subjects, their current
-positions, actions and state changes, environment, camera and sound. [Shot 1]
-begins from the supplied current visual state and commissioned action. Later
-shots use sequential numbers and strictly increasing cut timestamps within
-seconds; each cut should provide a new view or information, while a small
-viewpoint change can use camera motion. Preserve character, prop and spatial
-continuity when the viewpoint changes. Do not replay an already described action
-as a new occurrence; represent simultaneous visible actions in the same shot
-when appropriate, or use motivated cuts. Shot count is not fixed. The local
-commission remains authoritative for which actions and outcomes happen.
-A camera cut changes the audience's viewpoint, NOT the event, performer, action
-target, possession or timeline. Never rewrite character business as camera business.
-Invent strong cinematic coverage: every Shot has a concrete viewpoint, shot size,
-composition, spatial depth, motivated movement, light and visible action timing.
-Use inserts, reactions, contrast and action-matched cuts when they clarify or intensify
-the event; hold complete action or emotional/comic pauses when they need time. A clip
-is not one mandatory long take. Do not mechanically rotate camera examples or zoom
-instead of cutting. Preserve position, direction and object state across cuts.
-Define each referenced person as the whole named character in subject_definitions;
-describe their outfit as an attribute. Never substitute a skirt, torso or disembodied
-hands for the acting person or label the wearer unseen merely to describe clothing.
-Reference appearance is identity, not fixed expression, pose, gaze or closed eyes.
-For ordinary character coverage, frame the intended face and head clearly with
-headroom and room for the assigned motion; reframe or track as actors move rather
-than letting their heads drift off the top edge. Low angles still need a coherent
-view of the intended subject. Match shot size, camera height and visible anatomy:
-a tight face shot cannot also require a waist bow in that same tight frame.
-Deliberate hand/foot/prop inserts or motivated extreme facial details may omit the
-rest of the head; identify them as detail inserts, not the default portrayal of a
-character. Do not turn an exchange into continuous torso/hand coverage when faces,
-reactions or whole-body action carry the event. Choose coverage freely for the beat.
-Photograph the commissioned blocking and dramatic purpose faithfully:
-make ONLY the assigned changes in distance, eyelines, object possession and
-emotional response visible. Do not add unassigned handoffs or actions.
-Choose a two-person view, reverse angle, reaction or insert when it serves that change;
-no mandatory shot count, alternating shot-size recipe or fixed cutting interval.
-Use decisive camera work when the scene calls for it: state the camera's starting
-position, movement relative to the actors and resulting reveal/composition. Distinguish
-camera translation, rotation and lens zoom; avoid incompatible simultaneous directions.
-Capture the commissioned emotion through visible face and body behavior. A subtle
-facial or gaze detail may reveal an existing reaction, but never introduce a new
-emotional decision, dialogue, surrender, reconciliation or story consequence.
-When dialogue is permitted, preserve the assigned speaker and exact local text, make
-the speaking face readable, and describe voice/delivery and mouth movement. Do not
-add lines unless the commission requests them. Budget speech, action and listener
-response within the same duration; a response may overlap speech naturally. Keep
-speaker identity and eyelines clear across cuts, and do not restart a line on a new
-angle. End dialogue before the clip ends without rushing or dropping assigned words.
-Allow ONLY a pause justified by the current_clip_commission; do not end an
-ongoing event early or mechanically hold a final pose. The delivery boundary is
-not a story ending. Preserve the commissioned local end state exactly, without
-adding a stop, resting stance, congratulation, resolved expression or teaser of
-later plot. Internal cuts are staging intentions, not guaranteed frame-accurate edit commands.
-Honor clip_opening: for EVERY clip after index 0, [Shot 1] begins at the
-exact ongoing narrative instant inherited from the preceding clip, not a new
-scene opening. Continue the current action, movement phase, physical positions,
-facing, eyelines, actor/prop ownership and emotional state as commissioned;
-never reset blocking, replay an attack or gesture, make actors stand apart,
-start another establishing introduction, or restart dialogue merely because a
-new generation window begins. You MAY cut immediately to any motivated camera
-angle, insert, reaction or location, but the cut must advance the SAME story
-timeline rather than restart it. If the commission explicitly calls for a true
-scene transition, time jump or new location, honor that change instead. This
-applies equally to the final clip's opening, every genre and quiet scenes.
-Honor clip_boundary: intermediate clips are excerpts from an ongoing film, not
-standalone mini-films. Preserve the commission's outgoing state without inventing
-a closing bow, mutual smile, farewell, resolved pose, fade, final wide shot or music
-stop merely because the generation window ends. If the event continues, carry its
-current action, gaze, movement or attention through the delivered boundary. A quiet
-scene can remain quiet; do not force physical action. Explicitly commissioned pauses,
-stops or scene resolutions remain valid. Only the final clip earns the whole-film
-ending, and it must still follow the commission. This applies to every genre.
+Follow the supplied MiniMax H3 full-reference guide for the six output
+sections and its Shot, camera, Subject/Picture and sound conventions. Write the
+visible scene in chronological playback order. For every [Shot N], state the
+actual visible actors, positions, actions and relevant environment. A change
+of camera viewpoint does not restart a previously completed action or relocate
+someone who remains active elsewhere. Simultaneous activity may appear in
+one composition or in motivated intercuts; never force a shot quota or fixed
+cut interval. Use natural camera movement, shot sizes, foreground/background
+and lighting as the event warrants. Keep normal faces framed with headroom;
+intentional detail inserts and extreme close-ups are welcome.
+Treat reference images as identity and appearance sources, not a demand for
+every supplied character to appear, and not a fixed expression or body pose.
+Keep character identity attached to the whole person; clothing and hands are
+attributes or inserts, not replacement cast members. Do not add actions,
+handoffs, outcomes, reactions or dialogue absent from the local commission.
+For dialogue, use the guide's stable speaker IDs (S1), (S2) ONLY for actual
+vocal sources, never as shot-local actor indices. Use <d>[Language] ...</d>
+for commissioned speech. A silent actor has no speaker ID.
+The delivery boundary is not a story ending. Honor clip_opening: after the
+first clip, [Shot 1] continues the previous action and positions without
+replaying a gesture or resetting a scene, unless the commission specifies a
+scene or time change. Honor clip_boundary: an intermediate clip preserves
+ongoing motion or attention rather than inventing a bow, farewell, fade,
+ending pose or score resolution. The final clip may resolve only the
+commissioned ending. Explicitly commissioned pauses remain valid.
 No subtitles or text overlays unless the user explicitly requested them. Shot times
 are clip-local and fit the duration. sound_mode='ambient' prohibits speech, dialogue,
 vocals and singing. No background score unless the commission explicitly calls for it.
@@ -264,6 +216,62 @@ def review_draft(job):
         return re.sub(r'<Picture (\d+)>',lambda m:'@圖片'+str(reverse.get(int(m[1]),int(m[1]))),text)
     return {'title':job['title'],'segments':[{'seconds':s['seconds'],'mode':s['director_mode'],
             'brief':label(s['director_plan']['event'])} for s in job['segments']]}
+
+
+
+def validate_film_format(text,seconds,sound_mode):
+    """Deterministic MiniMax H3 format checks; no plot or camera-style judgement."""
+    if text.lstrip().startswith('subject_definitions:'):
+        from banana_mv.direction_contract import validate_h3_sections
+        validate_h3_sections(text)
+    body=(text.split('detailed_description:',1)[1].split('overall_soundscape:',1)[0]
+          if 'detailed_description:' in text else text)
+    shots=list(re.finditer(r'\[Shot\s+(\d+)\]',body))
+    if not shots:
+        raise ValueError('缺少 MiniMax H3 [Shot 1] 分鏡標記。')
+    if len(re.findall(r'\[Shot\b',body))!=len(shots):
+        raise ValueError('Shot 標記必須使用 [Shot N] 格式。')
+    previous=0.0
+    for index,match in enumerate(shots):
+        if int(match.group(1))!=index+1:
+            raise ValueError('Shot 編號必須從 1 開始連續遞增。')
+        next_text=body[match.end():shots[index+1].start() if index+1<len(shots) else len(body)]
+        timestamp=re.match(r'\s*At\s+(\d{2}):(\d{2})\.(\d{3})\s*,?',next_text)
+        if index==0:
+            if timestamp:
+                raise ValueError('第一鏡 [Shot 1] 不應附加切鏡時間。')
+        else:
+            if not timestamp:
+                raise ValueError(f'第 {index+1} 鏡缺少 At MM:SS.mmm 切鏡時間。')
+            minute,second,milli=map(int,timestamp.groups())
+            current=minute*60+second+milli/1000
+            if second>=60 or not previous<current<float(seconds):
+                raise ValueError(f'第 {index+1} 鏡時間碼必須遞增且小於當段 {seconds:g} 秒。')
+            previous=current
+        detail=next_text[timestamp.end():] if timestamp else next_text
+        if not detail.strip():
+            raise ValueError(f'第 {index+1} 鏡缺少拍攝內容。')
+    if 'retention_analysis:' in text and 'detailed_description:' in text:
+        retention=text.split('retention_analysis:',1)[1].split('detailed_description:',1)[0]
+        if re.search(r'\(S\d+\)',retention):
+            raise ValueError('retention_analysis 不應使用說話者 (Sx) 標記。')
+    speakers=re.findall(r'\(S(\d+)\)',text)
+    dialogue=re.search(r'<d>.*?</d>',text,re.S)
+    if sound_mode=='ambient' and (speakers or dialogue):
+        raise ValueError('環境音模式不可加入說話者 ID 或對白。')
+    if speakers and not dialogue:
+        raise ValueError('(S1)/(S2) 僅用於實際發聲者；無對白不得標記鏡頭演員。')
+    if dialogue and not speakers:
+        raise ValueError('有對白必須使用穩定的 (Sx) 說話者 ID。')
+    subject_to_voice={}
+    voice_to_subject={}
+    for subject,voice in re.findall(r'<Subject\s+(\d+)>\s*\(S(\d+)\)',text):
+        if ((subject in subject_to_voice and subject_to_voice[subject]!=voice) or
+            (voice in voice_to_subject and voice_to_subject[voice]!=subject)):
+            raise ValueError('說話者 (Sx) 不可在不同 Subject 之間重複或改號。')
+        subject_to_voice[subject]=voice
+        voice_to_subject[voice]=subject
+    return text
 
 
 def normalize_prompt(text,count):
@@ -428,7 +436,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
         raw=app.backend.rewrite_local(cfg,system,[('text',text)]+_pictures(refs),uuid.uuid4().hex[:8])
         target=Path(dest) if dest else app.job_dir(job['id'])
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
-        try:return normalize_prompt(raw,len(refs))
+        try:return validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
         except ValueError as error:
             if attempt==req['rewrite_retries']:raise
             text+='\nReturn corrected complete prompt. '+str(error)
