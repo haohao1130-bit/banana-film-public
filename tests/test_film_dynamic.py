@@ -30,16 +30,13 @@ class DynamicFilmTests(unittest.TestCase):
                     finally:
                         if app.GPU_LOCK.locked():app.GPU_LOCK.release()
 
-    def test_new_auto_floor_is_85_percent_old_and_faithful_remain_unchanged(self):
-        req={'max_seconds':180,'segment_seconds':15,'auto_director':True,'duration_policy':'target','planning_contract_version':2}
-        self.assertEqual(film.duration_contract(req)['minimum_duration_seconds'],153)
-        film.validate_planned_duration({'duration':153},req)
-        with self.assertRaisesRegex(ValueError,'故事規劃過短'):
-            film.validate_planned_duration({'duration':128.375},req)
-        old=dict(req);old.pop('planning_contract_version')
-        self.assertEqual(film.duration_contract(old)['minimum_duration_seconds'],126)
-        req['auto_director']=False
-        self.assertEqual(film.duration_contract(req),{})
+    def test_new_and_legacy_auto_have_no_minimum_duration(self):
+        for policy in ('target','flexible'):
+            req={'max_seconds':180,'segment_seconds':15,'auto_director':True,
+                 'duration_policy':policy,'planning_contract_version':2}
+            self.assertEqual(film.duration_contract(req),{})
+            self.assertIsNone(film.validate_planned_duration({'duration':115.75},req))
+            self.assertIsNone(film.validate_planned_duration({'duration':10},req))
 
     def test_10_second_failure_reports_actual_value_and_repairs_every_overlong_segment(self):
         with tempfile.TemporaryDirectory() as tmp:
