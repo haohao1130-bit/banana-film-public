@@ -20,7 +20,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "80c883a7daa34b11e2ba0b601613958da1a5e77c14b063754ec1b87f1790837d"
+      "sha256": "1b77908bdc34d31e2353e0d657400ee8d65c6d8c51bea67f6ba4d76ef3c71e55"
     },
     {
       "path": "THIRD_PARTY.md",
@@ -52,11 +52,15 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "7ef1f9dab405c189fc11d1c406bca758a683e269edb65b6a43ef4bdc80ab7701"
+      "sha256": "f1785d64fdc7ed0be1e9147382229b1a54037c6dabf028ef33413a414ccbc3f7"
+    },
+    {
+      "path": "banana_mv/film_continuity.py",
+      "sha256": "6f09a062452e15201cbccdf51bf86ca12076939af1fd711e9662cbb3cf5bc7bb"
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "62ea79267f102eca44f8f3bdd2fc194e09b7cdc1a1f5ac7007d00892f27dd66d"
+      "sha256": "30692eb540089c56b599323b87a9b85c6a89763c9cbe23fce97c144d16d8074c"
     },
     {
       "path": "banana_mv/film_server.py",
@@ -92,7 +96,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "b34806e42ac43d7e4c724250d0adc0aeab19dbd896d4bf35f32b9e68d4f72945"
+      "sha256": "279f0b90a25c99650dcd20ca52552f70d5434092a34c2b6bf9e3530b8f5fdaab"
     },
     {
       "path": "banana_mv/services.py",
@@ -112,7 +116,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "372133b9e751b93021af74d8bfb9c8710af0b29e6e59e12c511c1b06db31e247"
+      "sha256": "5e5c9fa73cd01c14c29fda8e8e9ac8baaa163ff66efb2f4bc1cbd4d31f78fc86"
     },
     {
       "path": "banana_mv/web/clip_review.js",
@@ -120,7 +124,7 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "9ddf73f9a95fc2059d031cc1b5f0b6ef761b75971edef9d7ae6352013558fc68"
+      "sha256": "e74889160efe051c6ee44668a0eaa29febee0e279d8caca97b127d05e087e484"
     },
     {
       "path": "banana_mv/web/film.js",
@@ -128,7 +132,7 @@
     },
     {
       "path": "banana_mv/web/film_review.js",
-      "sha256": "d3a6536889c7c2ad38bb7496cd1853db2b8983210e0e8170310c9f31d74aafc5"
+      "sha256": "adfda24d0a68ffbe7e1bbfba77dfe7a78bb3552e1effaf85008da81172b62cf1"
     },
     {
       "path": "banana_mv/web/index.html",
@@ -140,7 +144,7 @@
     },
     {
       "path": "docs/film_studio.md",
-      "sha256": "12c11232c911966dab7faf6360035b71b7f4b8915e6760d72c9facb86c320eaf"
+      "sha256": "3aed352143684c106afd01460c81d2eb868831250d59c819de3368bb2d6a1b5f"
     },
     {
       "path": "tests/check_film_browser.cjs",
@@ -148,7 +152,7 @@
     },
     {
       "path": "tests/check_film_ui.cjs",
-      "sha256": "f5d9681fefa293b58928b48708438d0c84ee4cdc50f9a6f8f6e9fa594670750b"
+      "sha256": "f4e800a2e6e69e0713e10a72c9c798da638efd33e78d22c2b4600b06caa19f30"
     },
     {
       "path": "tests/check_ui.cjs",
@@ -201,6 +205,10 @@
     {
       "path": "tests/test_film.py",
       "sha256": "6c9f7d70afbed16fff21cd2747984fb91b72ef05ee4fad068ba71226de4fd11e"
+    },
+    {
+      "path": "tests/test_film_motion_context.py",
+      "sha256": "f44d8ea95ca3f95ae76d951027fece7f34fcd672f5c82b9ac73e55f923f29a43"
     },
     {
       "path": "tests/test_film_reference_settings.py",

@@ -54,10 +54,12 @@ vm.runInContext(fs.readFileSync('banana_mv/web/film_review.js','utf8'),context);
  els.prompt.events.keydown({key:'Enter',preventDefault(){prevented=true;}});assert.equal(els.prompt.value,'@圖片3 ');
  els.prompt.value='a'.repeat(25000);els.prompt.selectionStart=25000;els.prompt.selectionEnd=25000;els.prompt.events.input({});assert(els['prompt-count'].textContent.includes('25000 / 30000'));assert.equal(els.prompt.getAttribute('aria-invalid'),'false');
  const requests=posts.length,uploaded=uploads.length;els.prompt.value='a'.repeat(30001);els.prompt.events.input({});await els.form.onsubmit({preventDefault(){}});assert.equal(posts.length,requests);assert.equal(uploads.length,uploaded);assert(els.status.textContent.includes('30000'));assert.equal(els.prompt.getAttribute('aria-invalid'),'true');
+ assert(html.includes('value="chain5"'));
+ els.prompt.value='New motion scene';els.mode.value='chain5';
+ status={...status,status:'done'};await vm.runInContext('poll()',context);await els.form.onsubmit({preventDefault(){}});assert.equal(posts.at(-1).mode,'chain5');
  assert(!html.match(/<button[^>]*id="stop"[^>]*class="secondary"/));
  status={...status,status:'running'};await vm.runInContext('poll()',context);assert.equal(els.stop.hidden,false);
  await els.stop.onclick();assert.equal(els.stop.disabled,true);await vm.runInContext('poll()',context);assert.equal(els.stop.disabled,true);assert(els.stop.textContent.includes('已要求停爐'));
  status={...status,status:'cancelled'};await vm.runInContext('poll()',context);assert.equal(els.stop.hidden,true);assert.equal(els['resume-project'].hidden,false);
  console.log('Film UI checks passed: story-only request, fixed image slots, zero seed, planning, native audio previews, stable correction drafts, versions and selective retakes.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
-

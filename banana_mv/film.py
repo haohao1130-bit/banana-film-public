@@ -293,6 +293,8 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     if 'auto_director' in req:
         task['adaptation']='creative local staging' if req['auto_director'] else 'faithful staging; no new events or dialogue'
         task['genres']=[GENRES[g] for g in req.get('genres',[])]
+    if req.get('mode')=='chain5' and seg['index']>0:
+        task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
     if tail:task['continuity_reference']='<Picture 1> is the previous last frame as visual reference, not a locked first frame or another actor.'
     if correction:task.update(original_prompt=base,local_correction=correction)
     text=json.dumps(task,ensure_ascii=False)
@@ -330,7 +332,7 @@ def start(req):
     req.update(production='film',fixed_reference_version=1,max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
-    if req.get('mode','chain') not in ('independent','chain'):raise ValueError('未知連續性模式。')
+    if req.get('mode','chain') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
     req.setdefault('mode','chain');req.setdefault('intensity','high')
     if req['intensity'] not in CLIP_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
@@ -352,6 +354,9 @@ def start(req):
     ids=req.get('image_ids',[])
     if not isinstance(ids,list):raise ValueError('圖片素材需為清單。')
     if ids:ids=reference_images(ids,req['mode']=='chain')
+    if req['mode']=='chain5':
+        from banana_mv.film_continuity import preflight_nodes
+        app.preflight(cfg,preflight_nodes())
     rows=[app.backend.asset(aid) for aid in ids]
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
@@ -467,7 +472,8 @@ def revise_script(job_id,draft,revision,instruction):
     finally:app.GPU_LOCK.release()
 
 def worker(job,cfg,originals,song=None,drive=None):
-    work=app.job_dir(job['id']);tail=None
+    work=app.job_dir(job['id']);tail=None;motion_files=[]
+    from banana_mv.film_continuity import motion_prefix,prepare_motion_tail,add_motion_guide
     try:
         if not job['segments']:
             job['status']='planning_story';app.write_state(job)
@@ -484,7 +490,15 @@ def worker(job,cfg,originals,song=None,drive=None):
             if seg.get('takes') and not part.is_file():raise ValueError('採用版片段遺失，請恢復該版本或另選版本。')
             if seg.get('status')=='done' and app.valid_part(part,seg,job['size']):
                 require_audio(part);continue
-            tail=None
+            tail=None;context_names=[];prefix=motion_prefix(job,seg)
+            if prefix:
+                source=app.adopted_part(job,job['segments'][i-1])
+                context_names,receipt=prepare_motion_tail(source,work/'motion_context',Path(cfg['comfy_input_dir']),f'banana_motion_{job["id"]}_{i:02d}')
+                motion_files.extend(Path(cfg['comfy_input_dir'])/name for name in context_names)
+                previous=seg.get('motion_context')
+                if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
+                    raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
+                seg['motion_context']=receipt
             if i and job['request']['mode']=='chain':
                 tail=work/f'{i:02d}_opening.png';app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
             from banana_mv.takes import existing_file
@@ -501,6 +515,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                 first=f'banana_film_{job["id"]}_{i}.png';shutil.copyfile(tail,Path(cfg['comfy_input_dir'])/first)
             graph=app.build_workflow(job['images_comfy'],None,*job['size'],seg['model_frames'],prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
+            if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaFilm/{job["id"]}/{i:02d}_v1'
             atomic_json(work/f'{i:02d}_workflow_v1.json',graph);app.preflight(cfg,graph)
             entry=app.backend.history_entry(cfg,seg['prompt_id']) if seg.get('prompt_id') else None
@@ -511,7 +526,8 @@ def worker(job,cfg,originals,song=None,drive=None):
                 entry=app.wait_generation(cfg,seg['prompt_id'],job)
             app.backend.comfy_download(cfg,app.video_info(entry),work/f'{i:02d}_raw_v1.mp4')
             part=work/f'{i:02d}_part_v1.mp4'
-            trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
+            if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
+            else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
             seg['status']='done';app.write_state(job)
             if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
@@ -528,5 +544,5 @@ def worker(job,cfg,originals,song=None,drive=None):
     except Exception as error:
         job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
     finally:
+        for path in motion_files:path.unlink(missing_ok=True)
         app.CANCEL.discard(job['id']);app.GPU_LOCK.release()
-

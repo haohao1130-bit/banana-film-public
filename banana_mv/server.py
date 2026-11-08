@@ -743,9 +743,9 @@ def resume(job_id,rewrite_retries=None):
                 from banana_mv.film_media import require_audio
                 try:require_audio(part)
                 except (ValueError,RuntimeError):usable=False
-            if not usable or (missing and job['request']['mode']=='chain'):
+            if not usable or (missing and job['request']['mode'] in ('chain','chain5')):
                 seg['status']='waiting'
-                if missing and job['request']['mode']=='chain':
+                if missing and job['request']['mode'] in ('chain','chain5'):
                     seg.pop('prompt_id',None)
                     seg['refresh_prompt']=True
                 missing=True
@@ -862,4 +862,3 @@ if __name__=='__main__':
             write_state(job)
     print(f'Banana MV on http://127.0.0.1:{backend.PORT}',flush=True)
     ThreadingHTTPServer(('127.0.0.1',backend.PORT),Handler).serve_forever()
-

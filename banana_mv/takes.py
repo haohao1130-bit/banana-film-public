@@ -195,7 +195,7 @@ def retake(job_id,indices,instructions=None):
             if not app.valid_part(take_source(job,i),seg,job['size']):raise ValueError('選取段落缺少有效毛片，請先續跑完成。')
             saved=app.job_dir(job_id)/f'{i:02d}_prompt.txt'
             if not (seg.get('prompt') or saved.is_file()):raise ValueError('缺少原段落提示詞，無法保留劇本重拍。')
-            if job['request']['mode']=='chain' and i>0:take_source(job,i-1)
+            if job['request']['mode'] in ('chain','chain5') and i>0:take_source(job,i-1)
         originals,song,drive=app.project_inputs(job,cfg)
         app.restore_render_settings(job)
         first=segment(job,indices[0])
@@ -284,7 +284,17 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             native=job['request'].get('production')=='film'
             if not native:
                 temporary.append(inp/name);app.audio_window(drive,inp/name,seg['start'],seg['model_frames']/app.FPS)
-            first=None
+            first=None;context_names=[];prefix=0
+            if native:
+                from banana_mv.film_continuity import motion_prefix,prepare_motion_tail,add_motion_guide
+                prefix=motion_prefix(job,seg)
+            if prefix:
+                previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'))
+                source=take_source(job,i-1,previous)
+                context_names,receipt=prepare_motion_tail(source,work/'motion_context',inp,f'banana_motion_{job["id"]}_{take["id"]}')
+                temporary.extend(inp/name for name in context_names)
+                take['motion_context']=receipt
+                take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
             if job['request']['mode']=='chain' and i>0:
                 previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'));frame=output('opening.png')
                 app.last_frame(take_source(job,i-1,previous),frame)
@@ -298,6 +308,7 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             take['status']='generating';app.write_state(job)
             graph=app.build_workflow(job['images_comfy'],None if native else name,*job['size'],seg['model_frames'],prompt,take['seed'],first,
                                      **app.graph_options(job['request'],seg['seconds'],seg))
+            if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaMV/{job["id"]}/{i:02d}_v{take["version"]}'
             app.preflight(cfg,graph);(output('workflow.json')).write_text(json.dumps(graph,ensure_ascii=False,indent=2))
             take['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
@@ -305,7 +316,8 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             app.backend.comfy_download(cfg,app.video_info(entry),output('raw.mp4'))
             if native:
                 from banana_mv.film_media import trim_native
-                trim_native(output('raw.mp4'),output('part.mp4'),seg['frames'])
+                if prefix:trim_native(output('raw.mp4'),output('part.mp4'),seg['frames'],prefix_frames=prefix)
+                else:trim_native(output('raw.mp4'),output('part.mp4'),seg['frames'])
             else:app.trim_video(output('raw.mp4'),output('part.mp4'),seg['frames'])
             if not app.valid_part(output('part.mp4'),seg,job['size']):raise ValueError('回爐毛片影格或尺寸不符。')
             take['status']='ready';choices[i]=take['id'];job['retake']['completed']=len(choices);app.write_state(job)
@@ -378,4 +390,3 @@ def selection_worker(job,choices,song,old_status):
     finally:
         try:app.write_state(job)
         finally:app.GPU_LOCK.release()
-
