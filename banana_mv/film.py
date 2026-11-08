@@ -66,6 +66,9 @@ Extract shared_setup as FIXED REFERENCE SETTINGS for every local director.
 Include explicit original name/role-to-<Picture N> bindings for every connected
 reference, fixed world/geography and requested original supporting character designs.
 Preserve names, roles and separate locations; do not reassign actors by appearance.
+A reference showing a person defines the WHOLE named actor, even in a full-body,
+costume or multi-view sheet. Clothing and body parts are attributes, not substitute
+subjects that leave the wearer unnamed or their head implicitly unseen.
 These settings identify references, not a mandatory attendance list. Keep plot
 chronology, future events, the requested outcome and final shot OUT of shared_setup.
 Each local brief also names its active actors with their bound <Picture N> tags.
@@ -97,7 +100,19 @@ Use inserts, reactions, contrast and action-matched cuts when they clarify or in
 the event; hold complete action or emotional/comic pauses when they need time. A clip
 is not one mandatory long take. Do not mechanically rotate camera examples or zoom
 instead of cutting. Preserve position, direction and object state across cuts.
+Define each referenced person as the whole named character in subject_definitions;
+describe their outfit as an attribute. Never substitute a skirt, torso or disembodied
+hands for the acting person or label the wearer unseen merely to describe clothing.
 Reference appearance is identity, not fixed expression, pose, gaze or closed eyes.
+For ordinary character coverage, frame the intended face and head clearly with
+headroom and room for the assigned motion; reframe or track as actors move rather
+than letting their heads drift off the top edge. Low angles still need a coherent
+view of the intended subject. Match shot size, camera height and visible anatomy:
+a tight face shot cannot also require a waist bow in that same tight frame.
+Deliberate hand/foot/prop inserts or motivated extreme facial details may omit the
+rest of the head; identify them as detail inserts, not the default portrayal of a
+character. Do not turn an exchange into continuous torso/hand coverage when faces,
+reactions or whole-body action carry the event. Choose coverage freely for the beat.
 Translate the commissioned dramatic purpose into actor blocking and coverage:
 make changes in distance, eyelines, object possession and emotional response visible.
 Choose a two-person view, reverse angle, reaction or insert when it serves that change;
