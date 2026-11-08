@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "40859a0fb6683666186428bfa443edc45facbf1da46a49fc50503ba242299841"
+      "sha256": "4b637d48e95702c5a6201ed6ae515fde0a59e74cfc612b53bc8915bd1140ba49"
     },
     {
       "path": "banana_mv/film_continuity.py",
@@ -96,7 +96,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "c61dcc90ea94d76d7b7d551b2f89109db380359fee28a80e76f7ede1978bddc1"
+      "sha256": "02f271a2fc9cddd86c1f7169692f619c248133ba0c5a8af3cca0d0ef99e51fd4"
     },
     {
       "path": "banana_mv/services.py",
@@ -104,7 +104,7 @@
     },
     {
       "path": "banana_mv/shoot_plan.py",
-      "sha256": "6612744a06102ac605a958a364b0d3799c372e1d6c5a34f4cc547eeca9fb955c"
+      "sha256": "9e328c26ce6d49b4d455a4b0486f725e8b807aeda9a2c5a835f1d44a71074048"
     },
     {
       "path": "banana_mv/song_context.py",
@@ -116,7 +116,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "5e5c9fa73cd01c14c29fda8e8e9ac8baaa163ff66efb2f4bc1cbd4d31f78fc86"
+      "sha256": "a357577bfe5129d125e59279003c9144f6d96965ed2e33aeda2d33bcd94e9099"
     },
     {
       "path": "banana_mv/web/clip_review.js",
@@ -124,11 +124,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "2ef3761676df74638ebaeed769f390c9030c5b443cf4df50f897d8ab1f17bc25"
+      "sha256": "297ed92e308c9340ce51ad2bde81a2fa9e9d9b24d94a561bec70283cd4e3ec30"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "9a2aa2fca8180a1d190798d4c101a3d7b2e9669cbb223ff44f94d88379ec8768"
+      "sha256": "690890c0861d10780ebd665e1970cb835bd8184498cc34cfcc9124e3009eade6"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -145,6 +145,30 @@
     {
       "path": "docs/film_studio.md",
       "sha256": "e0702643254c18446ebf36b6260eeaba22a3ebe8e284af85411f575c78ab150e"
+    },
+    {
+      "path": "docs/vnext-audit.md",
+      "sha256": "d2618436a644512c51fef7774e5544cf8473b1fadd2037b7050a19fc7bb2ca1e"
+    },
+    {
+      "path": "docs/vnext_evidence/baseline.txt",
+      "sha256": "46c648b6c5d4eaaf8b08ba3bd8c3c0c8f7d7c9b636e5215f37619eb5f4b8d553"
+    },
+    {
+      "path": "docs/vnext_evidence/final-suite.txt",
+      "sha256": "1e2f901f7e557a7f53bcc6331c53ab72d05983d92719285d2bca35a453e5e2e5"
+    },
+    {
+      "path": "docs/vnext_evidence/input.json",
+      "sha256": "d759dfe11aa500847fa8c1f45f7906d6a6700badf1ca7a668fe4e45abca302ff"
+    },
+    {
+      "path": "docs/vnext_evidence/reproduction.txt",
+      "sha256": "fd6252a2dbc665b1be19dd42d61f72c4aab7aa3f9c20466f9b789d1b010f43aa"
+    },
+    {
+      "path": "docs/vnext_evidence/results.json",
+      "sha256": "52fc1ecc65a556c67b6830bc79dc3d1d7501ae15a8972e43325967248bb8ffc6"
     },
     {
       "path": "tests/check_film_browser.cjs",
@@ -204,11 +228,11 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "6c9f7d70afbed16fff21cd2747984fb91b72ef05ee4fad068ba71226de4fd11e"
+      "sha256": "4c6acb6329050ebd6553e3b537f8fd719e262a9bd16a69cfbf8f9bbcc7333e54"
     },
     {
       "path": "tests/test_film_dynamic.py",
-      "sha256": "c93eaa36a1a98a8add667ac32278fb0ecc11992c220c7fe1944bb455c91e71ec"
+      "sha256": "1ee5dd489d8f406dd02bf9edf7a0a9da840305dfa4617531d623a86efa76fb51"
     },
     {
       "path": "tests/test_film_motion_context.py",
@@ -289,6 +313,10 @@
     {
       "path": "tests/test_unified_direction.py",
       "sha256": "2d4836df41ea212a711968e0033b45d0d71c0fad158aa380308429ef871aed71"
+    },
+    {
+      "path": "tests/test_vnext_regression.py",
+      "sha256": "fba9de5de623abe19e8405f14682dd98088e0acf2c4b6c20218d93f43f122ddc"
     },
     {
       "path": "tools/build_film_notebook.py",
