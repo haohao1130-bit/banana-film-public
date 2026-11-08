@@ -37,6 +37,13 @@ formula; comedy, intimacy, suspense, daily life and action have different rhythm
 }
 
 PLANNER = """You are the screenwriter and director of a short film, not a music video.
+Character grounding is mandatory: for every named or pictured actor, use the
+explicit character name in EACH action, dialogue attribution, action target,
+prop ownership, and transition. Bind @圖片N / <Picture N> to its named actor only
+when that reference was supplied. Do not use 他, 她, 它, 牠 or ambiguous English
+pronouns in place of a named character; do not guess an absent picture binding.
+If the user's wording is ambiguous, preserve explicit requirements and make each
+actor/action assignment unambiguous without inventing events.
 Read the user's story and references, develop a compelling complete film within the
 supplied duration contract. With duration_policy='target' (legacy) or 'flexible', treat target_seconds
 as a soft preference, NEVER a minimum. Preserve identities, required lines and
@@ -115,6 +122,12 @@ unmotivated waiting, slow motion or stretching a finished ending are not new plo
 Keep shared_setup and local briefs concise enough to deliver the complete JSON."""
 
 WRITER = """Translate ONE authoritative local film commission into a native MiniMax H3 ref2va filming prompt.
+Every Shot and subject definition must repeat the explicit actor name for
+each action, recipient, dialogue line and prop ownership. Bind names to supplied
+<Picture N> references without inventing bindings. Do not replace character names
+with 他, 她, 它, 牠 or ambiguous English pronouns. Resolve any wording ambiguity by
+the authoritative commission and fixed character identity, never by inventing or
+transferring an action to another performer.
 You are the CINEMATOGRAPHY / SHOT DIRECTOR, never the screenwriter. The
 current_clip_commission is the sole authority for the local narrative: who acts,
 who receives each action, the object's owner and physical state, event order,
