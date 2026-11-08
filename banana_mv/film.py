@@ -315,8 +315,8 @@ def start(req):
     req.update(production='film',fixed_reference_version=1,max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
-    if req.get('mode','independent') not in ('independent','chain'):raise ValueError('未知連續性模式。')
-    req.setdefault('mode','independent');req.setdefault('intensity','high')
+    if req.get('mode','chain') not in ('independent','chain'):raise ValueError('未知連續性模式。')
+    req.setdefault('mode','chain');req.setdefault('intensity','high')
     if req['intensity'] not in CLIP_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
     if req['sound_mode'] not in ('ambient','dialogue'):raise ValueError('未知聲音模式。')
