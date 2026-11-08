@@ -38,11 +38,9 @@ formula; comedy, intimacy, suspense, daily life and action have different rhythm
 
 PLANNER = """You are the screenwriter and director of a short film, not a music video.
 Read the user's story and references, develop a compelling complete film within the
-supplied duration contract. With duration_policy='target', develop the story for
-target_seconds and deliver at least minimum_duration_seconds without exceeding
-max_seconds. Expand causal actions, obstacles, choices, consequences and motivated
-listener/emotional reactions within the user's premise; preserve identities, required
-lines and outcome. Allocate believable performance time before dividing into clips.
+supplied duration contract. With duration_policy='target' (legacy) or 'flexible', treat target_seconds
+as a soft preference, NEVER a minimum. Preserve identities, required lines and
+outcome; do not exceed max_seconds. Allocate believable performance time before dividing into clips.
 Do not merely inflate seconds, repeat events, add unrelated incidents or hold an
 already completed ending. With no target contract, choose a natural finished length
 within max_seconds; FAITHFUL never invents plot or dialogue to fill time.
@@ -106,10 +104,8 @@ dialogue boundaries, using legal_clip_seconds. The maximum is a ceiling, not a
 fixed length. Break a longer event into connected self-contained local commissions
 with distinct opening/exit states; do not copy the entire event into both clips.
 Complete spoken sentences within their clip. A generation clip may have many shots.
-With AUTO, develop additional causal events and interactions within the user's
-premise to sustain target_seconds, preserving required events, lines and ending.
-Do not finish at minimum_duration_seconds simply because the numeric gate allows
-it. Aim close to target_seconds without padding or repeating a completed ending.
+With AUTO, develop the film naturally, preserving required events, lines and
+ending. A complete shorter film is valid; never pad or repeat to meet a target.
 This applies to every genre: each added beat changes the situation, relationship
 or viewer's understanding through visible behavior, new information, a choice or
 its consequences. Quiet reactions and daily-life events count when they develop
@@ -288,30 +284,13 @@ def validate_plan(raw,req,image_count):
 
 
 def duration_contract(req):
-    """Opt-in for new AUTO plans; respect achievable native AV frame totals."""
-    if req.get('duration_policy')!='target' or not req.get('auto_director'):
-        return {}
-    limit=math.floor(req['max_seconds']*FPS)
-    cap=5+((round(req['segment_seconds']*FPS)-5)//17)*17
-    # Each clip has 124 + 17*k frames. Find the longest feasible whole film
-    # under the ceiling, including short targets with 6-second clip caps.
-    achievable=max(n*124+17*((min(limit,n*cap)-n*124)//17)
-                    for n in range(1,35) if n*124<=limit)
-    ratio=.85 if req.get('planning_contract_version')==2 else .7
-    minimum=min(math.ceil(limit*ratio),achievable)
-    return {'duration_policy':'target','target_seconds':req['max_seconds'],
-            'minimum_duration_seconds':minimum/FPS}
+    """No minimum story length, including older saved target-policy projects."""
+    return {}
 
 
 def validate_planned_duration(plan,req):
-    contract=duration_contract(req)
-    if contract and plan['duration']+1e-8<contract['minimum_duration_seconds']:
-        raise ValueError(f"故事規劃過短：目標 {req['max_seconds']:g} 秒，實際 {plan['duration']:.3f} 秒，"
-                         f"至少需 {contract['minimum_duration_seconds']:.3f} 秒。"
-                         'Return to upstream story development: expand causal events, choices, '
-                         'consequences and motivated reactions within the premise; preserve '
-                         'required dialogue and outcome. Do not just increase seconds, repeat '
-                         'events or pad the ending. Return the complete revised JSON.')
+    """Duration limits are enforced by the existing plan segment and hard-ceiling rules."""
+    return None
 
 
 def plan_film(cfg,job,originals):
@@ -433,7 +412,7 @@ def start(req):
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    req.update(production='film',fixed_reference_version=1,max_seconds=float(maximum),segment_seconds=min(float(chunk),float(maximum)),
+    req.update(production='film',fixed_reference_version=1,target_seconds=float(maximum),max_seconds=180.0,segment_seconds=float(chunk),
                segment_policy='dynamic' if dynamic else 'capped',planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
@@ -446,7 +425,7 @@ def start(req):
     req.setdefault('auto_director',True);req.setdefault('script_review',True)
     if not isinstance(req['auto_director'],bool) or not isinstance(req['script_review'],bool):
         raise ValueError('自動導演與劇本確認必須為勾選值。')
-    req['duration_policy']='target' if req['auto_director'] else 'ceiling'
+    req['duration_policy']='flexible' if req['auto_director'] else 'ceiling'
     genres=req.get('genres',[])
     if not isinstance(genres,list) or any(not isinstance(g,str) or g not in GENRES for g in genres):
         raise ValueError('請選擇有效題材。')
