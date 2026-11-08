@@ -15,7 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python -m pip install Pillow numpy
+      - run: python -m pip install Pillow numpy IPython
+      - name: Install media test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - run: python tools/build_film_notebook.py
       - run: git diff --exit-code -- Banana_Film_Studio.ipynb
       - run: python -m compileall -q banana_mv tools

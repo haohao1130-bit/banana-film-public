@@ -4,7 +4,7 @@
   "files": [
     {
       "path": ".github/workflows/checks.yml",
-      "sha256": "ce4736ff4e4bfb50cee357eee8f8484cda89c8a920a91c78461c24a31704cc5c"
+      "sha256": "703a23e409acf5e27cf47c142784fe346b9709180f5d21e8a28dc46a7b7a8221"
     },
     {
       "path": ".gitignore",
