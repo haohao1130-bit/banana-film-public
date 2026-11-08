@@ -85,7 +85,11 @@ class DynamicFilmTests(unittest.TestCase):
             self.assertEqual(tasks[0]['clip_boundary']['position'],'intermediate')
             self.assertEqual(tasks[1]['clip_boundary']['position'],'final')
             self.assertNotIn('FULL_STORY_SECRET',json.dumps(tasks))
-            self.assertIn('Explicitly commissioned pauses',film.WRITER)
+            self.assertIn('The delivery boundary is',film.WRITER)
+            self.assertIn('NEVER\nreassign a character',film.WRITER)
+            self.assertIn('current_clip_commission',film.WRITER)
+            self.assertIn('cinematography only:',tasks[0]['adaptation'])
+            self.assertIn('events, actors, dialogue and outgoing state are immutable',tasks[0]['adaptation'])
             self.assertNotIn('commercial MV',model.call_args.args[1])
 
     def test_new_film_cinematic_setting_does_not_boost_motion_loras(self):
