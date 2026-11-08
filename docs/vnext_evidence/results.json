@@ -1,0 +1,30 @@
+{
+  "repo": "banana-film-public",
+  "python": {
+    "status": "PASS",
+    "tests": 304,
+    "seconds": 32.967,
+    "command": "python -m unittest discover -s tests"
+  },
+  "frontend": {
+    "status": "PASS",
+    "scripts": [
+      "tests/check_ui.cjs",
+      "tests/check_film_ui.cjs"
+    ]
+  },
+  "compileall": "PASS",
+  "git_diff_check": "PASS",
+  "notebook_build": {
+    "status": "PASS",
+    "detail": "No generated notebook drift."
+  },
+  "chromium": {
+    "status": "BLOCKED",
+    "error": "Chromium process singleton Unix socket: Operation not permitted. Playwright launch attempted."
+  },
+  "gpu_generation": "NOT TESTED",
+  "real_9b": "NOT TESTED",
+  "real_comfyui_node_execution": "NOT TESTED",
+  "semantic_cast_action_lipsync_and_visual_quality": "NOT TESTED"
+}

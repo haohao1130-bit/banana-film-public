@@ -420,9 +420,8 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                        'Continue the current scene through this production boundary. Do not invent a stop, closing beat or music ending. '
                        'Preserve any pause or resolution explicitly required by the local commission.')}
     if fixed:task['fixed_reference_settings']=fixed
-    if 'auto_director' in req:
-        task['adaptation']='cinematography only: freely choose shots, camera moves, coverage and lighting; current_clip_commission events, actors, dialogue and outgoing state are immutable'
-        task['genres']=[GENRES[g] for g in req.get('genres',[])]
+    task['adaptation']='cinematography only: freely choose shots, camera moves, coverage and lighting; current_clip_commission events, actors, dialogue and outgoing state are immutable'
+    task['genres']=[GENRES[g] for g in req.get('genres',[])]
     if req.get('mode')=='chain5' and seg['index']>0:
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
     if tail:task['continuity_reference']='<Picture 1> is the previous last frame as visual reference, not a locked first frame or another actor.'
@@ -436,7 +435,11 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
         raw=app.backend.rewrite_local(cfg,system,[('text',text)]+_pictures(refs),uuid.uuid4().hex[:8])
         target=Path(dest) if dest else app.job_dir(job['id'])
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
-        try:return validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+        try:
+            if req.get('h3_validation_version')==1:
+                from banana_mv.direction_contract import validate_h3_sections
+                validate_h3_sections(raw)
+            return validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
         except ValueError as error:
             if attempt==req['rewrite_retries']:raise
             text+='\nReturn corrected complete prompt. '+str(error)
@@ -461,12 +464,12 @@ def start(req):
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    req.update(production='film',fixed_reference_version=1,target_seconds=float(maximum),max_seconds=180.0,segment_seconds=float(chunk),
+    req.update(production='film',fixed_reference_version=1,h3_validation_version=1,target_seconds=float(maximum),max_seconds=180.0,segment_seconds=float(chunk),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
-    if req.get('mode','chain') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
-    req.setdefault('mode','chain');req.setdefault('intensity','high')
+    if req.get('mode','chain5') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
+    req.setdefault('mode','chain5');req.setdefault('intensity','high')
     if req['intensity'] not in FILM_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
     if req['sound_mode'] not in ('ambient','dialogue'):raise ValueError('未知聲音模式。')

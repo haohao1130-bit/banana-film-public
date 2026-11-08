@@ -1,0 +1,89 @@
+.............................FFE.FFFFFF.
+======================================================================
+ERROR: test_writer_authority_present_for_legacy_request_without_auto_flag (test_vnext_regression.VNextFilmTests.test_writer_authority_present_for_legacy_request_without_auto_flag)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 86, in test_writer_authority_present_for_legacy_request_without_auto_flag
+    self.assertIn('cinematography only:',task['adaptation'])
+                                         ~~~~^^^^^^^^^^^^^^
+KeyError: 'adaptation'
+
+======================================================================
+FAIL: test_new_film_writer_requires_native_six_sections (test_vnext_regression.VNextFilmTests.test_new_film_writer_requires_native_six_sections)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 92, in test_new_film_writer_requires_native_six_sections
+    with patch.object(server,'job_dir',return_value=work),patch.object(server.backend,'rewrite_local',return_value='[Shot 1] <Picture 1> acts.'),self.assertRaises(ValueError):
+                                                                                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_omitted_mode_defaults_chain5_at_real_start (test_vnext_regression.VNextFilmTests.test_omitted_mode_defaults_chain5_at_real_start)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 74, in test_omitted_mode_defaults_chain5_at_real_start
+    self.assertEqual(result['request']['mode'],'chain5')
+AssertionError: 'chain' != 'chain5'
+- chain
++ chain5
+?      +
+
+
+======================================================================
+FAIL: test_local_correction_uses_same_format_and_audio_contract (test_vnext_regression.VNextMVTests.test_local_correction_uses_same_format_and_audio_contract) (bad='plain invalid output')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 50, in test_local_correction_uses_same_format_and_audio_contract
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_local_correction_uses_same_format_and_audio_contract (test_vnext_regression.VNextMVTests.test_local_correction_uses_same_format_and_audio_contract) (bad='subject_definitions:\n<Subject 1> from <Picture 1>.\n<Audio 1> is the supplied song.\nsummary:\n[reference generation + audio reuse] The current event.\nretention_analysis:\n<Audio 1>: fully_copy - original recording.\ndetailed_description:\n[Shot 1] Setup. [Shot 2] At 00:59.000, late.\noverall_soundscape:\nSource recording unchanged.\nnon_diegetic_music:\nThe supplied song.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 50, in test_local_correction_uses_same_format_and_audio_contract
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_local_correction_uses_same_format_and_audio_contract (test_vnext_regression.VNextMVTests.test_local_correction_uses_same_format_and_audio_contract) (bad='subject_definitions:\n<Subject 1> from <Picture 1>.\n<Audio 1> is the supplied song.\nsummary:\n[reference generation + audio reuse] The current event.\nretention_analysis:\n<Audio 1>: partially_copy\ndetailed_description:\n[Shot 1] <Subject 1> acts.\noverall_soundscape:\nSource recording unchanged.\nnon_diegetic_music:\nThe supplied song.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 50, in test_local_correction_uses_same_format_and_audio_contract
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_new_writer_rejects_non_native_and_missing_audio_copy (test_vnext_regression.VNextMVTests.test_new_writer_rejects_non_native_and_missing_audio_copy) (bad='<Picture 1> moves. <Audio 1>: fully_copy.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 34, in test_new_writer_rejects_non_native_and_missing_audio_copy
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_new_writer_rejects_non_native_and_missing_audio_copy (test_vnext_regression.VNextMVTests.test_new_writer_rejects_non_native_and_missing_audio_copy) (bad='subject_definitions:\n<Subject 1> from <Picture 1>.\n<Audio 1> is the supplied song.\nsummary:\n[reference generation + audio reuse] The current event.\nretention_analysis:\n<Audio 1>: reference - rewrite the song.\ndetailed_description:\n[Shot 1] <Subject 1> acts.\noverall_soundscape:\nSource recording unchanged.\nnon_diegetic_music:\nThe supplied song.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 34, in test_new_writer_rejects_non_native_and_missing_audio_copy
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_new_writer_rejects_non_native_and_missing_audio_copy (test_vnext_regression.VNextMVTests.test_new_writer_rejects_non_native_and_missing_audio_copy) (bad='subject_definitions:\n<Subject 1> from <Picture 1>.\n<Audio 1> is the supplied song.\nsummary:\n[reference generation + audio reuse] The current event.\nretention_analysis:\n<Audio 1>: fully_copy - original recording.\ndetailed_description:\n[Shot 1] Setup. [Shot 2] At 00:59.000, too late.\noverall_soundscape:\nSource recording unchanged.\nnon_diegetic_music:\nThe supplied song.')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "banana-film-public/tests/test_vnext_regression.py", line 34, in test_new_writer_rejects_non_native_and_missing_audio_copy
+    with patch.object(server.backend,'rewrite_local',return_value=bad), self.assertRaises(ValueError):
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 36 tests in 0.120s
+
+FAILED (failures=8, errors=1)
