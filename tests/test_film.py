@@ -23,60 +23,23 @@ def draft():
 
 
 class FilmTests(unittest.TestCase):
-    def test_target_duration_rejects_nine_seconds_and_retries_upstream_with_draft(self):
+    def test_legacy_target_duration_accepts_short_story_without_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo,work,req,job,cfg=self.fixture(Path(tmp))
             req.update(auto_director=True,duration_policy='target')
             short={'title':'short','segments':[dict(draft()['segments'][0],seconds=10)]}
-            expanded={'title':'expanded','segments':[
-                {'seconds':10,'mode':'story','brief':f'<Picture 1> courier: causal event {i}; action and reaction change the situation before the next event.'}
-                for i in range(3)]}
-            with patch.object(app,'job_dir',return_value=work),patch.object(app.backend,'rewrite_local',side_effect=[json.dumps(short),json.dumps(expanded)]) as model:
+            with patch.object(app,'job_dir',return_value=work),patch.object(app.backend,'rewrite_local',return_value=json.dumps(short)) as model:
                 plan=film.plan_film(cfg,job,[photo])
-                self.assertAlmostEqual(plan['duration'],28.25)
-                self.assertEqual(model.call_count,2)
-                source=json.loads(model.call_args_list[0].args[2][0][1])
-                self.assertEqual(source['target_seconds'],30)
-                self.assertEqual(source['minimum_duration_seconds'],21)
-                feedback=str(model.call_args_list[1].args[2])
-                self.assertIn('Previous rejected draft',feedback)
-                self.assertIn('9.417',feedback)
-                self.assertIn('Do not just increase seconds',feedback)
-                self.assertEqual(film.plan_film(cfg,job,[photo]),plan)
-                self.assertEqual(model.call_count,2)
+                self.assertAlmostEqual(plan['duration'],9.416666666666666)
+                self.assertEqual(model.call_count,1)
+                self.assertNotIn('minimum_duration_seconds',json.loads(model.call_args.args[2][0][1]))
 
-    def test_too_short_target_exhaustion_never_reaches_h3(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            photo,work,req,job,cfg=self.fixture(Path(tmp))
-            req.update(auto_director=True,duration_policy='target',script_review=True)
-            with patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state'),patch.object(app.backend,'rewrite_local',return_value=json.dumps(draft())) as model,patch.object(app.backend,'queue_prompt') as h3:
-                app.GPU_LOCK.acquire();film.worker(job,cfg,[photo])
-                self.assertEqual(job['status'],'error');self.assertIn('故事規劃過短',job['error'])
-                self.assertEqual(model.call_count,2);h3.assert_not_called()
-                self.assertFalse((work/'director_plan.json').exists())
-                self.assertFalse(app.GPU_LOCK.locked())
-
-    def test_duration_contract_is_feasible_on_all_supported_targets_and_clip_caps(self):
-        for target in (6,15,30,60,120,180):
-            for cap in (6,10,15):
-                req={'max_seconds':target,'segment_seconds':min(cap,target),'auto_director':True,'duration_policy':'target'}
-                contract=film.duration_contract(req)
-                self.assertEqual(contract['minimum_duration_seconds'],math.ceil(target*24*.7)/24)
-                # Independently enumerate every reachable frame sum.
-                clip_frames=list(range(124,round(req['segment_seconds']*24)+1,17))
-                reachable={0};possible=set()
-                for _ in range(34):
-                    reachable={a+b for a in reachable for b in clip_frames if a+b<=target*24}
-                    possible.update(reachable)
-                self.assertTrue(any(f/24>=contract['minimum_duration_seconds'] for f in possible))
+    def test_legacy_target_short_story_has_no_minimum_gate(self):
+        req={'max_seconds':180,'segment_seconds':15,'auto_director':True,'duration_policy':'target','planning_contract_version':2}
+        self.assertEqual(film.duration_contract(req),{})
+        self.assertIsNone(film.validate_planned_duration({'duration':115.75},req))
+        self.assertIsNone(film.validate_planned_duration({'duration':9.416666666666666},req))
         self.assertEqual(film.duration_contract({'auto_director':False,'duration_policy':'target'}),{})
-        self.assertEqual(film.duration_contract({'auto_director':True}),{})
-
-    def test_seventy_percent_gate_accepts_boundary_and_rejects_below_it(self):
-        req={'max_seconds':30,'segment_seconds':10,'auto_director':True,'duration_policy':'target'}
-        film.validate_planned_duration({'duration':21},req)
-        with self.assertRaises(ValueError):
-            film.validate_planned_duration({'duration':21-1/24},req)
 
     def test_manual_target_draft_can_be_short_and_reviewed_cache_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -304,7 +267,7 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(film.threading,'Thread'))
                 started=film.start(dict(req,image_ids=['asset'],seed=0))
                 self.assertEqual(started['seed'],0);self.assertEqual(started['segments'],[])
-                self.assertEqual(started['request']['duration_policy'],'target')
+                self.assertEqual(started['request']['duration_policy'],'flexible')
                 self.assertNotIn('song',started['sources']);self.assertNotIn('song_id',started['request'])
             if app.GPU_LOCK.locked():app.GPU_LOCK.release()
 
