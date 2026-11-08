@@ -120,11 +120,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "3643dc696ff771026c825d6555dffe3f251a8ed430a9065368ff2498543cc9a6"
+      "sha256": "3db3c3287c85ef16f7ffbda49c7b6e8a9bef558723f420497cbfefcb673cb21b"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "5a8ec9950a764726b67024b7033cfd71d6fa111de5a26b9fa9a2e663ac8c5147"
+      "sha256": "b7535532e21858aac3e16af4a69c0ae9ae92349cd4d7fb0afa3de9298d493f32"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -144,11 +144,11 @@
     },
     {
       "path": "tests/check_film_browser.cjs",
-      "sha256": "10de8745ff1386ee12a1cc2fcbe549c0336eb944d9691232aa9d6aed915bf955"
+      "sha256": "d48fe812888a3cb8f14e4356d660c235eb95d1c014826736acab40ffddc0ae56"
     },
     {
       "path": "tests/check_film_ui.cjs",
-      "sha256": "1f235b57f4fc14ca66241d9033cdc2b86f40ad2843cbc1824c5f9f20a191f106"
+      "sha256": "f5d9681fefa293b58928b48708438d0c84ee4cdc50f9a6f8f6e9fa594670750b"
     },
     {
       "path": "tests/check_ui.cjs",

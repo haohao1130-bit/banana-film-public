@@ -17,6 +17,12 @@ const server=http.createServer((req,res)=>{
   page.on('pageerror',e=>errors.push(String(e)));
   await page.goto('http://127.0.0.1:'+server.address().port);
   const prompt=page.locator('#prompt');
+  assert.equal(await page.locator('#mode').evaluate(e=>e.closest('details')),null);
+  await page.evaluate(()=>{active='fixture';renderJob({id:'fixture',status:'running',duration:0,seed:0,segments:[],request:{max_seconds:180}});});
+  assert(await page.locator('#stop').isVisible());
+  assert.equal(await page.locator('#stop').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(181, 41, 50)');
+  assert((await page.locator('#stop-hint').textContent()).includes('本段完成後停止'));
+  await page.evaluate(()=>renderJob({id:'fixture',status:'done',duration:0,seed:0,segments:[]}));
   assert(await page.locator('#references').evaluate(e=>!!(e.compareDocumentPosition(document.getElementById('prompt'))&Node.DOCUMENT_POSITION_FOLLOWING)));
   await prompt.fill('x'.repeat(25000));await prompt.press('End');await prompt.press('a');
   assert.equal((await prompt.inputValue()).length,25001);
