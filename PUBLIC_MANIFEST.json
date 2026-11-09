@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "30692eb540089c56b599323b87a9b85c6a89763c9cbe23fce97c144d16d8074c"
+      "sha256": "ef7a07d3ec818f7da31e28fd1bffe5f8ef60f2194983fb873fc41d88fb3ead8a"
     },
     {
       "path": "banana_mv/film_server.py",
