@@ -85,6 +85,54 @@ class VNextContractTests(unittest.TestCase):
             self.assertEqual(set(c["render_frames"] for c in aligned["clips"]), {226, 243})
             self.assertEqual(sum(c["render_frames"] for c in aligned["clips"]), 4306)
 
+    def test_one_based_clip_indices_are_normalized_without_story_edits(self):
+        src = sample_script(3)
+        originals = json.loads(json.dumps(src, ensure_ascii=False))
+        for i, clip in enumerate(src["clips"], 1):
+            clip["index"] = i
+        result = validate_script(src, picture_count=2, max_seconds=60)
+        self.assertEqual([c["index"] for c in result["clips"]], [0, 1, 2])
+        self.assertEqual(
+            [[beat["action"] for beat in c["beats"]] for c in result["clips"]],
+            [[beat["action"] for beat in c["beats"]] for c in originals["clips"]])
+        self.assertEqual(src["clips"][0]["index"], 1)
+
+    def test_inclusive_last_beat_retries_whole_film_without_h3(self):
+        invalid = sample_script(2)
+        invalid["clips"][1]["beats"][-1]["at_ms"] = invalid["clips"][1]["duration_ms"]
+        calls = []
+        def rewrite(role, task):
+            calls.append((role, task))
+            if role == "WHOLE_FILM_CAMERA_ONLY":
+                return camera_output(2)
+            return json.dumps(
+                invalid if "validation_error" not in task else sample_script(2),
+                ensure_ascii=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = FilmVNext(rewrite).prepare(tmp, "保留全片兩段劇情", picture_count=2)
+            self.assertEqual(outcome["clip_count"], 2)
+            self.assertEqual([role for role, _ in calls],
+                             ["WHOLE_FILM_SCREENWRITER",
+                              "WHOLE_FILM_SCREENWRITER",
+                              "WHOLE_FILM_CAMERA_ONLY"])
+            self.assertIn("at_ms", calls[1][1]["validation_error"])
+            self.assertTrue(Path(tmp, "screenplay_9b_retry_raw.txt").exists())
+
+    def test_rejected_second_draft_never_queues_camera_or_h3(self):
+        invalid = sample_script(2)
+        invalid["clips"][-1]["beats"][-1]["at_ms"] = 10000
+        calls = []
+        def rewrite(role, task):
+            calls.append(role)
+            return json.dumps(invalid, ensure_ascii=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ProductionError, "one whole-film retry"):
+                FilmVNext(rewrite).prepare(tmp, "武打", picture_count=2)
+            self.assertEqual(calls, ["WHOLE_FILM_SCREENWRITER"] * 2)
+            self.assertFalse(Path(tmp, "ready.json").exists())
+            self.assertTrue(Path(tmp, "screenplay_9b_raw.txt").exists())
+            self.assertTrue(Path(tmp, "screenplay_9b_retry_raw.txt").exists())
+
     def test_malicious_camera_plot_is_not_executed(self):
         src = validate_script(sample_script(2), picture_count=2)
         camera = json.loads(camera_output(2))
