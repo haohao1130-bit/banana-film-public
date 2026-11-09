@@ -10,7 +10,8 @@ import uuid
 
 from banana_mv import server as app
 from banana_mv.core import build_workflow
-from banana_mv.film_continuity import prepare_motion_tail, add_motion_guide
+from banana_mv.film_continuity import prepare_motion_tail
+from .motion import add_audio_t8_motion_guide
 from banana_mv.film_media import trim_native, require_audio
 
 from .pipeline import FilmVNext, ProductionError, load_ready
@@ -65,6 +66,8 @@ def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
     pictures = [Path(p) for p in picture_paths]
     # Some subjects may intentionally share one original image.
     used = [s["picture"] for s in script["subjects"] if s.get("picture") is not None]
+    if not pictures:
+        raise ProductionError('H3 Ref2VA 拍攝前至少需要一張角色／場景參考圖。')
     if used and max(used) > len(pictures):
         raise ProductionError("Missing original actor reference pictures")
     folder = Path(cfg["comfy_input_dir"])
@@ -101,7 +104,7 @@ def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
             extra_names, _ = prepare_motion_tail(
                 prior, project_dir / "motion_tail", folder,
                 f"film_vnext_{project_dir.name}_{index:02d}")
-            add_motion_guide(graph, extra_names, frames)
+            add_audio_t8_motion_guide(graph, extra_names, frames)
         graph["16"]["inputs"]["filename_prefix"] = (
             f"BananaFilmVNext/{project_dir.name}/{index:02d}")
         app.preflight(cfg, graph)
