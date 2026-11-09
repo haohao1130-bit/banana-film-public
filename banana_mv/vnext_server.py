@@ -87,7 +87,7 @@ def images(folder):
             if len(choices) != 1:
                 raise ValueError("重複的圖片格號。")
             paths.append(choices[0])
-        elif any(folder.glob(f"reference_{j:02d}.*") for j in range(number + 1, 10)):
+        elif any(any(folder.glob(f"reference_{j:02d}.*")) for j in range(number + 1, 10)):
             raise ValueError("參考圖格號需連續，請依 1、2、3… 上傳。")
     return paths
 
