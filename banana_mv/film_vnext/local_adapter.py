@@ -9,7 +9,7 @@ import shutil
 import uuid
 
 from banana_mv import server as app
-from banana_mv.core import build_workflow
+from banana_mv.core import build_workflow, dimensions, OUTPUT_SIZE_PRESETS
 from banana_mv.film_continuity import prepare_motion_tail
 from .motion import add_audio_t8_motion_guide
 from banana_mv.film_media import trim_native, require_audio
@@ -53,6 +53,16 @@ def prepare_local(cfg, project_dir, story, pictures=(), *, max_seconds=180, genr
         max_seconds=max_seconds, genre=genre)
 
 
+def _h3_render_size(output_size):
+    """Use the original one-click film 32-pixel H3 alignment, not UI output pixels."""
+    width, height = output_size
+    for preset in OUTPUT_SIZE_PRESETS.values():
+        for aspect, requested in preset.items():
+            if tuple(requested) == (width, height):
+                return dimensions(aspect, width)
+    raise ProductionError(f"Unsupported VNext output size: {width}x{height}")
+
+
 def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
            seed=17, chain5=True, graph_settings=None):
     """Render a fully prepared script via native H3 and resumable clip files.
@@ -62,6 +72,7 @@ def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
     """
     project_dir = Path(project_dir)
     manifest, _ = load_ready(project_dir)
+    render_size = _h3_render_size(size)
     script = json.loads((project_dir / "screenplay.json").read_text(encoding="utf-8"))
     pictures = [Path(p) for p in picture_paths]
     # Some subjects may intentionally share one original image.
@@ -94,7 +105,7 @@ def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
 
     def produce(index, prompt, clip):
         frames = clip["render_frames"]
-        graph = build_workflow(inputs, None, *size, frames, prompt,
+        graph = build_workflow(inputs, None, *render_size, frames, prompt,
                                (seed + index) % (2**48), None, **options)
         extra_names = []
         if chain5 and index > 0:
