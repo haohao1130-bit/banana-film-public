@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),http=require('node:http'),path=require('node:path');
 const {chromium}=require('playwright');
 const web=path.resolve('banana_mv/web');
-const calls=[];
+const calls=[]; const uploaded=[];
 const server=http.createServer(async(req,res)=>{
  const pathname=new URL(req.url,'http://localhost').pathname;
  const answer=(code,payload)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(payload));};
@@ -12,9 +12,9 @@ const server=http.createServer(async(req,res)=>{
    if(pathname==='/api/health')return answer(200,{service:'banana-film-vnext'});
    if(pathname==='/api/projects')return answer(200,{projects:[]});
    if(pathname==='/api/create')return answer(201,{id:'0123456789ab',name:'測試電影',status:'draft'});
-   if(pathname==='/api/upload')return answer(201,{slot:1,bytes:67});
+   if(pathname==='/api/upload'){ const slot=Number(new URL(req.url,'http://localhost').searchParams.get('slot'));uploaded.push(slot);return answer(201,{slot,bytes:67}); }
    if(pathname==='/api/prepare')return answer(202,{id:'0123456789ab',status:'preparing'});
-   if(pathname==='/api/project')return answer(200,{id:'0123456789ab',name:'測試電影',status:'preparing',step:'9B 正在備稿',completed_clips:[],picture_slots:[],has_film:false});
+   if(pathname==='/api/project')return answer(200,{id:'0123456789ab',name:'測試電影',status:'preparing',step:'9B 正在備稿',completed_clips:[],picture_slots:uploaded,has_film:false});
    return answer(404,{error:'not found'});
  }
  const file=path.join(web,pathname==='/'?'vnext.html':pathname);
@@ -34,12 +34,20 @@ const server=http.createServer(async(req,res)=>{
    assert.equal(await page.locator('#review-panel').isVisible(),false);
    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF1cAAAAASUVORK5CYII=','base64');
    await page.locator('#references input[type=file]').first().setInputFiles({name:'role.png',mimeType:'image/png',buffer:png});
+   await page.locator('#references input[type=file]').nth(1).setInputFiles({name:'second.png',mimeType:'image/png',buffer:png});
+   await page.locator('#references input[type=file]').nth(2).setInputFiles({name:'third.png',mimeType:'image/png',buffer:png});
+   assert.equal(await page.locator('#references').evaluate(e=>e.getBoundingClientRect().top<document.getElementById('story').getBoundingClientRect().top),true);
+   await page.locator('#story').fill('@');
+   await page.getByRole('option',{name:'@圖片3：third.png'}).waitFor();
+   await page.getByRole('option',{name:'@圖片2：second.png'}).click();
+   assert.equal(await page.locator('#story').inputValue(),'@圖片2 ');
    await page.locator('#project-name').fill('測試電影');
    await page.locator('#story').fill('小語與蕉大師在日本庭院中練習詠春，動作因果連續，真正結局才停戰。');
    await page.locator('#prepare').click();
    await page.getByText('9B 全片備稿中').first().waitFor();
    assert(calls.some(([m,p])=>m==='POST'&&p==='/api/create'));
    assert(calls.some(([m,p])=>m==='POST'&&p==='/api/prepare'));
+   assert.deepEqual(uploaded,[1,2,3]);
    assert.equal(await page.locator('#render').isVisible(),false);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
    assert.deepEqual(errors,[]);
