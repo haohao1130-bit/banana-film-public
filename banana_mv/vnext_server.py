@@ -98,8 +98,8 @@ def spawn(pid, kind, fn):
         if pid in ACTIVE:
             raise ValueError("專案正在處理中，請勿重複啟動。")
         ACTIVE.add(pid)
-    # Transition BEFORE returning HTTP 202, so immediate UI polling correctly
-    # detects background work instead of seeing the old "draft" state.
+    # Transition BEFORE returning HTTP 202. Not under ACTIVE_LOCK: state()
+    # itself takes the same lock for atomic writes.
     state(folder, status=kind, error=None)
     def worker():
         try:
