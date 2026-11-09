@@ -26,8 +26,11 @@
         <div class="panel-head"><div><div class="step">01 / STORY</div><h2>劇情委託</h2></div><span class="chip">新專案</span></div>
         <p class="hint">輸入整部短片的劇情、角色、對白、因果、動作和結局。這是導演唯一的劇情來源。</p>
         <label for="project-name">作品名稱</label><input id="project-name" value="大乘蕉宗・新電影" maxlength="100">
+        <div class="panel-head subhead"><div><div class="step">ROLE REFERENCES</div><h3>角色與場景參考圖</h3></div><span class="muted">最多 9 張・依序對應 Picture 1–9</span></div>
+        <div class="ref-grid" id="references"></div>
         <label for="story">全片劇情提示詞 <span class="required">必填</span></label>
-        <textarea id="story" rows="11" maxlength="30000" placeholder="例如：日本神社的清晨，小語與蕉大師正在進行詠春切磋。先寫明人物、世界、動作因果、預定結局，接著交給 9B 一次寫完全片…"></textarea>
+        <textarea id="story" rows="11" maxlength="30000" aria-controls="image-mentions" aria-expanded="false" autocomplete="off" placeholder="例如：日本神社的清晨，小語與蕉大師正在進行詠春切磋。先寫明人物、世界、動作因果、預定結局，接著交給 9B 一次寫完全片…"></textarea>
+        <div id="image-mentions" class="image-mentions" role="listbox" hidden></div>
         <div class="char-count" id="char-count">0 / 30000 字</div>
         <div class="settings-grid">
           <div><label for="max-seconds">全片時間上限</label><select id="max-seconds"><option value="15">15 秒</option><option value="30" selected>30 秒（首次推薦）</option><option value="60">60 秒</option><option value="120">120 秒</option><option value="180">180 秒</option></select></div>
@@ -36,9 +39,7 @@
           <div><label for="seed">隨機種子</label><input id="seed" type="number" min="0" max="281474976710655" value="17"></div>
         </div>
         <label class="switch"><input id="chain5" type="checkbox" checked> <span>末五幀動作接續 <small>跨段使用上一段尾部影格，不用 9B 重新寫故事</small></span></label>
-        <div class="panel-head subhead"><div><div class="step">ROLE REFERENCES</div><h3>角色與場景參考圖</h3></div><span class="muted">最多 9 張・依序對應 Picture 1–9</span></div>
-        <div class="ref-grid" id="references"></div>
-        <p class="hint">格號固定，請從左到右依序上傳。你也可以在故事中寫「@圖片1」指出人物。</p>
+        <p class="hint">先選圖，再在下方故事輸入框打 <strong>@</strong>，從候選選取已上傳的 <strong>@圖片1～9</strong>。引用會保持原本的圖片格號。</p><div class="hint" id="upload-status">尚未選擇圖片。</div>
         <button class="primary wide" id="prepare" type="button">🎬 建立專案並一次備好全片</button>
         <p class="subtle">這一步會呼叫本地 9B，但<strong>不會送出 H3 影片生成</strong>。請先看完備稿再確認開拍。</p>
       </section>
