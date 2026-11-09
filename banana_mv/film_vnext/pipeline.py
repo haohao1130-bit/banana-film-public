@@ -82,7 +82,7 @@ def validate_script(raw, *, picture_count, max_seconds=180):
         raise ProductionError("Film needs 1–34 production clips")
     if not isinstance(picture_count, int) or isinstance(picture_count, bool) or not 0 <= picture_count <= 9:
         raise ProductionError("picture_count must be 0–9")
-    ids, voices = set(), set()
+    # Accept a complete 1-based clip numbering convention by translating only\n    # positional metadata, never rewriting events or changing plot timing.\n    indices = [c.get("index") if isinstance(c, dict) else None for c in clips]\n    if indices == list(range(1, len(clips) + 1)):\n        data = json.loads(json.dumps(data, ensure_ascii=False))\n        clips = data["clips"]\n        for i, c in enumerate(clips):\n            c["index"] = i\n    ids, voices = set(), set()
     for subject in subjects:
         if not isinstance(subject, dict) or not isinstance(subject.get("id"), int) or isinstance(subject.get("id"), bool):
             raise ProductionError("Invalid subject ID")
@@ -104,7 +104,7 @@ def validate_script(raw, *, picture_count, max_seconds=180):
     seen = set()
     for index, clip in enumerate(clips):
         if not isinstance(clip, dict) or clip.get("index") != index or type(clip.get("duration_ms")) is not int:
-            raise ProductionError("Clip indices or durations are invalid")
+            raise ProductionError(f"Clip {index+1}: index must be sequential (0-based or complete 1-based), duration_ms must be integer")
         duration = clip["duration_ms"]
         if not 5200 <= duration <= 15000:
             raise ProductionError("H3 clip duration must be between 5.2 and 15 seconds")
@@ -119,7 +119,7 @@ def validate_script(raw, *, picture_count, max_seconds=180):
             if not isinstance(bid, str) or not bid or bid in seen:
                 raise ProductionError("Every beat needs a globally unique ID")
             if type(start) is not int or start <= prev or start >= duration:
-                raise ProductionError("Beats must advance within their clip")
+                raise ProductionError(f"Clip {index+1}, beat {bid}: at_ms={start} must be strictly increasing and below duration_ms={duration}")
             if not isinstance(beat.get("action"), str) or not beat["action"].strip():
                 raise ProductionError("Each beat requires authoritative action text")
             if "<Audio " in beat["action"] or "<Video " in beat["action"]:
@@ -139,7 +139,7 @@ def validate_script(raw, *, picture_count, max_seconds=180):
         total += duration
     ceiling = min(MAX_DURATION_MS, int(max_seconds * 1000))
     if total > ceiling:
-        raise ProductionError("Film exceeds maximum duration")
+        raise ProductionError(f"Film totals {total/1000:g}s, exceeding requested maximum {ceiling/1000:g}s")
     return data
 
 
@@ -154,9 +154,9 @@ def script_task(story, *, picture_count=0, max_seconds=180, genre="cinematic"):
             "subjects=[{id:int,name:str,picture:int|null,appearance:str,voice:int|null}], "
             "clips=[{index:int,duration_ms:int,opening_state:str,outgoing_state:str,"
             "beats:[{id:str,at_ms:int,action:str,speaker:int|null,dialogue:str|null}]}]. "
-            "Every beat id is globally unique, every clip duration 5200–15000 ms, "
-            "beat times local and strictly increasing. Story duration is naturally "
-            "chosen, never padded to the limit. Preserve user-required plot, names, "
+             "Clip index must start at 0 and increment by 1 (0,1,2...), "             "every beat id is globally unique, every clip duration 5200–15000 ms, "
+             "Every beat at_ms must satisfy 0 <= at_ms < its clip duration_ms, "             "even the final beat; ending exactly at duration_ms is INVALID. "             "Beat times are local and strictly increasing. Story duration is naturally "
+             "chosen, never padded to the limit; total duration MUST NOT exceed "             "hard_ceiling_seconds. Preserve user-required plot, names, "
             "cause-and-effect and the single intended ending. Intermediate outgoing "
             "states do not need a stop, pose or scene conclusion. Complete all clips "
             "in one response; no ellipsis, omitted sections or continuation requests."
@@ -350,11 +350,32 @@ class FilmVNext:
         try:
             screenplay = validate_script(raw_screenplay,
                                          picture_count=picture_count, max_seconds=max_seconds)
-        except ProductionError as exc:
-            raise ProductionError(
-                f"{exc}；9B 原始回覆已存 screenplay_9b_raw.txt，"
-                "請先檢查是否空白、截斷或混入非 JSON 文字。"
-            ) from exc
+        except ProductionError as first_error:
+            # Retry a failed *whole-film* draft once using the explicit schema
+            # violation. Never patch beat times, omit actions, or send H3.
+            repair_input = dict(screenplay_input)
+            repair_input["validation_error"] = str(first_error)
+            repair_input["previous_response"] = raw_screenplay
+            repair_input["instructions"] += (
+                " Previous full-film screenplay FAILED strict validation. "
+                "Generate a new, COMPLETE whole-film JSON from the original "
+                "story. Fix the supplied validation_error while preserving all "
+                "user-required events, ordering, character bindings and ending. "
+                "Do not use partial JSON, scene deletions or ellipsis."
+            )
+            revised = self.rewrite("WHOLE_FILM_SCREENWRITER", repair_input)
+            _atomic_text(root / "screenplay_9b_retry_raw.txt",
+                         revised if isinstance(revised, str)
+                         else json.dumps(revised, ensure_ascii=False))
+            try:
+                screenplay = validate_script(revised,
+                                             picture_count=picture_count,
+                                             max_seconds=max_seconds)
+            except ProductionError as second_error:
+                raise ProductionError(
+                    f"9B first draft: {first_error}; one whole-film retry: "
+                    f"{second_error}. Both raw responses saved; no H3 queued."
+                ) from second_error
         # H3 accepts 24fps frame lengths on its native 5+17k grid.
         # Apply the timing conversion BEFORE camera design so no staged event
         # is truncated at render time. Film beats remain in the same order.
