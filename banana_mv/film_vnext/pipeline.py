@@ -274,10 +274,10 @@ def compile_clip(script, index, camera_shots):
         "non_diegetic_music:\nN/A",
     ))
     validate_h3_sections(result)
-    native_shots = re.findall(r"\\[Shot (\\d+)\\]", result)
+    native_shots = re.findall(r"\[Shot (\d+)\]", result)
     if native_shots != [str(i + 1) for i in range(len(camera_shots))]:
         raise ProductionError("Native H3 shot numbering corrupted")
-    speakers = re.findall(r"\\(S(\\d+)\\)", result)
+    speakers = re.findall(r"\(S(\d+)\)", result)
     if has_dialogue and not speakers:
         raise ProductionError("Missing commissioned speaker bindings")
     if not has_dialogue and speakers:
