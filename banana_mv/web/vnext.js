@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let current = localStorage.getItem("banana_vnext_project") || "";
 let currentInfo = null, currentPlan = null, timer = null, busy = false, allPrompts = false;
+let projectRequestSerial=0;
 const selected = Array(9).fill(null);
 const previewURLs = Array(9).fill(null);
 const activeStatuses = new Set(["preparing", "rendering"]);
@@ -87,7 +88,7 @@ function statusLabel(s) {
 }
 function text(id, value) { $(id).textContent = String(value); }
 function show(id, visible) { $(id).hidden = !visible; }
-function setBusy(value) { busy=value; $("prepare").disabled=value; $("refresh").disabled=value; $("new-project").disabled=value; }
+function setBusy(value) { busy=value; $("prepare").disabled=value; $("refresh").disabled=value; $("new-project").disabled=value; $("projector").classList.toggle("working",value || activeStatuses.has(currentInfo?.status)); document.querySelectorAll("#references input, #references button").forEach(el=>el.disabled=value); }
 function error(message) {
   show("error-panel", true);
   text("error-text", message);
@@ -95,6 +96,7 @@ function error(message) {
 }
 function clearError() { show("error-panel", false); show("diagnostic-content",false); text("error-text",""); }
 function setCurrent(id) {
+  if(current!==id){projectRequestSerial++; currentPlan=null; currentInfo=null; clearTimeout(timer);timer=null; $("confirm-render").checked=false;}
   current=id; if (id) localStorage.setItem("banana_vnext_project",id);
   else localStorage.removeItem("banana_vnext_project");
   $("reload-project").disabled=!id;
@@ -125,13 +127,19 @@ function renderRefs() {
     card.setAttribute("aria-label","參考圖片 "+(i+1));
     card.title="選擇 @圖片"+(i+1);
     const file=document.createElement("input");
-    file.type="file";file.accept="image/png,image/jpeg,image/webp";
+    file.type="file";file.accept="image/png,image/jpeg,image/webp";file.disabled=busy;
     const container=document.createElement("div");container.className="slot-body";
     const label=document.createElement("span"),name=document.createElement("div");
     name.className="slot-name";label.textContent="📷 圖片 "+(i+1);
     name.textContent=selected[i]?.name || "點此上傳";
     if (selected[i]) {
       const img=document.createElement("img"); img.src=previewURLs[i];img.alt="第 "+(i+1)+" 張預覽";card.append(img);
+      const remove=h("button","remove-ref","移除");remove.type="button";remove.disabled=busy;
+      remove.setAttribute("aria-label","移除第 "+(i+1)+" 張參考圖");
+      remove.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();
+        if(busy)return; if(previewURLs[i])URL.revokeObjectURL(previewURLs[i]);
+        selected[i]=null;previewURLs[i]=null;renderRefs();updateMentions();
+      });card.append(remove);
     }
     container.append(label,name);
     file.addEventListener("change",()=>{
@@ -193,7 +201,7 @@ async function startPreproduction() {
 }
 function h(tag,css,content) { const n=document.createElement(tag);if(css)n.className=css;if(content!==undefined)n.textContent=content;return n; }
 function buildReview(data) {
-  currentPlan=data;
+  currentPlan={...data,id:current};
   const ready=data.ready, script=data.screenplay;
   const summary=$("plan-summary");summary.replaceChildren();
   [["片名",ready.title],["總時間",(ready.duration_ms/1000).toFixed(2)+" 秒"],["H3 段落",ready.clip_count+" 段"]].forEach(([label,value])=>{
@@ -247,7 +255,9 @@ function renderOutput(data) {
 }
 async function loadProject(pid, withPlan=true) {
   if(!pid)return;
+  const serial=projectRequestSerial;
   const data=await request("/api/project?id="+encodeURIComponent(pid));
+  if(current!==pid||serial!==projectRequestSerial)return;
   currentInfo=data;setCurrent(pid);
   text("current-project",data.name);
   text("current-step",data.step||statusLabel(data.status));
@@ -261,7 +271,9 @@ async function loadProject(pid, withPlan=true) {
   text("progress-label",data.status==="preparing"?"9B 正在完成全片備稿；H3 尚未啟動。":
        `已完成 ${done}/${total} 段；每段拍完後自動保存。`);
   if(data.ready && (withPlan || !currentPlan || currentPlan.id!==pid)){
-    try{buildReview(await request("/api/plan?id="+encodeURIComponent(pid)));}
+    try{const plan=await request("/api/plan?id="+encodeURIComponent(pid));
+      if(current!==pid||serial!==projectRequestSerial)return;
+      buildReview(plan);}
     catch(e){error(e.message);}
   }
   if(!data.ready){show("review-panel",false);currentPlan=null;}
@@ -271,6 +283,7 @@ async function loadProject(pid, withPlan=true) {
     $("render").disabled=!$("confirm-render").checked || activeStatuses.has(data.status);
   }
   renderOutput(data);
+  $("projector").classList.toggle("working",activeStatuses.has(data.status)||busy);
   const canCreate=!activeStatuses.has(data.status);
   $("prepare").disabled=busy; // New projects remain possible; GPU lock serializes jobs.
   if(activeStatuses.has(data.status)) schedulePoll();
@@ -278,7 +291,8 @@ async function loadProject(pid, withPlan=true) {
 }
 function schedulePoll() {
   clearTimeout(timer);
-  timer=setTimeout(()=>loadProject(current,true).then(()=>loadProjects()).catch(e=>error(e.message)),3500);
+  const id=current;
+  timer=setTimeout(()=>loadProject(id,true).then(()=>{if(current===id)return loadProjects();}).catch(e=>{if(current===id)error(e.message);}),3500);
 }
 async function renderFilm() {
   if(!current||!$("confirm-render").checked) return;
