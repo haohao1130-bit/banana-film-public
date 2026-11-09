@@ -124,9 +124,10 @@ class VNextWebTests(unittest.TestCase):
         status, data=self.ask("POST","/api/create",{"story":"x","width":1})
         self.assertEqual(status,400)
 
-    def test_continuation_accepts_native_audio_t8_node(self):
+    def test_continuation_accepts_native_ref2va_node(self):
         graph={
-            "7":{"class_type":"MiniMaxH3AudioConditioningT8","inputs":{"length":226}},
+            "7":{"class_type":"MiniMaxH3ReferenceToVideo","inputs":{"length":226}},
+            "3":{"class_type":"VAELoader","inputs":{}},
             "9":{"class_type":"BasicGuider","inputs":{"conditioning":["7",0]}},
         }
         names=[f"image_{i}.png" for i in range(5)]
@@ -134,6 +135,9 @@ class VNextWebTests(unittest.TestCase):
         self.assertEqual(graph["7"]["inputs"]["length"],243)
         self.assertEqual(graph["9"]["inputs"]["conditioning"],["motion_guide",0])
         self.assertEqual(graph["motion_guide"]["inputs"]["image"],["motion_batch_4",0])
+        self.assertEqual(graph["motion_guide"]["inputs"]["positive"],["7",0])
+        self.assertEqual(graph["motion_guide"]["inputs"]["latent"],["7",1])
+        self.assertEqual(graph["motion_guide"]["inputs"]["vae"],["3",0])
 
     def test_frontend_assets_have_live_event_and_video_controls(self):
         js=(web.WEB/"vnext.js").read_text(encoding="utf-8")
