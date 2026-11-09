@@ -11,3 +11,21 @@ textarea,input,select,.ref-grid{max-width:100%}
 .mention-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #upload-status{overflow-wrap:anywhere}
 @media(max-width:500px){.topbar{overflow:hidden}.top-actions{flex:0 0 auto}.brand{min-width:0}.brand div{min-width:0}.brand strong{font-size:12px}.brand small{font-size:8px}.layout{display:flex;flex-direction:column}.main-column,.side-column{width:100%}.side-column{order:0}.ref-grid{gap:6px}.ref-slot .slot-name{max-width:100%;font-size:10px}}
+
+
+/* Original one-click film studio's animated camera / mascot stage. */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.88fr);gap:12px 25px;align-items:center}
+.hero>.pipeline{grid-column:1/-1}
+.projector{grid-column:2;grid-row:1/5;height:300px;border:1px solid #4a4c45;background:linear-gradient(145deg,#252c2e,#171d20);border-radius:16px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.projector svg{width:100%;height:100%}.projector .memory-card,.projector .banana-throw-arm,.projector .record-light{transform-box:fill-box;transform-origin:center}
+.projector.working .banana-throw-arm{animation:film-insert-arm 4s ease-in-out infinite}
+.projector.working .memory-card{animation:film-insert-card 4s ease-in-out infinite}
+.projector.working .record-light{animation:film-record 4s linear infinite}
+@keyframes film-insert-arm{0%,12%{transform:translate(0,0)}38%,57%{transform:translate(12px,-10px)}77%,100%{transform:translate(0,0)}}
+@keyframes film-insert-card{0%,12%{transform:translate(0,0) scale(1);opacity:1}38%,57%{transform:translate(16px,-37px) scale(.65);opacity:1}48%,85%{transform:translate(16px,-37px) scale(.35);opacity:0}86%,100%{transform:translate(0,0) scale(1);opacity:1}}
+@keyframes film-record{0%,48%{opacity:.18;fill:#704d44}52%,57%,65%,73%,81%,89%{opacity:1;fill:#ff5047}61%,69%,77%,85%,93%{opacity:.2;fill:#704d44}100%{opacity:.18;fill:#704d44}}
+.ref-slot .remove-ref{position:absolute;right:5px;top:5px;z-index:2;min-height:28px;padding:1px 8px;border-radius:7px;background:#202c27;color:#f8f3e9;border:1px solid #82978b;font-size:11px}
+.ref-slot input[type=file]{z-index:1}
+@media(max-width:920px){.hero{grid-template-columns:1fr 1fr}.projector{height:230px}}
+@media(max-width:600px){.hero{display:block}.projector{height:210px;margin:18px 0}.hero>.pipeline{margin-top:12px}}
+@media(prefers-reduced-motion:reduce){.projector *{animation:none!important}}
