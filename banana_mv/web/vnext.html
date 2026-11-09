@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101918">
+<title>大乘蕉宗・VNext 全片製片所</title>
+<link rel="stylesheet" href="/vnext.css">
+<script src="/vnext.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brandmark" aria-hidden="true">🍌</span><div><strong>大乘蕉宗映像製片所</strong><small>FILM VNEXT · WHOLE-FILM PRODUCTION</small></div></div>
+  <div class="top-actions"><span class="connection" id="connection">連線中…</span><button class="ghost small" id="refresh" type="button">重新整理</button></div>
+</header>
+<main>
+  <section class="hero">
+    <div class="eyebrow">THE NEW PRODUCTION LINE / 實驗版</div>
+    <h1>先把整部電影導完，<br><em>再開始拍攝。</em></h1>
+    <p>一次全片劇本 → 一次全片攝影 → 封存所有 H3 提示詞 → 逐段拍攝。中途不再重寫劇情。</p>
+    <div class="pipeline" aria-label="製片進度"><span class="active">01 故事與角色</span><span>02 全片備稿</span><span>03 驗收分鏡</span><span>04 H3 拍攝</span></div>
+  </section>
+  <div class="layout">
+    <div class="main-column">
+      <section class="panel" id="start-panel">
+        <div class="panel-head"><div><div class="step">01 / STORY</div><h2>劇情委託</h2></div><span class="chip">新專案</span></div>
+        <p class="hint">輸入整部短片的劇情、角色、對白、因果、動作和結局。這是導演唯一的劇情來源。</p>
+        <label for="project-name">作品名稱</label><input id="project-name" value="大乘蕉宗・新電影" maxlength="100">
+        <label for="story">全片劇情提示詞 <span class="required">必填</span></label>
+        <textarea id="story" rows="11" maxlength="30000" placeholder="例如：日本神社的清晨，小語與蕉大師正在進行詠春切磋。先寫明人物、世界、動作因果、預定結局，接著交給 9B 一次寫完全片…"></textarea>
+        <div class="char-count" id="char-count">0 / 30000 字</div>
+        <div class="settings-grid">
+          <div><label for="max-seconds">全片時間上限</label><select id="max-seconds"><option value="15">15 秒</option><option value="30" selected>30 秒（首次推薦）</option><option value="60">60 秒</option><option value="120">120 秒</option><option value="180">180 秒</option></select></div>
+          <div><label for="aspect">畫面比例</label><select id="aspect"><option value="portrait" selected>9:16 直幅</option><option value="landscape">16:9 橫幅</option></select></div>
+          <div><label for="genre">電影風格</label><input id="genre" value="真人電影・自然動作與電影運鏡" maxlength="180"></div>
+          <div><label for="seed">隨機種子</label><input id="seed" type="number" min="0" max="281474976710655" value="17"></div>
+        </div>
+        <label class="switch"><input id="chain5" type="checkbox" checked> <span>末五幀動作接續 <small>跨段使用上一段尾部影格，不用 9B 重新寫故事</small></span></label>
+        <div class="panel-head subhead"><div><div class="step">ROLE REFERENCES</div><h3>角色與場景參考圖</h3></div><span class="muted">最多 9 張・依序對應 Picture 1–9</span></div>
+        <div class="ref-grid" id="references"></div>
+        <p class="hint">格號固定，請從左到右依序上傳。你也可以在故事中寫「@圖片1」指出人物。</p>
+        <button class="primary wide" id="prepare" type="button">🎬 建立專案並一次備好全片</button>
+        <p class="subtle">這一步會呼叫本地 9B，但<strong>不會送出 H3 影片生成</strong>。請先看完備稿再確認開拍。</p>
+      </section>
+      <section class="panel" id="review-panel" hidden>
+        <div class="panel-head"><div><div class="step">02 / PREPRODUCTION</div><h2>全片備稿驗收</h2></div><span class="chip good" id="plan-state">已備稿</span></div>
+        <div class="summary-grid" id="plan-summary"></div>
+        <div class="notice" id="camera-notice" hidden>攝影規劃未符合結構，已使用程式備用鏡位。劇情維持原劇本，但建議確認鏡頭品質再開拍。</div>
+        <div class="notice"><strong>劇情權限：</strong>本區所有動作、台詞、結局都已封存。拍攝 H3 時只讀取封存提示詞，不會再呼叫 9B 改寫。</div>
+        <div class="shot-list" id="shot-list"></div>
+        <div class="actions">
+          <button class="secondary" id="copy-plan" type="button">複製劇本大綱</button>
+          <button class="secondary" id="show-all-prompts" type="button">展開／收起全部 H3 提示詞</button>
+        </div>
+        <label class="switch confirm"><input type="checkbox" id="confirm-render"> <span>我已檢查全片劇情、結局與拍攝稿，確認開始消耗 H3 GPU 點數。</span></label>
+        <button class="primary wide" id="render" type="button" disabled>🎥 確認劇本，開始 H3 正式拍攝</button>
+      </section>
+      <section class="panel" id="output-panel" hidden>
+        <div class="panel-head"><div><div class="step">04 / POSTPRODUCTION</div><h2>毛片與完成作品</h2></div><span class="chip">原生影音</span></div>
+        <div id="film-view" hidden><video id="film-player" controls playsinline preload="metadata"></video><a class="download" id="film-download" download>下載完整成片</a></div>
+        <div id="clip-list" class="clip-list"></div>
+      </section>
+    </div>
+    <aside class="side-column">
+      <section class="panel sticky">
+        <div class="panel-head"><div><div class="step">CONTROL ROOM</div><h2>製片控制室</h2></div><span id="status-chip" class="chip">待命</span></div>
+        <div class="metric"><span>目前專案</span><strong id="current-project">尚未建立</strong></div>
+        <div class="metric"><span>目前階段</span><strong id="current-step">輸入故事與角色</strong></div>
+        <div id="progress-wrap" hidden><progress id="progress" max="100" value="0"></progress><p class="hint" id="progress-label"></p></div>
+        <div class="notice" id="error-panel" hidden><strong>製片出錯</strong><p id="error-text"></p><button class="secondary small" id="diagnostics" type="button" hidden>查看 9B 原始回覆</button><pre id="diagnostic-content" hidden></pre></div>
+        <p class="muted">拍攝途中如斷線，選回同一個專案即可繼續。已完成段落不會因刷新網頁消失。</p>
+        <button class="secondary wide" id="reload-project" type="button" disabled>↻ 更新目前專案狀態</button>
+        <hr>
+        <h3>已存作品</h3>
+        <div class="projects" id="projects"><p class="muted">載入中…</p></div>
+        <button class="secondary wide" id="new-project" type="button">＋ 建立另一部電影</button>
+      </section>
+    </aside>
+  </div>
+</main>
+<footer>大乘蕉宗 VNext · 實驗版本 · 目前不支援中途修改已封存劇本；若想變更故事，建立新專案。</footer>
+</body></html>
