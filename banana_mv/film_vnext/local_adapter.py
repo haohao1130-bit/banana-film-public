@@ -125,7 +125,8 @@ def run_h3(cfg, project_dir, picture_paths, *, size=(720, 1280),
             raw = project_dir / f"{index:02d}_raw.mp4"
             app.backend.comfy_download(cfg, app.video_info(entry), raw)
             out = parts / f"{index:02d}.mp4"
-            trim_native(raw, out, frames, prefix_frames=5 if extra_names else 0)
+            trim_native(raw, out, frames, prefix_frames=5 if extra_names else 0,
+                        output_size=size)
             require_audio(out)
             generated.append(index)
             return out
