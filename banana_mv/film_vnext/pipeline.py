@@ -47,8 +47,12 @@ def _json(raw):
         if "</think>" in candidate:
             candidate = candidate.rsplit("</think>", 1)[-1].strip()
         if candidate.startswith("```"):
-            candidate = re.sub(r"^\x60{3}(?:json)?\\s*\\n?", "", candidate, count=1, flags=re.I)
-            candidate = re.sub(r"\\s*\x60{3}$", "", candidate)
+            lines = candidate.splitlines()
+            if lines and re.fullmatch(r"```(?:json)?", lines[0].strip(), re.I):
+                lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines.pop()
+                candidate = "\n".join(lines).strip()
         try:
             parsed = json.loads(candidate)
             if not isinstance(parsed, dict):
