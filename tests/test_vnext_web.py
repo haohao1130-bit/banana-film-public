@@ -82,6 +82,27 @@ class VNextWebTests(unittest.TestCase):
         self.assertEqual([p.name for p in paths],
                          ["reference_01.png", "reference_02.png", "reference_03.png"])
 
+    def test_three_pngs_upload_by_actual_http_then_prepare(self):
+        pid = self.create()
+        png = io.BytesIO()
+        Image.new("RGB", (32, 32), "yellow").save(png, format="PNG")
+        for slot in (1, 2, 3):
+            code, receipt = self.ask(
+                "POST", f"/api/upload?id={pid}&slot={slot}",
+                png.getvalue(), {"Content-Type": "application/octet-stream"})
+            self.assertEqual(code, 201)
+            self.assertEqual(receipt["slot"], slot)
+        code, project = self.ask("GET", f"/api/project?id={pid}")
+        self.assertEqual(code, 200)
+        self.assertEqual(project["picture_slots"], [1, 2, 3])
+        self.assertEqual([p.name for p in web.images(web.project(pid))],
+                         [f"reference_{n:02d}.png" for n in (1, 2, 3)])
+        with patch.object(web, "spawn") as spawn:
+            code, result = self.ask("POST", f"/api/prepare?id={pid}", {})
+        self.assertEqual(code, 202)
+        self.assertEqual(result["status"], "preparing")
+        spawn.assert_called_once()
+
     def test_missing_middle_reference_slot_is_rejected(self):
         pid = self.create()
         folder = web.project(pid)
