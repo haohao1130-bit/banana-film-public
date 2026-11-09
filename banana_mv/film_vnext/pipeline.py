@@ -355,7 +355,9 @@ class FilmVNext:
             # violation. Never patch beat times, omit actions, or send H3.
             repair_input = dict(screenplay_input)
             repair_input["validation_error"] = str(first_error)
-            repair_input["previous_response"] = raw_screenplay
+            # Keep the repair request within the 9B context window. The original
+            # full user story is already in screenplay_input; never re-inject
+            # the long invalid model response into the prompt.
             repair_input["instructions"] += (
                 " Previous full-film screenplay FAILED strict validation. "
                 "Generate a new, COMPLETE whole-film JSON from the original "
