@@ -82,7 +82,15 @@ def validate_script(raw, *, picture_count, max_seconds=180):
         raise ProductionError("Film needs 1–34 production clips")
     if not isinstance(picture_count, int) or isinstance(picture_count, bool) or not 0 <= picture_count <= 9:
         raise ProductionError("picture_count must be 0–9")
-    # Accept a complete 1-based clip numbering convention by translating only\n    # positional metadata, never rewriting events or changing plot timing.\n    indices = [c.get("index") if isinstance(c, dict) else None for c in clips]\n    if indices == list(range(1, len(clips) + 1)):\n        data = json.loads(json.dumps(data, ensure_ascii=False))\n        clips = data["clips"]\n        for i, c in enumerate(clips):\n            c["index"] = i\n    ids, voices = set(), set()
+    # Accept either zero-based or one-based sequential clip metadata.
+    # Never change beats, timing, plot, or user-authored states.
+    indices = [c.get('index') if isinstance(c, dict) else None for c in clips]
+    if indices == list(range(1, len(clips) + 1)):
+        data = json.loads(json.dumps(data, ensure_ascii=False))
+        clips = data['clips']
+        for i, c in enumerate(clips):
+            c['index'] = i
+    ids, voices = set(), set()
     for subject in subjects:
         if not isinstance(subject, dict) or not isinstance(subject.get("id"), int) or isinstance(subject.get("id"), bool):
             raise ProductionError("Invalid subject ID")
