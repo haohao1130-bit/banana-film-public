@@ -21,6 +21,18 @@ jobs:
       - run: python tools/build_film_notebook.py
       - run: git diff --exit-code -- Banana_Film_Studio.ipynb
       - run: python -m compileall -q banana_mv tools
+      - name: Validate VNext web JavaScript and dedicated notebook
+        run: |
+          node --check banana_mv/web/vnext.js
+          python -m json.tool Banana_Film_VNext_Studio.ipynb > /dev/null
+          python - <<'PY'
+          import ast, json
+          doc=json.load(open('Banana_Film_VNext_Studio.ipynb',encoding='utf-8'))
+          assert len([c for c in doc['cells'] if c['cell_type']=='code'])==4
+          for cell in doc['cells']:
+              if cell['cell_type']=='code':
+                  ast.parse(''.join(cell['source']))
+          PY
       - run: python -m unittest discover -s tests
       - run: node tests/check_film_ui.cjs
       - run: node tests/check_ui.cjs
