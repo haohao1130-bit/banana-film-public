@@ -40,3 +40,5 @@ jobs:
         run: npm install --no-save playwright@1.56.1
       - name: Real Chromium input and mention checks
         run: node tests/check_film_browser.cjs
+      - name: VNext mobile browser end-to-end smoke
+        run: node tests/check_vnext_browser.cjs
