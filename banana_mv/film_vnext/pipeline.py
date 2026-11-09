@@ -317,9 +317,21 @@ class FilmVNext:
             raise ProductionError("Duration ceiling must be 6–180s")
         screenplay_input = script_task(story, picture_count=picture_count,
                                        max_seconds=max_seconds, genre=genre)
-        screenplay = validate_script(
-            self.rewrite("WHOLE_FILM_SCREENWRITER", screenplay_input),
-            picture_count=picture_count, max_seconds=max_seconds)
+        raw_screenplay = self.rewrite("WHOLE_FILM_SCREENWRITER", screenplay_input)
+        # Preserve the untouched 9B output for debugging model JSON failures.
+        # This is not a retry and does not start H3.
+        root.mkdir(parents=True, exist_ok=True)
+        _atomic_text(root / "screenplay_9b_raw.txt",
+                     raw_screenplay if isinstance(raw_screenplay, str)
+                     else json.dumps(raw_screenplay, ensure_ascii=False))
+        try:
+            screenplay = validate_script(raw_screenplay,
+                                         picture_count=picture_count, max_seconds=max_seconds)
+        except ProductionError as exc:
+            raise ProductionError(
+                f"{exc}；9B 原始回覆已存 screenplay_9b_raw.txt，"
+                "請先檢查是否空白、截斷或混入非 JSON 文字。"
+            ) from exc
         # H3 accepts 24fps frame lengths on its native 5+17k grid.
         # Apply the timing conversion BEFORE camera design so no staged event
         # is truncated at render time. Film beats remain in the same order.
@@ -352,6 +364,9 @@ class FilmVNext:
             clip["render_frames"] = count
         camera_input = camera_task(screenplay)
         camera_raw = self.rewrite("WHOLE_FILM_CAMERA_ONLY", camera_input)
+        _atomic_text(root / "camera_9b_raw.txt",
+                     camera_raw if isinstance(camera_raw, str)
+                     else json.dumps(camera_raw, ensure_ascii=False))
         camera, fallback = validate_cameras(camera_raw, screenplay)
         prompts = [compile_clip(screenplay, i, shots) for i, shots in enumerate(camera)]
         # No H3 work can begin until the entire plan and every prompt passes.
