@@ -37,11 +37,30 @@ class ProductionError(ValueError):
 
 
 def _json(raw):
+    """Decode one intact JSON object, permitting a fenced model response.
+
+    Never invent missing keys, close incomplete arrays, or rewrite a beat.
+    Missing/malformed JSON stops preproduction before H3.
+    """
     if isinstance(raw, str):
+        candidate = raw.strip()
+        if "</think>" in candidate:
+            candidate = candidate.rsplit("</think>", 1)[-1].strip()
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^\x60{3}(?:json)?\\s*\\n?", "", candidate, count=1, flags=re.I)
+            candidate = re.sub(r"\\s*\x60{3}$", "", candidate)
         try:
-            return json.loads(raw)
+            parsed = json.loads(candidate)
+            if not isinstance(parsed, dict):
+                raise ProductionError("9B response must be a JSON object")
+            return parsed
         except json.JSONDecodeError as exc:
-            raise ProductionError("Full-film JSON incomplete or malformed; no H3 jobs queued") from exc
+            message = "9B did not return complete JSON"
+            if not candidate:
+                message = "9B returned empty text"
+            elif not candidate.rstrip().endswith("}"):
+                message = "9B JSON appears truncated or has trailing text"
+            raise ProductionError(message + "; no H3 jobs queued") from exc
     if isinstance(raw, dict):
         return raw
     raise ProductionError("Expected JSON object")
