@@ -86,6 +86,7 @@ function requestBody() {
   const story=$("story").value.trim();
   if (!story||[...story].length>30000) throw Error("請輸入 1–30000 字的全片劇情。");
   const indexes=selected.map((f,i)=>f?i:null).filter(i=>i!==null);
+  if (!indexes.length) throw Error("目前 H3 Ref2VA 模式至少需要一張參考圖，請先上傳圖片 1。");
   if (indexes.some((index,i)=>index!==i)) throw Error("圖片必須從 1 號開始連續選取，不可跳格。");
   return {name:$("project-name").value.trim()||"未命名電影",story,
           genre:$("genre").value.trim(),max_seconds:Number($("max-seconds").value),
