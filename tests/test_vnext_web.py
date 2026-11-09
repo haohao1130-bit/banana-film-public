@@ -73,6 +73,23 @@ class VNextWebTests(unittest.TestCase):
         self.assertEqual(data["picture_slots"],[1])
         self.assertEqual(self.ask("GET",f"/api/image?id={pid}&slot=1")[0],200)
 
+    def test_first_three_reference_slots_are_contiguous(self):
+        pid = self.create()
+        folder = web.project(pid)
+        for slot in (1, 2, 3):
+            (folder / f"reference_{slot:02d}.png").write_bytes(b"fixture")
+        paths = web.images(folder)
+        self.assertEqual([p.name for p in paths],
+                         ["reference_01.png", "reference_02.png", "reference_03.png"])
+
+    def test_missing_middle_reference_slot_is_rejected(self):
+        pid = self.create()
+        folder = web.project(pid)
+        for slot in (1, 3):
+            (folder / f"reference_{slot:02d}.png").write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "格號需連續"):
+            web.images(folder)
+
     def test_no_render_before_sealed_plan(self):
         pid=self.create()
         status, data=self.ask("POST",f"/api/render?id={pid}",{})
