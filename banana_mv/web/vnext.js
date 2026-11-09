@@ -5,6 +5,70 @@ let currentInfo = null, currentPlan = null, timer = null, busy = false, allPromp
 const selected = Array(9).fill(null);
 const previewURLs = Array(9).fill(null);
 const activeStatuses = new Set(["preparing", "rendering"]);
+const mention={range:null,items:[],index:0,composing:false};
+function closeMentions(){
+  mention.range=null;mention.items=[];$("image-mentions").hidden=true;
+  $("story").setAttribute("aria-expanded","false");
+  $("story").removeAttribute("aria-activedescendant");
+}
+function insertReference(number,range){
+  const input=$("story"),start=range?.start??input.selectionStart,end=range?.end??input.selectionEnd;
+  const trailing=input.value[end],label="@圖片"+number+(trailing&&/\\s/.test(trailing)?"":" ");
+  input.setRangeText(label,start,end,"end");closeMentions();input.focus({preventScroll:true});
+  input.dispatchEvent(new Event("input",{bubbles:true}));
+}
+function highlightMention(){
+  const buttons=$("image-mentions").querySelectorAll("button");
+  buttons.forEach((button,i)=>button.setAttribute("aria-selected",String(i===mention.index)));
+  if(buttons[mention.index]){
+    $("story").setAttribute("aria-activedescendant",buttons[mention.index].id);
+  }
+}
+function selectMention(index){
+  const match=mention.items[index];
+  if(match&&mention.range)insertReference(match.number,mention.range);
+}
+function updateMentions(event){
+  text("char-count",[...$("story").value].length+" / 30000 字");
+  const input=$("story"),menu=$("image-mentions");
+  if(mention.composing||event?.isComposing||input.selectionStart!==input.selectionEnd){closeMentions();return;}
+  const before=input.value.slice(0,input.selectionStart);
+  const found= /@(?:圖片?|图片?|image)?[1-9]?$/i.exec(before);
+  if(!found||(found.index>0&&/[a-z0-9_.]/i.test(before[found.index-1]))){closeMentions();return;}
+  const number=found[0].match(/[1-9]$/)?.[0];
+  mention.items=selected.flatMap((file,i)=>file&&(!number||Number(number)===i+1)?[{number:i+1,name:file.name,url:previewURLs[i]}]:[]);
+  mention.index=0;mention.range={start:found.index,end:input.selectionStart};
+  menu.replaceChildren();
+  if(!mention.items.length) menu.append(h("p","muted","請先在上方選擇參考圖片。"));
+  mention.items.forEach((item,i)=>{
+    const button=h("button","mention-option");
+    button.type="button";button.id="vnext-mention-"+item.number;button.setAttribute("role","option");
+    button.setAttribute("aria-label","@圖片"+item.number+"："+item.name);
+    const img=document.createElement("img");img.src=item.url;img.alt="";
+    const caption=h("span","","@圖片"+item.number+" · "+item.name);
+    button.append(img,caption);button.onpointerdown=e=>e.preventDefault();
+    button.addEventListener("click",()=>selectMention(i));menu.append(button);
+  });
+  menu.hidden=false;input.setAttribute("aria-expanded","true");highlightMention();
+}
+function setupMentions(){
+  const input=$("story");
+  input.addEventListener("input",updateMentions);
+  input.addEventListener("click",updateMentions);
+  input.addEventListener("compositionstart",()=>{mention.composing=true;closeMentions();});
+  input.addEventListener("compositionend",()=>{mention.composing=false;updateMentions();});
+  input.addEventListener("blur",closeMentions);
+  input.addEventListener("keydown",e=>{
+    if(e.isComposing||mention.composing||e.keyCode===229||$("image-mentions").hidden)return;
+    if(e.key==="Escape"){e.preventDefault();closeMentions();return;}
+    if(!mention.items.length)return;
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+      e.preventDefault();mention.index=(mention.index+(e.key==="ArrowDown"?1:-1)+mention.items.length)%mention.items.length;highlightMention();
+    }else if(e.key==="Enter"){e.preventDefault();selectMention(mention.index);}
+    else if(e.key==="Tab")closeMentions();
+  });
+}
+
 
 async function request(path, options) {
   const response = await fetch(path, {cache:"no-store", ...options});
@@ -59,6 +123,7 @@ function renderRefs() {
     const card=document.createElement("label");
     card.className="ref-slot"+(selected[i]?" has-image":"");
     card.setAttribute("aria-label","參考圖片 "+(i+1));
+    card.title="選擇 @圖片"+(i+1);
     const file=document.createElement("input");
     file.type="file";file.accept="image/png,image/jpeg,image/webp";
     const container=document.createElement("div");container.className="slot-body";
@@ -77,7 +142,7 @@ function renderRefs() {
       } else if(chosen&&chosen.size>12*1024*1024){
         error("單張參考圖片不得超過 12 MiB。");selected[i]=null;previewURLs[i]=null;
       } else {selected[i]=chosen;previewURLs[i]=chosen?URL.createObjectURL(chosen):null;clearError();}
-      renderRefs();
+      renderRefs();updateMentions();
     });
     card.append(container,file);root.append(card);
   }
@@ -104,17 +169,27 @@ async function startPreproduction() {
   try {
     const created=await post("/api/create",body);
     setCurrent(created.id);
+    let confirmed=[];
     for(let i=0;i<9;i++) {
       if(!selected[i]) continue;
-      await request("/api/upload?id="+encodeURIComponent(created.id)+"&slot="+(i+1), {
+      text("upload-status","⬆️ 正在傳送圖片 "+(i+1)+" / "+selected.filter(Boolean).length+"…");
+      const response=await request("/api/upload?id="+encodeURIComponent(created.id)+"&slot="+(i+1), {
         method:"POST",headers:{"Content-Type":"application/octet-stream"},body:selected[i]
       });
+      if(response.slot!==i+1)throw Error("伺服器圖片回覆格號不符："+(i+1));
+      confirmed.push(i+1);
+      text("upload-status","✅ 已成功傳送到 Colab："+confirmed.map(n=>"圖片"+n).join("、"));
+    }
+    const receipt=await request("/api/project?id="+encodeURIComponent(created.id));
+    const persisted=JSON.stringify(receipt.picture_slots||[]);
+    if(persisted!==JSON.stringify(confirmed)){
+      throw Error("伺服器確認的圖片格號與上傳不一致：預期 "+JSON.stringify(confirmed)+"；實際 "+persisted+"。已停止備稿。");
     }
     await post("/api/prepare?id="+encodeURIComponent(created.id),{});
     await loadProject(created.id,false);
     await loadProjects();
     $("review-panel").scrollIntoView({behavior:"smooth"});
-  } catch(e){error(e.message);} finally{setBusy(false);}
+  } catch(e){text("upload-status","⚠️ 上傳或建立失敗，請看右側錯誤訊息。");error(e.message);} finally{setBusy(false);}
 }
 function h(tag,css,content) { const n=document.createElement(tag);if(css)n.className=css;if(content!==undefined)n.textContent=content;return n; }
 function buildReview(data) {
@@ -229,7 +304,7 @@ function resetForm() {
   clearError();loadProjects().catch(e=>error(e.message));
   $("start-panel").scrollIntoView({behavior:"smooth"});
 }
-$("story").addEventListener("input",()=>text("char-count",[...$("story").value].length+" / 30000 字"));
+setupMentions();
 $("prepare").addEventListener("click",startPreproduction);
 $("render").addEventListener("click",renderFilm);
 $("confirm-render").addEventListener("change",()=>{$("render").disabled=!$("confirm-render").checked||activeStatuses.has(currentInfo?.status);});
