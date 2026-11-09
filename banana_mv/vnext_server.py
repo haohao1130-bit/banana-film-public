@@ -98,11 +98,13 @@ def spawn(pid, kind, fn):
         if pid in ACTIVE:
             raise ValueError("專案正在處理中，請勿重複啟動。")
         ACTIVE.add(pid)
+    # Transition BEFORE returning HTTP 202, so immediate UI polling correctly
+    # detects background work instead of seeing the old "draft" state.
+    state(folder, status=kind, error=None)
     def worker():
         try:
             # The single GPU/ComfyUI process must not receive concurrent model calls.
             with GPU_LOCK:
-                state(folder, status=kind, error=None)
                 fn(folder)
         except Exception as exc:
             state(folder, status="error", error=str(exc)[:LAST_ERROR])
