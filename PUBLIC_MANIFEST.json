@@ -4,7 +4,7 @@
   "files": [
     {
       "path": ".github/workflows/checks.yml",
-      "sha256": "4ee00ba57fdc159a0e56935ff42143ee052393d5c8e41b1d418c4c7887f81693"
+      "sha256": "66d9ce7a2a7ff1059c6caa9d3b8aa65b1c797e3cdbd35cac87f35e90e142751b"
     },
     {
       "path": ".gitignore",
@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "30692eb540089c56b599323b87a9b85c6a89763c9cbe23fce97c144d16d8074c"
+      "sha256": "ef7a07d3ec818f7da31e28fd1bffe5f8ef60f2194983fb873fc41d88fb3ead8a"
     },
     {
       "path": "banana_mv/film_server.py",

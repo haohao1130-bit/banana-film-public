@@ -8,15 +8,16 @@ def require_audio(path):
         raise ValueError('H3 輸出缺少原生音軌，已停止；不以無聲影片冒充影音成片。')
 
 
-def trim_native(source,dest,frames,*,prefix_frames=0):
+def trim_native(source,dest,frames,*,prefix_frames=0,output_size=None):
     if isinstance(prefix_frames,bool) or prefix_frames not in (0,5):
         raise ValueError('不支援的動作上下文裁除長度。')
     require_audio(source)
     seconds=frames/FPS
     end=prefix_frames+frames
     audio_trim=(f'atrim=start={prefix_frames/FPS:.9f}:end={end/FPS:.9f},asetpts=PTS-STARTPTS,' if prefix_frames else '')
+    crop = '' if output_size is None else f',crop={int(output_size[0])}:{int(output_size[1])}'
     command(['ffmpeg','-y','-v','error','-i',source,'-map','0:v:0','-map','0:a:0',
-             '-vf',f'fps={FPS},trim=start_frame={prefix_frames}:end_frame={end},setpts=PTS-STARTPTS',
+             '-vf',f'fps={FPS},trim=start_frame={prefix_frames}:end_frame={end},setpts=PTS-STARTPTS{crop}',
              '-af',audio_trim+f'apad,atrim=duration={seconds:.9f},asetpts=PTS-STARTPTS',
              '-t',f'{seconds:.9f}','-r',str(FPS),'-c:v','libx264','-threads','1','-crf','18','-pix_fmt','yuv420p',
              '-c:a','aac','-ar','48000','-ac','2','-b:a','192k','-movflags','+faststart',dest])
