@@ -12,6 +12,7 @@ const server=http.createServer(async(req,res)=>{
    if(pathname==='/api/health')return answer(200,{service:'banana-film-vnext'});
    if(pathname==='/api/projects')return answer(200,{projects:[]});
    if(pathname==='/api/create')return answer(201,{id:'0123456789ab',name:'測試電影',status:'draft'});
+   if(pathname==='/api/upload')return answer(201,{slot:1,bytes:67});
    if(pathname==='/api/prepare')return answer(202,{id:'0123456789ab',status:'preparing'});
    if(pathname==='/api/project')return answer(200,{id:'0123456789ab',name:'測試電影',status:'preparing',step:'9B 正在備稿',completed_clips:[],picture_slots:[],has_film:false});
    return answer(404,{error:'not found'});
@@ -31,6 +32,8 @@ const server=http.createServer(async(req,res)=>{
    await page.locator('#connection.ok').waitFor();
    assert.equal(await page.locator('#references input[type=file]').count(),9);
    assert.equal(await page.locator('#review-panel').isVisible(),false);
+   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF1cAAAAASUVORK5CYII=','base64');
+   await page.locator('#references input[type=file]').first().setInputFiles({name:'role.png',mimeType:'image/png',buffer:png});
    await page.locator('#project-name').fill('測試電影');
    await page.locator('#story').fill('小語與蕉大師在日本庭院中練習詠春，動作因果連續，真正結局才停戰。');
    await page.locator('#prepare').click();
