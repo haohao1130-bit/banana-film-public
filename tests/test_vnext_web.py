@@ -39,7 +39,8 @@ class VNextWebTests(unittest.TestCase):
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
             content = response.read()
-            return response.status, json.loads(content) if path.startswith("/api/") and not content.startswith(b"<!doctype") else content
+            content_type = response.getheader("Content-Type", "")
+            return response.status, json.loads(content) if "application/json" in content_type else content
         finally:
             conn.close()
 
