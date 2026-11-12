@@ -7,6 +7,9 @@ $windowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\po
 New-Item -ItemType Directory -Path $install -Force | Out-Null
 foreach($name in @('Bootstrap_BANANA_FILM_5070.ps1','Start_BANANA_FILM_5070.cmd')){
  $source=Join-Path $PSScriptRoot $name
+ if(-not (Test-Path -LiteralPath $source -PathType Leaf) -and $name -eq 'Bootstrap_BANANA_FILM_5070.ps1'){
+  $source=Join-Path $PSScriptRoot 'tools\bootstrap_film_v2_5070.ps1'
+ }
  if(-not (Test-Path -LiteralPath $source -PathType Leaf)){throw "Installer file missing: $source"}
  $target=Join-Path $install $name
  if([System.IO.Path]::GetFullPath($source) -ine [System.IO.Path]::GetFullPath($target)){
