@@ -48,9 +48,9 @@ if(-not $nodes){
  $input=Join-Path $DataRoot 'comfy_input'
  $output=Join-Path $DataRoot 'comfy_output'
  $temp=Join-Path $DataRoot 'comfy_temp'
- $args=@('-u',('"' + $main + '"'),'--base-directory',('"' + $ComfyBase + '"'),'--input-directory',('"' + $input + '"'),'--output-directory',('"' + $output + '"'),'--temp-directory',('"' + $temp + '"'),'--listen','127.0.0.1','--port','8000','--lowvram','--preview-method','none')
+ $comfyArgs=@('-u',('"' + $main + '"'),'--base-directory',('"' + $ComfyBase + '"'),'--input-directory',('"' + $input + '"'),'--output-directory',('"' + $output + '"'),'--temp-directory',('"' + $temp + '"'),'--listen','127.0.0.1','--port','8000','--lowvram','--preview-method','none')
  Write-Host 'Starting existing CUDA13 ComfyUI with F: cache / --lowvram.'
- $comfy=Start-Process -FilePath $python -ArgumentList $args -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\comfy.stderr.log')
+ $comfy=Start-Process -FilePath $python -ArgumentList $comfyArgs -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\comfy.stderr.log')
  $comfyLaunched=$true
  $deadline=(Get-Date).AddMinutes(3)
  while(-not $nodes -and (Get-Date) -lt $deadline){
