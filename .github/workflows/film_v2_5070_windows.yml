@@ -66,56 +66,6 @@ jobs:
             }
             Write-Host "Parsed: $file"
           }
-      - name: Functional V4 shortcut installer smoke test on isolated fake F drive
-        shell: powershell
-        run: |
-          $mount = Join-Path $env:RUNNER_TEMP 'banana_film_5070_fdrive_smoke'
-          New-Item -ItemType Directory -Force -Path $mount | Out-Null
-          if (Test-Path F:\) { throw 'Runner F: already mounted; refusing to modify it.' }
-          & subst.exe F: $mount
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to mount disposable F: drive.' }
-          try {
-            & .\Install_Shortcut.ps1
-            $launcher='F:\BANANA_FILM_5070_STUDIO\Launcher\Bootstrap_BANANA_FILM_5070.ps1'
-            $cmd='F:\BANANA_FILM_5070_STUDIO\Launcher\Start_BANANA_FILM_5070.cmd'
-            if (-not (Test-Path -LiteralPath $launcher)) { throw 'V4 bootstrap not installed on F:.' }
-            if (-not (Test-Path -LiteralPath $cmd)) { throw 'V4 command launcher not installed on F:.' }
-            $shell = New-Object -ComObject WScript.Shell
-            $shortcutPath=Join-Path ([Environment]::GetFolderPath('Desktop')) 'BANANA FILM 5070 STUDIO.lnk'
-            if (-not (Test-Path -LiteralPath $shortcutPath)) { throw 'Desktop shortcut not created.' }
-            $link = $shell.CreateShortcut($shortcutPath)
-            if ($link.TargetPath -notmatch 'powershell.exe
-        shell: powershell
-        run: |
-          $shim=Join-Path $env:RUNNER_TEMP 'film5070_fake_gpu'
-          New-Item -ItemType Directory -Force -Path $shim | Out-Null
-          @'
-          class _Cuda:
-              def is_available(self):
-                  return True
-              def get_device_name(self, index):
-                  return "Mock RTX 5070"
-          cuda = _Cuda()
-          class version:
-              cuda = "13.0"
-          '@ | Set-Content -LiteralPath (Join-Path $shim 'torch.py') -Encoding ascii
-          '' | Set-Content -LiteralPath (Join-Path $shim 'PIL.py') -Encoding ascii
-          '' | Set-Content -LiteralPath (Join-Path $shim 'numpy.py') -Encoding ascii
-          $env:PYTHONPATH=$shim
-          $python=(Get-Command python).Source
-          $probe=(Resolve-Path 'tools/check_film_cuda13.py').Path
-          # The invocation shape is identical to start_film_v2_5070.ps1.
-          & $python $probe --role comfy
-          if($LASTEXITCODE -ne 0) { throw "Windows CUDA13 Comfy probe failed: $LASTEXITCODE" }
-          & $python $probe --role backend
-          if($LASTEXITCODE -ne 0) { throw "Windows backend readiness failed: $LASTEXITCODE" }
-          Write-Host 'Windows PowerShell -> separate GPU and backend Python checks passed.'
-) { throw 'Desktop shortcut does not target PowerShell.' }
-            if ($link.Arguments -notmatch 'Bootstrap_BANANA_FILM_5070.ps1') { throw 'Desktop shortcut targets wrong bootstrap.' }
-            Write-Host 'V4 installer created verified F: launcher and desktop shortcut.'
-          } finally {
-            & subst.exe F: /D
-          }
       - name: Real Windows PowerShell 5.1 to Python CUDA probe invocation (mock GPU)
         shell: powershell
         run: |
