@@ -6,7 +6,7 @@
 body{margin:0;background:radial-gradient(ellipse at top left,#274634 0,#111b16 46%)}
 header{padding:22px 5vw;border-bottom:1px solid #48624d}h1{margin:.1em 0;font-size:clamp(1.45rem,4vw,2.3rem)}
 h2{font-size:1.2rem;margin:0}h3{margin:12px 0;font-size:1rem}small,.muted{color:#abc4b1}
-.wrap{max-width:1270px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 4vw}
+.build-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.build-info{font:12px/1.5 ui-monospace,Consolas,monospace;color:#f3d593;border:1px solid #65765d;background:#1c3025;border-radius:8px;padding:6px 10px;white-space:nowrap}.wrap{max-width:1270px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 4vw}
 .panel{background:#17251ec9;border:1px solid #45604e;padding:22px;border-radius:18px;min-width:0}
 .stack{display:grid;gap:13px}.inline{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.inline>*{flex:1 1 150px}
 label{display:grid;gap:5px;font-size:.93rem}input,select,textarea,button{font:inherit;min-width:0}
@@ -23,7 +23,7 @@ button.secondary{color:#f1f7ef;background:#244738;border-color:#668972}button:di
 a{color:#f4d18a}progress{width:100%;height:13px}footer{padding:20px 5vw;color:#a6b7a7}
 @media(max-width:850px){.grid{grid-template-columns:1fr;padding:12px}.panel{padding:16px}.uploads{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style></head><body>
-<header><div class="wrap"><small>大乘蕉宗影像部｜獨立實驗版</small><h1>🍌 BANANA FILM 5070 STUDIO</h1><span class="muted">9B 完整編劇 → Python 分段狀態 → 9B 當段攝影 → H3 原生影音</span></div></header>
+<header><div class="wrap"><small>大乘蕉宗影像部｜獨立實驗版</small><div class="build-header"><div><h1>🍌 BANANA FILM 5070 STUDIO</h1><span class="muted">9B 完整編劇 → Python 分段狀態 → 9B 當段攝影 → H3 原生影音</span></div><span id="build-info" class="build-info" role="status" aria-label="目前執行中的程式版本" title="由本機服務讀取 Git 分支及 Commit">版本讀取中…</span></div></div></header>
 <main class="wrap grid">
 <section class="panel stack"><h2>① 故事與拍攝設定</h2>
 <label>作品名稱<input id="project" placeholder="夜班的信（選填）"></label>
