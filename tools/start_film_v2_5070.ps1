@@ -93,22 +93,84 @@ $config | Add-Member -NotePropertyName 'comfy_input_dir' -NotePropertyValue $Com
 $env:BANANA_DATA=$DataRoot
 $env:BANANA_PORT=[string]$Port
 $healthUrl="http://127.0.0.1:$Port/api/health"
+$receiptPath=Join-Path $DataRoot 'logs\server_process.json'
+$expectedRoot=[System.IO.Path]::GetFullPath($DataRoot).TrimEnd('\')
+$expectedCommit=(& git -C $project rev-parse --short=9 HEAD)
+if($LASTEXITCODE -ne 0 -or -not $expectedCommit){throw 'Cannot read current Git commit; verify the F-drive checkout.'}
 $health=Read-JsonUrl $healthUrl
-if($health -and $health.engine -ne 'python_owned_film_v2'){throw "Port $Port is occupied by another service."}
+if($health){
+ if($health.engine -ne 'python_owned_film_v2' -or $health.variant -ne 'rtx5070-fdrive'){
+  throw "Port $Port is used by a different application. Refusing to stop it."
+ }
+ $reportedRoot=[string]$health.data_root
+ if($reportedRoot.TrimEnd('\') -ine $expectedRoot){
+  throw "Port $Port is already bound to another data root: $reportedRoot"
+ }
+ $runningCommit=[string]$health.version.commit
+ if($runningCommit -ne $expectedCommit){
+  Write-Host "Loaded V2 build $runningCommit differs from updated checkout $expectedCommit."
+  if($null -eq $health.busy){
+   throw 'Existing 8195 backend is too old to report GPU activity. Close ONLY the old BANANA FILM backend once, then double-click again. ComfyUI can stay on.'
+  }
+  if($health.busy){
+   throw 'BANANA FILM is rendering a job. Update downloaded; automatic service restart deferred. Relaunch when it finishes.'
+  }
+  # Stop ONLY the verified owner of port 8195, never port 8000 / shared ComfyUI.
+  $ownerPid=$null
+  if(Test-Path -LiteralPath $receiptPath){
+   try{
+    $receipt=Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if($receipt.instance -eq $health.instance -and $receipt.data_root -ieq $expectedRoot){
+     $ownerPid=[int]$receipt.pid
+    }
+   }catch{Write-Warning 'Could not read prior server receipt; checking TCP port owner.'}
+  }
+  if(-not $ownerPid){
+   $sockets=@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+              Where-Object {$_.LocalAddress -eq '127.0.0.1'})
+   $owners=@($sockets | Select-Object -ExpandProperty OwningProcess -Unique)
+   if($owners.Count -eq 1){$ownerPid=[int]$owners[0]}
+  }
+  if(-not $ownerPid){
+   throw 'Cannot determine the verified Film backend PID. Stop ONLY the 8195 Film server manually; ComfyUI must remain running.'
+  }
+  $processInfo=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
+  if(-not $processInfo -or
+     [string]$processInfo.CommandLine -notmatch '(?i)(?:^|\s)-m\s+film_v2\.server(?:\s|$)'){
+   throw "PID $ownerPid is not a verified film_v2.server process. Refusing to kill it."
+  }
+  Write-Host "Safely restarting outdated Film-only process PID $ownerPid ..."
+  Stop-Process -Id $ownerPid -ErrorAction Stop
+  $deadline=(Get-Date).AddSeconds(20)
+  while((Read-JsonUrl $healthUrl) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 500}
+  if(Read-JsonUrl $healthUrl){throw 'Old Film server has not released port 8195; refusing second server.'}
+  Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+  $health=$null
+ }
+}
 if(-not $health){
  $proc=Start-Process -FilePath $python -ArgumentList @('-u','-m','film_v2.server') -WorkingDirectory $project -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\server.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\server.stderr.log')
  $deadline=(Get-Date).AddSeconds(80)
  while(-not $health -and (Get-Date) -lt $deadline){
   Start-Sleep -Seconds 2
   $health=Read-JsonUrl $healthUrl
-  if($proc.HasExited){throw 'V2 service failed; inspect F:\BANANA_FILM_5070_STUDIO\Media\logs\server.stderr.log.'}
+  if($proc.HasExited){throw 'V2 service failed; check F:\BANANA_FILM_5070_STUDIO\Media\logs\server.stderr.log.'}
  }
 }
-if(-not $health -or $health.engine -ne 'python_owned_film_v2'){throw 'Wrong/missing V2 service at requested port.'}
-if($health.variant -ne 'rtx5070-fdrive'){throw 'Different V2 edition is already running on the requested port. Stop it before launching the F-drive studio.'}
-$expectedRoot=[System.IO.Path]::GetFullPath($DataRoot).TrimEnd('\')
-$reportedRoot=[string]$health.data_root
-if($reportedRoot.TrimEnd('\') -ine $expectedRoot){throw "Port $Port belongs to a V2 server with another data root: $reportedRoot. Stop it to protect F: files."}
+if(-not $health -or $health.engine -ne 'python_owned_film_v2' -or $health.variant -ne 'rtx5070-fdrive'){
+ throw 'Wrong/missing V2 service at requested port.'
+}
+if(([string]$health.data_root).TrimEnd('\') -ine $expectedRoot){
+ throw "Data root mismatch: $($health.data_root); expected $expectedRoot"
+}
+if($health.version.commit -ne $expectedCommit){
+ throw "Running backend is NOT updated: $($health.version.commit); checkout: $expectedCommit"
+}
+if($proc -and -not $proc.HasExited){
+ $receipt=[ordered]@{pid=$proc.Id;instance=$health.instance;commit=$expectedCommit;data_root=$expectedRoot}
+ [System.IO.File]::WriteAllText($receiptPath,($receipt | ConvertTo-Json -Depth 4),(New-Object System.Text.UTF8Encoding($false)))
+}
+Write-Host "Running backend version: $($health.version.branch) | $($health.version.commit)"
 Write-Host ''
 Write-Host 'BANANA FILM 5070 STUDIO - READY'
 Write-Host "UI: http://127.0.0.1:$Port"
