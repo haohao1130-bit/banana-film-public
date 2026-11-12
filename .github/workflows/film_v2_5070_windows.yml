@@ -1,0 +1,61 @@
+name: BANANA FILM 5070 F Drive Checks
+
+on:
+  push:
+    branches:
+      - film-v2-rtx5070-fdrive
+    paths:
+      - 'tools/start_film_v2_5070.ps1'
+      - 'tools/bootstrap_film_v2_5070.ps1'
+      - 'Start_BANANA_FILM_5070.cmd'
+      - 'film_v2/**'
+      - 'tests/test_film_v2_*.py'
+      - 'docs/BANANA_FILM_5070_STUDIO_F_DRIVE.md'
+      - '.github/workflows/film_v2_5070_windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-v2-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install small offline dependency
+        run: python -m pip install Pillow
+      - name: Python source syntax
+        run: python -m compileall -q film_v2
+      - name: Python-Owned and F-drive wiring regressions
+        env:
+          BANANA_DATA: /tmp/banana-film-5070-ci
+        run: python -m unittest discover -s tests -p 'test_film_v2_*.py' -v
+      - name: Local UI JavaScript syntax
+        run: node --check film_v2/web/app.js
+
+  windows-powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell 5.1 parse of both launchers
+        shell: powershell
+        run: |
+          $files = @(
+            'tools/start_film_v2_5070.ps1',
+            'tools/bootstrap_film_v2_5070.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw "PowerShell syntax invalid: $file"
+            }
+            Write-Host "Parsed: $file"
+          }
