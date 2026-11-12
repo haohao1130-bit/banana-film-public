@@ -11,6 +11,8 @@ class Local5070WiringTests(unittest.TestCase):
         cls.boot = (ROOT / "tools/bootstrap_film_v2_5070.ps1").read_text(encoding="utf-8")
         cls.launcher_source = (ROOT / "tools/start_film_v2_5070.ps1").read_text(encoding="utf-8")
         cls.cmd = (ROOT / "Start_BANANA_FILM_5070.cmd").read_text(encoding="utf-8")
+        cls.installer = (ROOT / "Install_Shortcut.ps1").read_text(encoding="utf-8")
+        cls.install_cmd = (ROOT / "Install_Desktop_Shortcut.cmd").read_text(encoding="utf-8")
         cls.html = (ROOT / "film_v2/web/index.html").read_text(encoding="utf-8")
         cls.js = (ROOT / "film_v2/web/app.js").read_text(encoding="utf-8")
         cls.server = (ROOT / "film_v2/server.py").read_text(encoding="utf-8")
@@ -43,12 +45,26 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertNotIn("git clean", self.boot)
         self.assertIn("Bootstrap_BANANA_FILM_5070.ps1", self.cmd)
 
-    def test_rtx_cu130_and_original_h3_model_reuse(self):
+    def test_v4_installer_and_pinned_f_drive_shortcut(self):
+        self.assertIn("F:\\BANANA_FILM_5070_STUDIO", self.installer)
+        self.assertIn("BANANA FILM 5070 STUDIO.lnk", self.installer)
+        self.assertIn("Bootstrap_BANANA_FILM_5070.ps1", self.installer)
+        self.assertIn("Install_Shortcut.ps1", self.install_cmd)
+        self.assertIn("-NoExit -ExecutionPolicy Bypass -File", self.installer)
+        self.assertNotIn("BananaMV5070'", self.installer)
+        self.assertNotIn("reset --hard", self.installer)
+
+    def test_v4_separates_cuda_13_comfy_from_backend_python(self):
         self.assertNotIn("& $python -c", self.launcher_source)
         self.assertIn("tools\\check_film_cuda13.py", self.launcher_source)
-        self.assertIn("& $python $probe", self.launcher_source)
+        self.assertIn("$probe --role backend", self.launcher_source)
+        self.assertIn("$probe --role comfy", self.launcher_source)
+        self.assertIn("Banana9B-cu130", self.launcher_source)
+        self.assertIn("Start-Process -FilePath $comfyPython", self.launcher_source)
+        self.assertIn("Start-Process -FilePath $python", self.launcher_source)
         probe = (ROOT / "tools/check_film_cuda13.py").read_text(encoding="utf-8")
         self.assertIn('cuda.startswith("13")', probe)
+        self.assertIn('if args.role == "backend"', probe)
         self.assertIn("torch.cuda.is_available()", probe)
         self.assertIn("import PIL", probe)
         self.assertIn("import numpy", probe)
@@ -58,6 +74,7 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertIn("ComfyBase", self.launcher_source)
         self.assertNotIn("pip install", self.launcher_source)
         self.assertNotIn("huggingface_hub", self.launcher_source)
+
 
     def test_v4_auto_update_and_real_backend_build_label(self):
         self.assertIn("pull --ff-only", self.boot)
