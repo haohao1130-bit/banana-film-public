@@ -22,6 +22,18 @@ Default root is F:\BANANA_FILM_5070_STUDIO.
 
 **Important:** When an already-running ComfyUI is reused, its input directory is not relocated without restarting it. Uploaded original photos and final MP4 stay on F:, but a working picture copy may be placed in the already-running ComfyUI input (often on C:). To keep Comfy caches on F: too, first close existing ComfyUI and let the dedicated launcher start ComfyUI with F: input/output/temp and --lowvram. Models stay in their original directories either way.
 
+## V4 Windows installer (recommended)
+
+This edition follows the existing **BANANAMV 5070 V4** desktop installer:
+
+1. Extract `BANANA_FILM_5070_STUDIO_V4_DESKTOP_INSTALLER_F_DRIVE.zip`.
+2. Double-click `Install_Desktop_Shortcut.cmd` **once**. It installs two tiny launcher scripts in `F:\BANANA_FILM_5070_STUDIO\Launcher` and creates the desktop shortcut `BANANA FILM 5070 STUDIO`. Nothing is installed under `AppData\Local\BananaMV5070`.
+3. Double-click the **desktop shortcut** whenever you want to use Film V2. It fetches updates from this exact GitHub branch (fast-forward only), opens the freshly updated launcher and starts the application at `http://127.0.0.1:8195`. The website header displays the running Git commit, not a hard-coded fake version.
+4. CUDA 12.9 in `Documents\ComfyUI\.venv\Scripts\python.exe` is **not a blocker for the Film web backend**. Like MV V4, ComfyUI itself is the CUDA-model process. When it already listens at `127.0.0.1:8000`, Film V2 reuses that process. When not running, Film V2 prefers the dedicated `%LOCALAPPDATA%\Banana9B-cu130\Scripts\python.exe` for the ComfyUI process.
+5. **All original H3/9B models and CUDA/Torch libraries remain unchanged.** The launcher installs no weights or Python dependencies. Close any unfinished GPU task before shutting down a shared ComfyUI.
+
+The ZIP's `Install_Shortcut.ps1` is the actual installer, in the same form as MV V4. `Start_BANANA_FILM_5070.cmd` remains a backup manually launched route. The installer does not reset/delete the existing F-drive App checkout, projects or uploads.
+
 ## One-click installer
 
 1. Download the BANANA_FILM_5070_STUDIO_F_DRIVE_LAUNCHER.zip package and **extract it**.
@@ -58,7 +70,8 @@ The installer preferentially reuses your working Windows paths:
 - ComfyUI API: http://127.0.0.1:8000
 - ComfyUI model base: %USERPROFILE%\Documents\ComfyUI
 - ComfyUI source: %LOCALAPPDATA%\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI
-- Python: first %USERPROFILE%\Documents\ComfyUI\.venv\Scripts\python.exe, then %LOCALAPPDATA%\Banana9B-cu130\Scripts\python.exe
+- **Film backend Python:** first %USERPROFILE%\Documents\ComfyUI\.venv\Scripts\python.exe, then %LOCALAPPDATA%\Banana9B-cu130\Scripts\python.exe; backend CUDA version is not checked.
+- **When starting ComfyUI itself:** prefer %LOCALAPPDATA%\Banana9B-cu130\Scripts\python.exe with Torch CUDA 13. When ComfyUI is already running, use it without restarting/reinstalling.
 - Must have TextGenerate, MiniMaxH3ReferenceToVideo, VAEDecodeAudio, and for Chain5 MiniMaxH3AddGuide.
 - If no Comfy process exists and Comfy source is present, the launcher starts it with --lowvram, --preview-method none and F: input/output/temp, while reusing original model locations.
 - If already running, its flags and model locations are untouched.
