@@ -31,20 +31,15 @@ $venvPython=Join-Path $ComfyBase '.venv\Scripts\python.exe'
 $backendCandidates=@($PythonPath,$venvPython,$cuPython) | Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Leaf)}
 $python=$null
 foreach($candidate in $backendCandidates){
- & $candidate $probe --role backend
- if($LASTEXITCODE -eq 0){$python=$candidate;break}
+ try{
+  & $candidate $probe --role backend 2>$null
+  if($LASTEXITCODE -eq 0){$python=$candidate;break}
+ }catch{
+  Write-Warning "Backend Python candidate rejected: $candidate"
+ }
 }
 if(-not $python){throw 'No existing backend Python with Pillow + NumPy. Use -PythonPath for the working MV Python environment.'}
 Write-Host "Film backend Python: $python (CUDA version is NOT a frontend gate)"
-# The separately launched ComfyUI requires the CUDA13 interpreter.
-# Prefer the same dedicated CU130 env as the working BANANAMV V4 launcher.
-$comfyPython=$null
-foreach($candidate in @($cuPython,$venvPython) | Select-Object -Unique){
- if(-not (Test-Path -LiteralPath $candidate -PathType Leaf)){continue}
- & $candidate $probe --role comfy
- if($LASTEXITCODE -eq 0){$comfyPython=$candidate;break}
-}
-
 foreach($bin in @('ffmpeg','ffprobe')){
  if(-not (Get-Command $bin -ErrorAction SilentlyContinue)){ throw "$bin not found in PATH." }
 }
@@ -55,6 +50,18 @@ function Read-JsonUrl([string]$url){
  try{ return Invoke-RestMethod -Uri $url -TimeoutSec 5 -ErrorAction Stop }catch{ return $null }
 }
 $nodes=Read-JsonUrl "$ComfyUrl/object_info"
+# MV V4 pattern: an already-running ComfyUI owns its own CUDA/venv.
+# Only probe the dedicated CU130 Python if we must start a new ComfyUI.
+$comfyPython=$null
+if(-not $nodes -and -not $NoAutoComfy){
+ foreach($candidate in @($cuPython,$venvPython) | Select-Object -Unique){
+  if(-not (Test-Path -LiteralPath $candidate -PathType Leaf)){continue}
+  try{
+   & $candidate $probe --role comfy 2>$null
+   if($LASTEXITCODE -eq 0){$comfyPython=$candidate;break}
+  }catch{Write-Warning "Comfy CUDA13 Python candidate rejected: $candidate"}
+ }
+}
 $comfyLaunched=$false
 if(-not $nodes){
  if($NoAutoComfy){throw 'ComfyUI is not running. Start your existing CUDA13 ComfyUI first.'}
