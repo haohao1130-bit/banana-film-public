@@ -37,6 +37,19 @@ Alternative manual checkout in PowerShell:
 
 The launcher does not reset, clean or overwrite a Git checkout containing tracked edits. It will not delete archived assets or old jobs.
 
+## V4-style update and visible version
+
+- **Every double-click checks GitHub:** the launcher clones on the first run and uses `git pull --ff-only origin film-v2-rtx5070-fdrive` afterward. The installed F-drive bootstrap automatically hands off to the **freshly checked-out bootstrap** on every run, so launcher code and frontend update together.
+- **No forced resets:** if GitHub cannot be reached or tracked files have local modifications, the launcher warns and continues with the locally installed revision. It never `reset --hard`, `clean` or silently switches branches.
+- **Real build in frontend:** the upper-right header displays `5070 STUDIO · <Git commit>` from a no-cache `/api/health` request. The server also reports `version.branch`, `version.commit`, and `instance` fixed at server startup. This is the **running process**, not a guessed release label.
+- **Safe application reload:** if code updated but the Film backend is still running an older Git commit, the launcher checks `busy` and verifies port 8195, the F-drive data root, and the backend PID/process command before restarting **only** `film_v2.server`. The shared ComfyUI (typically port 8000), RTX5070 MV and other services are untouched.
+- **Existing install migration:** an old Film backend that predates the `busy` health field cannot be safely restarted automatically; close **only that old 8195 Film backend once** and double-click again. All later launches use the new auto-update/restart contract.
+- **Safety when rendering:** if GPU rendering is active, the launcher leaves the process untouched, reports the pending update and asks you to launch again after the job finishes. All F-drive projects remain intact.
+- **Server receipt:** `Media/logs/server_process.json` records the Film-only backend PID and runtime instance; never treat it as a ComfyUI PID.
+
+The desktop shortcut remains named `BANANA FILM 5070 STUDIO`. The normal ZIP is only a bootstrap; you do **not** need to download a new ZIP for every following code change.
+
+
 Custom ComfyBase, ComfySource, ComfyInputDir and PythonPath overrides are saved at F:\\BANANA_FILM_5070_STUDIO\\Launcher\\settings.json. Next desktop launch reuses them; command-line overrides update the saved paths. This file contains paths and a local port only, never credentials or model weights.
 
 ## Existing RTX 5070 / CUDA13 configuration
