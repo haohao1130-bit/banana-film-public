@@ -22,17 +22,29 @@ if(Get-Command git -ErrorAction SilentlyContinue){
 }
 if(-not $ComfyBase){$ComfyBase=Join-Path $env:USERPROFILE 'Documents\ComfyUI'}
 if(-not $ComfySource){$ComfySource=Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI'}
-$candidates=@($PythonPath,(Join-Path $ComfyBase '.venv\Scripts\python.exe'),(Join-Path $env:LOCALAPPDATA 'Banana9B-cu130\Scripts\python.exe'))
-$python=@($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1)
-if(-not $python){ throw 'Working CU130 Python not found. Supply -PythonPath with your existing 5070 interpreter.' }
-$python=$python[0]
-Write-Host "Using Python: $python"
-# Windows PowerShell 5.1 strips nested double quotes in native python -c arguments.
-# Run the checked-in Python probe as a FILE; no inline Python is passed through PS quoting.
+# Match the proven MV V4 pattern: the front-end/backend may use the existing
+# ComfyUI venv; GPU inference belongs to ComfyUI at port 8000.
 $probe=Join-Path $project 'tools\check_film_cuda13.py'
-if(-not (Test-Path -LiteralPath $probe -PathType Leaf)){ throw "Missing CUDA13 readiness probe: $probe" }
-& $python $probe
-if($LASTEXITCODE -ne 0){ throw "CUDA 13 / Pillow / numpy readiness check failed (exit $LASTEXITCODE). This launcher never upgrades Torch." }
+if(-not (Test-Path -LiteralPath $probe -PathType Leaf)){throw "Missing environment probe: $probe"}
+$cuPython=Join-Path $env:LOCALAPPDATA 'Banana9B-cu130\Scripts\python.exe'
+$venvPython=Join-Path $ComfyBase '.venv\Scripts\python.exe'
+$backendCandidates=@($PythonPath,$venvPython,$cuPython) | Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Leaf)}
+$python=$null
+foreach($candidate in $backendCandidates){
+ & $candidate $probe --role backend
+ if($LASTEXITCODE -eq 0){$python=$candidate;break}
+}
+if(-not $python){throw 'No existing backend Python with Pillow + NumPy. Use -PythonPath for the working MV Python environment.'}
+Write-Host "Film backend Python: $python (CUDA version is NOT a frontend gate)"
+# The separately launched ComfyUI requires the CUDA13 interpreter.
+# Prefer the same dedicated CU130 env as the working BANANAMV V4 launcher.
+$comfyPython=$null
+foreach($candidate in @($cuPython,$venvPython) | Select-Object -Unique){
+ if(-not (Test-Path -LiteralPath $candidate -PathType Leaf)){continue}
+ & $candidate $probe --role comfy
+ if($LASTEXITCODE -eq 0){$comfyPython=$candidate;break}
+}
+
 foreach($bin in @('ffmpeg','ffprobe')){
  if(-not (Get-Command $bin -ErrorAction SilentlyContinue)){ throw "$bin not found in PATH." }
 }
@@ -54,7 +66,9 @@ if(-not $nodes){
  $temp=Join-Path $DataRoot 'comfy_temp'
  $comfyArgs=@('-u',('"' + $main + '"'),'--base-directory',('"' + $ComfyBase + '"'),'--input-directory',('"' + $input + '"'),'--output-directory',('"' + $output + '"'),'--temp-directory',('"' + $temp + '"'),'--listen','127.0.0.1','--port','8000','--lowvram','--preview-method','none')
  Write-Host 'Starting existing CUDA13 ComfyUI with F: cache / --lowvram.'
- $comfy=Start-Process -FilePath $python -ArgumentList $comfyArgs -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\comfy.stderr.log')
+ if(-not $comfyPython){throw 'No working CUDA13 ComfyUI Python found. Start ComfyUI with the existing MV V4 launcher, or repair your CU130 environment; no Torch was modified.'}
+ Write-Host "Starting ComfyUI with CUDA13 Python: $comfyPython"
+ $comfy=Start-Process -FilePath $comfyPython -ArgumentList $comfyArgs -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\comfy.stderr.log')
  $comfyLaunched=$true
  $deadline=(Get-Date).AddMinutes(3)
  while(-not $nodes -and (Get-Date) -lt $deadline){
