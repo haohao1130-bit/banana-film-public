@@ -119,6 +119,7 @@ function render(job) {
     scriptRevision = job.script_revision;
   }
   $('movie').hidden = !job.video;
+  $('output-video-path').value = job.output_video || (job.video ? 'Export pending - check Media/videos folder' : '');
   if (job.video) {
     if ($('video').getAttribute('src') !== job.video) $('video').src = job.video;
     $('download').href = job.video;
