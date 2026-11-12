@@ -53,10 +53,21 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertNotIn("pip install", self.launcher_source)
         self.assertNotIn("huggingface_hub", self.launcher_source)
 
-    def test_ui_defaults_to_six_second_480p_independent_for_12gb(self):
-        self.assertIn('value="6" selected', self.html)
-        self.assertIn('value="independent" selected', self.html)
+    def test_full_film_defaults_and_optional_features(self):
+        self.assertIn('value="30" selected', self.html)
+        self.assertIn('value="15" selected', self.html)
+        self.assertIn('value="chain5" selected', self.html)
+        self.assertNotIn('value="6" selected', self.html)
+        self.assertNotIn('value="independent" selected', self.html)
+        for film_length in (15, 30, 60, 90, 120, 180):
+            self.assertIn(f'value="{film_length}"', self.html)
+        for segment_length in (6, 10, 15):
+            self.assertIn(f'value="{segment_length}"', self.html)
+        for mode in ("chain5", "chain", "independent"):
+            self.assertIn(f'value="{mode}"', self.html)
         self.assertIn('value="480p" selected', self.html)
+        self.assertIn('value="720p"', self.html)
+        self.assertIn('value="dialogue"', self.html)
         self.assertIn('id="output-video-path"', self.html)
         self.assertIn("job.output_video", self.js)
 
