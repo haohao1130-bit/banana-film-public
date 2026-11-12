@@ -75,12 +75,12 @@ try{
 }
 
 # Explicit named parameters: do not modify global Windows settings or ComfyUI models.
-$args=@{DataRoot=$media;ComfyUrl=$ComfyUrl;Port=$Port}
-if($ComfyBase){$args.ComfyBase=$ComfyBase}
-if($ComfySource){$args.ComfySource=$ComfySource}
-if($ComfyInputDir){$args.ComfyInputDir=$ComfyInputDir}
-if($PythonPath){$args.PythonPath=$PythonPath}
-if($NoAutoComfy){$args.NoAutoComfy=$true}
-if($NoBrowser){$args.NoBrowser=$true}
-& $service @args
+$launchParams=@{DataRoot=$media;ComfyUrl=$ComfyUrl;Port=$Port}
+if($ComfyBase){$launchParams.ComfyBase=$ComfyBase}
+if($ComfySource){$launchParams.ComfySource=$ComfySource}
+if($ComfyInputDir){$launchParams.ComfyInputDir=$ComfyInputDir}
+if($PythonPath){$launchParams.PythonPath=$PythonPath}
+if($NoAutoComfy){$launchParams.NoAutoComfy=$true}
+if($NoBrowser){$launchParams.NoBrowser=$true}
+& $service @launchParams
 if(-not $?){throw 'BANANA FILM V2 local launcher did not complete. Review its error message.'}
