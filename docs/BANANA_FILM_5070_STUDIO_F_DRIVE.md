@@ -58,10 +58,11 @@ Custom ComfyUrl and NoAutoComfy switches are also supported. Always set ComfyInp
 
 ## Recommended tests (RTX5070 12GB)
 
-- First: 15-second film ceiling, 480p, 6-second clip ceiling, ambient/no dialogue, independent mode.
-- 6 seconds is a *ceiling*, not an exact segment duration: native H3's shortest legal slot is 124 frames at 24fps = ~5.17 seconds.
-- After first video, try two clips with Chain5; inspect five-frame handoff, native audio and seam.
-- 10/15-second longer clips remain selectable, but GPU out-of-memory is possible with 12GB. Do not run MV and Film V2 on the GPU simultaneously.
+- **Full-function default:** 30-second film ceiling, 15-second clip ceiling, 480p, Chain5; no arbitrary 6-second limit is enabled. The full 15/30/60/90/120/180-second film choices remain available, up to a hard 180 seconds.
+- **Clip choices:** 6, 10 or 15 seconds are all optional. The native H3 film planner assigns compatible frames and event slots, not a hard 6-second project.
+- **All modes and quality options remain available:** Chain5 / single-tail-frame / independent, 480p / 720p, ambient / native dialogue, all aspect ratios, screenplay review/edit, single-clip retakes, version selection, resume and assembly.
+- For a low-memory smoke test **only if desired**, choose a 15-second film with 6-second clip ceiling and independent mode. This is not the default or a required workflow.
+- 720p and 10/15-second shots may exhaust 12 GB VRAM, depending on offloading and current memory pressure; do not run MV and Film V2 on the GPU simultaneously.
 - Retakes, preview, explicit take adoption, immutable final versions and resume retain their project files on F:.
 
 ## Audit boundaries
