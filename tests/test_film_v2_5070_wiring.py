@@ -38,7 +38,7 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertIn("pull --ff-only", self.boot)
         self.assertNotIn("reset --hard", self.boot)
         self.assertNotIn("git clean", self.boot)
-        self.assertIn("Start_BANANA_FILM_5070.cmd", self.cmd)
+        self.assertIn("Bootstrap_BANANA_FILM_5070.ps1", self.cmd)
 
     def test_rtx_cu130_and_original_h3_model_reuse(self):
         self.assertIn("torch.version.cuda.startswith", self.launcher_source)
