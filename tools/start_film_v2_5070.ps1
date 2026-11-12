@@ -27,8 +27,12 @@ $python=@($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathT
 if(-not $python){ throw 'Working CU130 Python not found. Supply -PythonPath with your existing 5070 interpreter.' }
 $python=$python[0]
 Write-Host "Using Python: $python"
-& $python -c 'import torch,PIL,numpy; print("GPU:",torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none","CUDA:",torch.version.cuda); assert torch.cuda.is_available(); assert torch.version.cuda and torch.version.cuda.startswith("13")'
-if($LASTEXITCODE -ne 0){ throw 'CUDA 13 or Pillow/numpy check failed. This launcher never upgrades Torch.' }
+# Windows PowerShell 5.1 strips nested double quotes in native python -c arguments.
+# Run the checked-in Python probe as a FILE; no inline Python is passed through PS quoting.
+$probe=Join-Path $project 'tools\check_film_cuda13.py'
+if(-not (Test-Path -LiteralPath $probe -PathType Leaf)){ throw "Missing CUDA13 readiness probe: $probe" }
+& $python $probe
+if($LASTEXITCODE -ne 0){ throw "CUDA 13 / Pillow / numpy readiness check failed (exit $LASTEXITCODE). This launcher never upgrades Torch." }
 foreach($bin in @('ffmpeg','ffprobe')){
  if(-not (Get-Command $bin -ErrorAction SilentlyContinue)){ throw "$bin not found in PATH." }
 }
