@@ -28,7 +28,9 @@ class Handler(WebHandler):
                 return self.send_file(WEB / "app.js")
             if path == "/api/health":
                 return self.send_json({"service": "banana-film-v2",
-                                       "engine": service.ENGINE, "port": app.backend.PORT})
+                                       "engine": service.ENGINE, "port": app.backend.PORT,
+                                       "variant": "rtx5070-fdrive",
+                                       "data_root": str(app.backend.DATA.resolve())})
             if path == "/api/film-v2/projects":
                 return self.send_json(service.projects())
             params = dict(urllib.parse.parse_qsl(url.query))
