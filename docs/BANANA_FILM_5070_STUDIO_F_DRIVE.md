@@ -37,6 +37,8 @@ Alternative manual checkout in PowerShell:
 
 The launcher does not reset, clean or overwrite a Git checkout containing tracked edits. It will not delete archived assets or old jobs.
 
+Custom ComfyBase, ComfySource, ComfyInputDir and PythonPath overrides are saved at F:\\BANANA_FILM_5070_STUDIO\\Launcher\\settings.json. Next desktop launch reuses them; command-line overrides update the saved paths. This file contains paths and a local port only, never credentials or model weights.
+
 ## Existing RTX 5070 / CUDA13 configuration
 
 The installer preferentially reuses your working Windows paths:
