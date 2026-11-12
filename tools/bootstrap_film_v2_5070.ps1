@@ -74,6 +74,21 @@ try{
  Write-Warning 'Could not create desktop shortcut; use F:\BANANA_FILM_5070_STUDIO\Launcher\Start_BANANA_FILM_5070.cmd instead.'
 }
 
+# Persist overrides on F: so future desktop clicks reuse relocated ComfyUI/Python paths.
+$settingsPath=Join-Path $launcher 'settings.json'
+if(Test-Path -LiteralPath $settingsPath -PathType Leaf){
+ $saved=Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+ foreach($name in @('ComfyUrl','ComfyBase','ComfySource','ComfyInputDir','PythonPath','Port')){
+  if(-not $PSBoundParameters.ContainsKey($name)){
+   $value=$saved.$name
+   if($null -ne $value -and [string]$value -ne ''){ Set-Variable -Name $name -Value $value }
+  }
+ }
+}
+$settings=[ordered]@{ComfyUrl=$ComfyUrl;ComfyBase=$ComfyBase;ComfySource=$ComfySource;ComfyInputDir=$ComfyInputDir;PythonPath=$PythonPath;Port=$Port}
+[System.IO.File]::WriteAllText($settingsPath,($settings | ConvertTo-Json -Depth 8),(New-Object System.Text.UTF8Encoding($false)))
+Write-Host "Local runtime settings: $settingsPath"
+
 # Explicit named parameters: do not modify global Windows settings or ComfyUI models.
 $launchParams=@{DataRoot=$media;ComfyUrl=$ComfyUrl;Port=$Port}
 if($ComfyBase){$launchParams.ComfyBase=$ComfyBase}
