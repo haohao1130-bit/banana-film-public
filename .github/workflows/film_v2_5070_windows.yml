@@ -6,6 +6,7 @@ on:
       - film-v2-rtx5070-fdrive
     paths:
       - 'tools/start_film_v2_5070.ps1'
+      - 'tools/check_film_cuda13.py'
       - 'tools/bootstrap_film_v2_5070.ps1'
       - 'Start_BANANA_FILM_5070.cmd'
       - 'film_v2/**'
@@ -40,6 +41,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Windows PowerShell 5.1 parse of both launchers
         shell: powershell
         run: |
@@ -59,3 +63,27 @@ jobs:
             }
             Write-Host "Parsed: $file"
           }
+      - name: Real Windows PowerShell 5.1 to Python CUDA probe invocation (mock GPU)
+        shell: powershell
+        run: |
+          $shim=Join-Path $env:RUNNER_TEMP 'film5070_fake_gpu'
+          New-Item -ItemType Directory -Force -Path $shim | Out-Null
+          @'
+          class _Cuda:
+              def is_available(self):
+                  return True
+              def get_device_name(self, index):
+                  return "Mock RTX 5070"
+          cuda = _Cuda()
+          class version:
+              cuda = "13.0"
+          '@ | Set-Content -LiteralPath (Join-Path $shim 'torch.py') -Encoding ascii
+          '' | Set-Content -LiteralPath (Join-Path $shim 'PIL.py') -Encoding ascii
+          '' | Set-Content -LiteralPath (Join-Path $shim 'numpy.py') -Encoding ascii
+          $env:PYTHONPATH=$shim
+          $python=(Get-Command python).Source
+          $probe=(Resolve-Path 'tools/check_film_cuda13.py').Path
+          # The invocation shape is identical to start_film_v2_5070.ps1.
+          & $python $probe
+          if($LASTEXITCODE -ne 0) { throw "Windows CUDA probe failed: $LASTEXITCODE" }
+          Write-Host 'Windows PowerShell -> standalone Python GPU readiness check passed.'
