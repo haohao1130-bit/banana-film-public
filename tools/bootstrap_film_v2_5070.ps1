@@ -46,8 +46,16 @@ if(-not (Test-Path -LiteralPath $repo)){
   }else{
    $before=(& git -C $repo rev-parse --short=9 HEAD)
    Write-Host 'Checking GitHub updates (fast-forward only, no reset)...'
-   & git -C $repo pull --ff-only origin $branch
-   if($LASTEXITCODE -ne 0){
+   # PowerShell 5.1 may promote native stderr to an exception under Stop.
+   # A network/update failure should never make the existing working build unusable.
+   $pullOK=$false
+   try{
+    & git -C $repo pull --ff-only origin $branch
+    $pullOK=($LASTEXITCODE -eq 0)
+   }catch{
+    Write-Warning ('Git update command failed: ' + $_.Exception.Message)
+   }
+   if(-not $pullOK){
     Write-Warning 'GitHub update unavailable or non-fast-forward. Keeping existing local version.'
    }else{
     $after=(& git -C $repo rev-parse --short=9 HEAD)
