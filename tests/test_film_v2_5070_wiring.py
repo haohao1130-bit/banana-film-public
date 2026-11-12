@@ -53,6 +53,27 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertNotIn("pip install", self.launcher_source)
         self.assertNotIn("huggingface_hub", self.launcher_source)
 
+    def test_v4_auto_update_and_real_backend_build_label(self):
+        self.assertIn("pull --ff-only", self.boot)
+        self.assertIn("Keeping existing local version", self.boot)
+        self.assertIn("Handing off to the updated F-drive launcher", self.boot)
+        self.assertIn("$canonicalBootstrap", self.boot)
+        self.assertIn("server_process.json", self.launcher_source)
+        self.assertIn("expectedCommit", self.launcher_source)
+        self.assertIn("health.version.commit", self.launcher_source)
+        self.assertIn("health.busy", self.launcher_source)
+        self.assertIn("Get-CimInstance Win32_Process", self.launcher_source)
+        self.assertIn("film_v2.server", self.launcher_source)
+        self.assertIn("Stop-Process -Id $ownerPid", self.launcher_source)
+        self.assertIn("def detect_build_version()", self.server)
+        self.assertIn('"version": SERVER_BUILD', self.server)
+        self.assertIn('"instance": SERVER_INSTANCE', self.server)
+        self.assertIn('"busy": app.GPU_LOCK.locked()', self.server)
+        self.assertIn('id="build-info"', self.html)
+        self.assertIn("async function updateBuildInfo()", self.js)
+        self.assertIn("cache:'no-store'", self.js)
+        self.assertIn("health.version", self.js)
+
     def test_full_film_defaults_and_optional_features(self):
         self.assertIn('value="30" selected', self.html)
         self.assertIn('value="15" selected', self.html)
