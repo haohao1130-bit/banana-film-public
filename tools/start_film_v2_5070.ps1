@@ -105,6 +105,10 @@ if(-not $health){
  }
 }
 if(-not $health -or $health.engine -ne 'python_owned_film_v2'){throw 'Wrong/missing V2 service at requested port.'}
+if($health.variant -ne 'rtx5070-fdrive'){throw 'Different V2 edition is already running on the requested port. Stop it before launching the F-drive studio.'}
+$expectedRoot=[System.IO.Path]::GetFullPath($DataRoot).TrimEnd('\')
+$reportedRoot=[string]$health.data_root
+if($reportedRoot.TrimEnd('\') -ine $expectedRoot){throw "Port $Port belongs to a V2 server with another data root: $reportedRoot. Stop it to protect F: files."}
 Write-Host ''
 Write-Host 'BANANA FILM 5070 STUDIO - READY'
 Write-Host "UI: http://127.0.0.1:$Port"
