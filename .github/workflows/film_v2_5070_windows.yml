@@ -9,6 +9,8 @@ on:
       - 'tools/check_film_cuda13.py'
       - 'tools/bootstrap_film_v2_5070.ps1'
       - 'Start_BANANA_FILM_5070.cmd'
+      - 'Install_Desktop_Shortcut.cmd'
+      - 'Install_Shortcut.ps1'
       - 'film_v2/**'
       - 'tests/test_film_v2_*.py'
       - 'docs/BANANA_FILM_5070_STUDIO_F_DRIVE.md'
@@ -49,7 +51,8 @@ jobs:
         run: |
           $files = @(
             'tools/start_film_v2_5070.ps1',
-            'tools/bootstrap_film_v2_5070.ps1'
+            'tools/bootstrap_film_v2_5070.ps1',
+            'Install_Shortcut.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -84,6 +87,8 @@ jobs:
           $python=(Get-Command python).Source
           $probe=(Resolve-Path 'tools/check_film_cuda13.py').Path
           # The invocation shape is identical to start_film_v2_5070.ps1.
-          & $python $probe
-          if($LASTEXITCODE -ne 0) { throw "Windows CUDA probe failed: $LASTEXITCODE" }
-          Write-Host 'Windows PowerShell -> standalone Python GPU readiness check passed.'
+          & $python $probe --role comfy
+          if($LASTEXITCODE -ne 0) { throw "Windows CUDA13 Comfy probe failed: $LASTEXITCODE" }
+          & $python $probe --role backend
+          if($LASTEXITCODE -ne 0) { throw "Windows backend readiness failed: $LASTEXITCODE" }
+          Write-Host 'Windows PowerShell -> separate GPU and backend Python checks passed.'
