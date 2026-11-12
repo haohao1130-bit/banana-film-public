@@ -2,7 +2,9 @@
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
+import uuid
 import urllib.parse
 from http.server import ThreadingHTTPServer
 
@@ -15,6 +17,26 @@ from banana_mv.http_server import WebHandler
 from film_v2 import service
 
 WEB = Path(__file__).parent / "web"
+
+def detect_build_version():
+    """V4-style identity: capture Git HEAD when this server process starts."""
+    root = Path(__file__).resolve().parents[1]
+    if not (root / ".git").exists():
+        return {"branch": "unknown", "commit": "unknown"}
+    def git(*args):
+        try:
+            proc = subprocess.run(["git", *args], cwd=root, capture_output=True,
+                                  text=True, check=True, timeout=3)
+            return proc.stdout.strip() or "unknown"
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return "unknown"
+    return {"branch": git("symbolic-ref", "--quiet", "--short", "HEAD"),
+            "commit": git("rev-parse", "--short=9", "HEAD")}
+
+
+SERVER_BUILD = detect_build_version()
+SERVER_INSTANCE = uuid.uuid4().hex
+
 
 
 class Handler(WebHandler):
@@ -30,7 +52,10 @@ class Handler(WebHandler):
                 return self.send_json({"service": "banana-film-v2",
                                        "engine": service.ENGINE, "port": app.backend.PORT,
                                        "variant": "rtx5070-fdrive",
-                                       "data_root": str(app.backend.DATA.resolve())})
+                                       "data_root": str(app.backend.DATA.resolve()),
+                                       "version": SERVER_BUILD,
+                                       "instance": SERVER_INSTANCE,
+                                       "busy": app.GPU_LOCK.locked()})
             if path == "/api/film-v2/projects":
                 return self.send_json(service.projects())
             params = dict(urllib.parse.parse_qsl(url.query))
