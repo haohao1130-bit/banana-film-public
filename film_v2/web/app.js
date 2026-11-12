@@ -3,6 +3,34 @@ const $ = id => document.getElementById(id);
 const ROOT = '/api/film-v2/';
 const TERMINAL = ['script_ready', 'done', 'error', 'cancelled', 'interrupted'];
 let current = null, timer = null, scriptRevision = '', submitting = false;
+let serverInstance = null;
+async function updateBuildInfo() {
+  const label = $('build-info');
+  try {
+    const response = await fetch('/api/health', {cache:'no-store'});
+    if (!response.ok) throw Error('health ' + response.status);
+    const health = await response.json();
+    if (health.engine !== 'python_owned_film_v2' ||
+        health.variant !== 'rtx5070-fdrive') throw Error('not RTX5070 studio');
+    const version = health.version || {};
+    const branch = version.branch || 'unknown';
+    const commit = version.commit || 'unknown';
+    label.textContent = '5070 STUDIO · ' + commit;
+    label.title = '目前真正執行的 Git 分支：' + branch + '\nCommit：' + commit +
+      '\n資料根目錄：' + (health.data_root || 'unknown');
+    if (health.instance && serverInstance && health.instance !== serverInstance) {
+      location.reload(); // Load new frontend after a safe, manager-owned server restart.
+      return;
+    }
+    serverInstance = health.instance || serverInstance;
+  } catch (error) {
+    label.textContent = '版本讀取失敗';
+    label.title = String(error);
+  }
+}
+void updateBuildInfo();
+setInterval(() => { void updateBuildInfo(); }, 15000);
+
 for (let i = 1; i <= 9; i++) {
   const label = document.createElement('label');
   label.textContent = '@圖片' + i;
