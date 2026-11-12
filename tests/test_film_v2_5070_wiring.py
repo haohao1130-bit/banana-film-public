@@ -44,8 +44,14 @@ class Local5070WiringTests(unittest.TestCase):
         self.assertIn("Bootstrap_BANANA_FILM_5070.ps1", self.cmd)
 
     def test_rtx_cu130_and_original_h3_model_reuse(self):
-        self.assertIn("torch.version.cuda.startswith", self.launcher_source)
-        self.assertIn('"13"', self.launcher_source)
+        self.assertNotIn("& $python -c", self.launcher_source)
+        self.assertIn("tools\\check_film_cuda13.py", self.launcher_source)
+        self.assertIn("& $python $probe", self.launcher_source)
+        probe = (ROOT / "tools/check_film_cuda13.py").read_text(encoding="utf-8")
+        self.assertIn('cuda.startswith("13")', probe)
+        self.assertIn("torch.cuda.is_available()", probe)
+        self.assertIn("import PIL", probe)
+        self.assertIn("import numpy", probe)
         self.assertIn("MiniMaxH3ReferenceToVideo", self.launcher_source)
         self.assertIn("MiniMaxH3AddGuide", self.launcher_source)
         self.assertIn("'--lowvram'", self.launcher_source)
