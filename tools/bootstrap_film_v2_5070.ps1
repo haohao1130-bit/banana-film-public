@@ -9,7 +9,8 @@ param(
  [string]$PythonPath='',
  [int]$Port=8195,
  [switch]$NoAutoComfy,
- [switch]$NoBrowser
+ [switch]$NoBrowser,
+ [switch]$FromCheckout
 )
 $ErrorActionPreference='Stop'
 $repoUrl='https://github.com/haohao1130-bit/banana-film-public.git'
@@ -35,32 +36,61 @@ if(-not (Test-Path -LiteralPath $repo)){
  }
  $actual=(& git -C $repo branch --show-current)
  if($actual -ne $branch){throw "Different branch in $repo ($actual). Refusing checkout or reset."}
- & git -C $repo diff --quiet
- if($LASTEXITCODE -ne 0){throw 'Tracked local edits detected. Commit/stash before auto-update; no files were overwritten.'}
- & git -C $repo diff --cached --quiet
- if($LASTEXITCODE -ne 0){throw 'Staged local edits detected. Commit/stash before auto-update.'}
- Write-Host 'Updating only current RTX5070 branch (fast-forward, no reset)...'
- & git -C $repo pull --ff-only origin $branch
- if($LASTEXITCODE -ne 0){throw 'Fast-forward update failed. Existing local files remain intact.'}
+ if(-not $FromCheckout){
+  & git -C $repo diff --quiet
+  $trackedDirty=($LASTEXITCODE -ne 0)
+  & git -C $repo diff --cached --quiet
+  $stagedDirty=($LASTEXITCODE -ne 0)
+  if($trackedDirty -or $stagedDirty){
+   Write-Warning 'Tracked local edits exist. Skipping update; running unchanged local version.'
+  }else{
+   $before=(& git -C $repo rev-parse --short=9 HEAD)
+   Write-Host 'Checking GitHub updates (fast-forward only, no reset)...'
+   & git -C $repo pull --ff-only origin $branch
+   if($LASTEXITCODE -ne 0){
+    Write-Warning 'GitHub update unavailable or non-fast-forward. Keeping existing local version.'
+   }else{
+    $after=(& git -C $repo rev-parse --short=9 HEAD)
+    if($before -ne $after){Write-Host "Updated: $before -> $after"}
+    else{Write-Host "Already up to date: $after"}
+   }
+  }
+ }
 }
 $head=(& git -C $repo log -1 --format=%h)
 Write-Host "BANANA FILM 5070 STUDIO revision: $head"
 $service=Join-Path $repo 'tools\start_film_v2_5070.ps1'
 if(-not (Test-Path -LiteralPath $service -PathType Leaf)){throw '5070 service launcher missing from checked-out branch.'}
+$canonicalBootstrap=Join-Path $repo 'tools\bootstrap_film_v2_5070.ps1'
+if(-not (Test-Path -LiteralPath $canonicalBootstrap -PathType Leaf)){throw 'Current-branch bootstrap script missing.'}
+# V4-style: the desktop launcher pulls first, then runs the freshly checked-out
+# bootstrap rather than continuing with potentially stale launcher code.
+if(-not $FromCheckout -and
+   ([System.IO.Path]::GetFullPath($MyInvocation.MyCommand.Path) -ine
+    [System.IO.Path]::GetFullPath($canonicalBootstrap))){
+ $freshParams=@{}
+ foreach($pair in $PSBoundParameters.GetEnumerator()){
+  if($pair.Key -ne 'FromCheckout'){$freshParams[$pair.Key]=$pair.Value}
+ }
+ $freshParams.FromCheckout=$true
+ Write-Host 'Handing off to the updated F-drive launcher from Git checkout...'
+ & $canonicalBootstrap @freshParams
+ if(-not $?){throw 'Newly checked-out launcher failed.'}
+ return
+}
 
 # Persist double-click launcher on F: and create a durable desktop shortcut.
 New-Item -ItemType Directory -Path $launcher -Force | Out-Null
-$bootstrapSource=$MyInvocation.MyCommand.Path
-$sourceDirectory=Split-Path -Parent $bootstrapSource
-$cmdSource=Join-Path $sourceDirectory 'Start_BANANA_FILM_5070.cmd'
-if(-not (Test-Path -LiteralPath $cmdSource)){
- $cmdSource=Join-Path (Split-Path -Parent $sourceDirectory) 'Start_BANANA_FILM_5070.cmd'
-}
-if(-not (Test-Path -LiteralPath $cmdSource)){throw 'Start_BANANA_FILM_5070.cmd missing from extracted launcher package.'}
+$cmdSource=Join-Path $repo 'Start_BANANA_FILM_5070.cmd'
+if(-not (Test-Path -LiteralPath $cmdSource -PathType Leaf)){throw 'Current branch CMD launcher missing.'}
 $cmdTarget=Join-Path $launcher 'Start_BANANA_FILM_5070.cmd'
 $bootstrapTarget=Join-Path $launcher 'Bootstrap_BANANA_FILM_5070.ps1'
-if($cmdSource -ine $cmdTarget){Copy-Item -LiteralPath $cmdSource -Destination $cmdTarget -Force}
-if($bootstrapSource -ine $bootstrapTarget){Copy-Item -LiteralPath $bootstrapSource -Destination $bootstrapTarget -Force}
+if([System.IO.Path]::GetFullPath($cmdSource) -ine [System.IO.Path]::GetFullPath($cmdTarget)){
+ Copy-Item -LiteralPath $cmdSource -Destination $cmdTarget -Force
+}
+if([System.IO.Path]::GetFullPath($canonicalBootstrap) -ine [System.IO.Path]::GetFullPath($bootstrapTarget)){
+ Copy-Item -LiteralPath $canonicalBootstrap -Destination $bootstrapTarget -Force
+}
 try{
  $shell=New-Object -ComObject WScript.Shell
  $desktop=[Environment]::GetFolderPath('Desktop')
