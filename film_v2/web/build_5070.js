@@ -20,7 +20,13 @@
   restart.type = 'button';
   restart.textContent = '重啟廚房';
   restart.hidden = true;
-  label.after(restart);
+  const switchRoom = document.createElement('button');
+  switchRoom.type = 'button';
+  switchRoom.className = 'secondary';
+  switchRoom.disabled = true;
+  switchRoom.title = '切換服務尚未啟用';
+  switchRoom.textContent = '切換至煉丹室（MV）';
+  label.after(restart, switchRoom);
   let restarting = false;
   restart.addEventListener('click', async () => {
     if (!window.confirm('重啟本機短片廚房？')) return;
