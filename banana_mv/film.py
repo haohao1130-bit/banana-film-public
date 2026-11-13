@@ -652,7 +652,9 @@ def start(req):
              'title':str(req.get('project_name') or '新短片')[:120],'timeline_source':'film_plan',
              'note':'H3 原生影音生成；未做 GPU 品質驗證，跨段聲線與音樂不保證一致。'}
         if manual_plan:
-            job['shared_setup']=''
+            # Identical to Classic MV's saved handoff contract: a fixed
+            # reference table lives alongside local segment commissions.
+            job['shared_setup']=manual_plan['shared_setup']
             job['title']=manual_plan['title']
             job['timeline_source']='manual_native_h3'
             atomic_json(work/'director_plan.json',dict(manual_plan,
