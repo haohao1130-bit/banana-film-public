@@ -6,7 +6,7 @@ param(
  [string]$ComfySource='',
  [string]$ComfyInputDir='',
  [string]$PythonPath='',
- [int]$Port=8195,
+ [int]$Port=8193,
  [switch]$NoAutoComfy,
  [switch]$NoBrowser
 )
@@ -135,14 +135,14 @@ if($health){
  $runningCommit=[string]$health.version.commit
  # Old Python-Owned V2 process must also be upgraded to the actual Colab Film UI.
  if($runningCommit -ne $expectedCommit -or $health.engine -ne 'colab_film'){
-  Write-Host "Colab Film parity: switching 8195 backend from $($health.engine) / $runningCommit to colab_film / $expectedCommit."
+  Write-Host "Colab Film parity: switching port $Port backend from $($health.engine) / $runningCommit to colab_film / $expectedCommit."
   if($null -eq $health.busy){
-   throw 'Existing 8195 backend is too old to report GPU activity. Close ONLY the old BANANA FILM backend once, then double-click again. ComfyUI can stay on.'
+   throw 'Existing Film backend is too old to report GPU activity. Close ONLY the old BANANA FILM backend once, then double-click again. ComfyUI can stay on.'
   }
   if($health.busy){
    throw 'BANANA FILM is rendering a job. Update downloaded; automatic service restart deferred. Relaunch when it finishes.'
   }
-  # Stop ONLY the verified owner of port 8195, never port 8000 / shared ComfyUI.
+  # Stop ONLY the verified Film server, never port 8000 / shared ComfyUI.
   $ownerPid=$null
   if(Test-Path -LiteralPath $receiptPath){
    try{
@@ -159,7 +159,7 @@ if($health){
    if($owners.Count -eq 1){$ownerPid=[int]$owners[0]}
   }
   if(-not $ownerPid){
-   throw 'Cannot determine the verified Film backend PID. Stop ONLY the 8195 Film server manually; ComfyUI must remain running.'
+   throw 'Cannot determine the verified Film backend PID. Stop ONLY the Film server manually; ComfyUI must remain running.'
   }
   $processInfo=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
   if(-not $processInfo -or
@@ -170,7 +170,7 @@ if($health){
   Stop-Process -Id $ownerPid -ErrorAction Stop
   $deadline=(Get-Date).AddSeconds(20)
   while((Read-JsonUrl $healthUrl) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 500}
-  if(Read-JsonUrl $healthUrl){throw 'Old Film server has not released port 8195; refusing second server.'}
+  if(Read-JsonUrl $healthUrl){throw 'Old Film server has not released its port; refusing second server.'}
   Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
   $health=$null
  }
