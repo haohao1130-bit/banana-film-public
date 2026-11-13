@@ -291,7 +291,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         opening_lines=_opening_wardrobe_indices(setup_lines)
         fixed = '\n'.join(line for index,line in enumerate(setup_lines)
             if (index in opening_lines or re.match(
-                r'^\s*(?:主角|角色|人物外貌|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
+                r'^\s*(?:主角|角色|人物(?:外貌|五官|身分|身份)|服裝(?:隨|依)|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
             and not re.search(r'最後才|結局|修復AI|修電腦', line))
         if shots:
             return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count)
