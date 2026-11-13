@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-let active=localStorage.getItem('banana_film_job'),timer,selected=Array(9).fill(null),imageURLs=[],currentJob=null,stopRequested=null;
+let active=null,timer,selected=Array(9).fill(null),imageURLs=[],currentJob=null,stopRequested=null;
 const terminal=['done','error','cancelled','interrupted','script_ready'];
 async function api(path,options){const response=await fetch(path,options);const data=await response.json();if(!response.ok||data.error&&!data.id)throw Object.assign(Error(data.error||'請求失敗'),{code:data.code});return data;}
 function busy(value){$('mode').disabled=value;$('generate').disabled=value;$('direct-render').disabled=value;for(let i=1;i<=9;i++){ $('image-'+i).disabled=value;$('remove-'+i).disabled=value;}$('open-project').disabled=value;$('refresh-projects').disabled=value;$('stop').hidden=!value;$('stop-hint').hidden=!value;$('stop').disabled=stopRequested===active;$('stop').textContent=stopRequested===active?'已要求停爐・等待本段完成':'🚨 緊急停爐';$('projector').classList.toggle('working',value);}
@@ -97,4 +97,56 @@ $('auto-director').addEventListener('change',updateFilmControls);
 $('max-seconds').addEventListener('change',updateFilmControls);
 updateFilmControls();
 
-if(active){busy(true);void poll(true);}
+// The 5070 backend exposes a new instance ID on every real furnace restart.
+// Browser localStorage survives process restarts, so reattach an old job only
+// while the same backend instance is alive. Stored movies/jobs are not deleted.
+function clearFilmWorkspaceCache(){
+ clearTimeout(timer);
+ active=null;currentJob=null;stopRequested=null;scriptKey='';
+ localStorage.removeItem('banana_film_job');
+ if(typeof localStorage.key==='function'){
+  const obsolete=[];
+  for(let i=0;i<localStorage.length;i++){
+   const key=localStorage.key(i);
+   if(key&&key.startsWith('banana_film_clip_prompts:'))obsolete.push(key);
+  }
+  for(const key of obsolete)localStorage.removeItem(key);
+ }
+ $('form').reset?.();
+ selected=Array(9).fill(null);
+ for(let i=1;i<=9;i++)$('image-'+i).value='';
+ $('prompt').value='';
+ refs();
+ promptCount();
+ updateFilmControls();
+ $('script-review').hidden=true;
+ $('plan-panel').hidden=true;
+ $('prompt-panel').hidden=true;
+ $('video').hidden=true;
+ $('download').style.display='none';
+ $('status').textContent='新丹爐已啟動。介面已清空；歷史作品仍可從作品清單開啟。';
+ busy(false);
+}
+
+async function restoreFilmWorkspace(){
+ const saved=localStorage.getItem('banana_film_job');
+ let instance=null;
+ try{
+  const health=await api('api/health',{cache:'no-store'});
+  instance=typeof health.instance==='string'&&health.instance?health.instance:null;
+ }catch{}
+ if(!instance){
+  // Compatibility with the shared Colab frontend, which may lack a boot ID.
+  if(saved){active=saved;busy(true);void poll(true);}
+  return;
+ }
+ const key='banana_film_backend_instance';
+ const prior=sessionStorage.getItem(key);
+ sessionStorage.setItem(key,instance);
+ if(prior===instance && saved){
+  active=saved;busy(true);void poll(true);
+ }else if(prior!==instance){
+  clearFilmWorkspaceCache();
+ }
+}
+void restoreFilmWorkspace();
