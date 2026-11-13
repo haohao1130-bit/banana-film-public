@@ -90,7 +90,7 @@ function updateFilmControls(){
  $('custom-seconds').hidden=!custom;
  $('custom-seconds-label').hidden=!custom;
  $('custom-seconds').required=custom;
- $('generate').textContent=!auto&&/^(?:\\s*subject_definitions\\s*:|\\s*===\\s*CLIP\\s)/i.test($('prompt').value)
+ $('generate').textContent=!auto&&/^(?:\s*subject_definitions\s*:|\s*===\s*CLIP\s)/i.test($('prompt').value)
    ?'驗證完整 H3 全咒 →':'生成劇本 →';
 }
 $('auto-director').addEventListener('change',updateFilmControls);
