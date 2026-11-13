@@ -9,25 +9,22 @@ detailed_description: ...
 overall_soundscape: ...
 non_diegetic_music: ...
 
-A single six-section prompt without CLIP markers is also accepted up to one
-generation window. Event-only briefs are *not* treated as native H3 prompts.
+Free-form text without CLIP markers uses one generation window.
 """
 import math
 import re
 
 from banana_mv.core import FPS
-from banana_mv.direction_contract import validate_h3_sections
 
 CLIP = re.compile(
     r'(?im)^[ \t]*===\s*CLIP\s+([1-9]\d*)\s*'
     r'\(\s*(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?\s*\)\s*===\s*$'
 )
 CLIP_LIKE = re.compile(r'(?im)^[ \t]*===\s*CLIP\b')
-FIRST_FIELD = re.compile(r'^\s*subject_definitions\s*:', re.I)
 
 
 def split_native_h3(story, single_seconds):
-    """Return authored (seconds, six-field text) or None for event prose.
+    """Return authored (seconds, prompt text) pairs.
 
     Broken CLIP boundaries must error, never be silently sent to the 9B writer.
     """
@@ -39,9 +36,7 @@ def split_native_h3(story, single_seconds):
     if not matches:
         if CLIP_LIKE.search(source):
             raise ValueError('CLIP 標記需為 === CLIP 1 (12s) ===，每段從 1 連號。')
-        if FIRST_FIELD.match(source):
-            return [(float(single_seconds), source)]
-        return None
+        return [(float(single_seconds), source)]
     if source[:matches[0].start()].strip():
         raise ValueError('第一個 CLIP 標記前不能有未分段的提示詞。')
     if len(matches) > 34:
@@ -92,7 +87,6 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         if not isinstance(text,str) or not text.strip():
             raise ValueError(f'第 {i+1} 段是空的。')
         mapped=normalize(map_mentions(req,text,image_count),image_count)
-        validate_h3_sections(mapped)
         frames=legal_frames(seconds,float(req['segment_seconds']))
         actual=frames/FPS
         validator(mapped,actual,req['sound_mode'])
