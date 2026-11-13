@@ -16,6 +16,28 @@ const server=http.createServer((req,res)=>{
   const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
   page.on('pageerror',e=>errors.push(String(e)));
   await page.goto('http://127.0.0.1:'+server.address().port);
+  // Real Chromium: chefs and serving board must respond only to real clip statuses.
+  assert.equal(await page.locator('#banana-kitchen-board').count(),1);
+  assert.equal(await page.locator('.projector .banana-helper').count(),1);
+  assert.equal(await page.locator('.projector .master-helper').count(),1);
+  const cooked={id:'kitchen-fixture',current:2,
+    segments:[{index:0,status:'done'},{index:1,status:'rendering'}]};
+  await page.evaluate(job=>window.BananaKitchen.render(job),{...cooked,status:'running'});
+  assert.equal(await page.locator('#kitchen-dishes li').count(),2);
+  assert((await page.locator('#kitchen-dishes li').first().textContent()).includes('宮保雞丁'));
+  assert((await page.locator('#kitchen-dishes li').last().textContent()).includes('爆炒中'));
+  assert.equal(await page.locator('#projector').getAttribute('data-kitchen-state'),'cooking');
+  await page.evaluate(job=>window.BananaKitchen.render(job),{...cooked,status:'retaking'});
+  assert.equal(await page.locator('#kitchen-dishes li').count(),2);
+  await page.evaluate(job=>window.BananaKitchen.render(job),{
+    ...cooked,status:'assembling',segments:[{index:0,status:'done'},{index:1,status:'done'}]});
+  const plateNames=await page.locator('#kitchen-dishes li strong').allTextContents();
+  assert.deepEqual(plateNames,['宮保雞丁','三杯雞']);
+  await page.evaluate(job=>window.BananaKitchen.render(job),{
+    ...cooked,status:'done',video:'/api/mv/file?id=kitchen-fixture',
+    segments:[{index:0,status:'done'},{index:1,status:'done'}]});
+  assert(await page.locator('#kitchen-banquet').isVisible());
+  assert((await page.locator('#kitchen-title').textContent()).includes('滿漢全席'));
   const prompt=page.locator('#prompt');
   assert.equal(await page.locator('#mode').evaluate(e=>e.closest('details')),null);
   await page.evaluate(()=>{active='fixture';renderJob({id:'fixture',status:'running',duration:0,seed:0,segments:[],request:{max_seconds:180}});});
