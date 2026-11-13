@@ -13,7 +13,7 @@ const board = document.createElement('section');
 board.id = 'banana-kitchen-board';
 board.className = 'banana-kitchen-board';
 board.setAttribute('aria-label', 'BANANA FILM 出菜進度');
-board.innerHTML = '<div class="kitchen-board-head"><div><strong id="kitchen-title">蕉彌備料，蕉大師等開鍋</strong><p id="kitchen-message">故事下單後，每完成一段便出一道新菜。</p></div><span id="kitchen-count">0 / 0 道已出鍋</span></div><ol id="kitchen-dishes" class="kitchen-dishes" aria-label="已完成影片片段對應的菜色"></ol><div id="kitchen-banquet" class="kitchen-banquet" hidden><span aria-hidden="true">🍱 🥘 🦞 🍗 🥟 🍲 🦀</span><strong>滿漢全席上桌！</strong><small>全片完成，請享用本次佳餚</small></div>';
+board.innerHTML = '<div class="kitchen-board-head"><div><strong id="kitchen-title">蕉彌備料，蕉大師等單</strong><p id="kitchen-message">故事下單就開火。每拍完一段，就端上一道。</p></div><span id="kitchen-count">0 / 0 道已出鍋</span></div><ol id="kitchen-dishes" class="kitchen-dishes" aria-label="已完成影片片段對應的菜色"></ol><div id="kitchen-banquet" class="kitchen-banquet" hidden><span aria-hidden="true">🍱 🥘 🦞 🍗 🥟 🍲 🦀</span><strong>滿漢全席上桌！</strong><small>全片完成，請享用本次佳餚</small></div>';
 hero.after(board);
 const title = document.getElementById('kitchen-title');
 const message = document.getElementById('kitchen-message');
@@ -37,9 +37,9 @@ function render(job) {
   const finished = segments.filter(s=>s.status === 'done');
   const status = job?.status || 'idle';
   const current = Number.isInteger(job?.current) ? job.current : 0;
-  let stage='idle',heading='蕉彌備料，蕉大師等開鍋',detail='故事下單後，每完成一段便出一道新菜。';
+  let stage='idle',heading='蕉彌備料，蕉大師等單',detail='故事下單就開火。每拍完一段，就端上一道。';
   if (status === 'planning_story' || status === 'revising_story') {
-    stage='preparing';heading='蕉彌正在下料配菜';detail='9B 導演準備劇本，事件與鏡頭正逐道入鍋。';
+    stage='preparing';heading='蕉彌備料中';detail='正在準備劇本，分配每道菜的鏡頭與台詞。';
   } else if (status === 'script_ready') {
     stage='review';heading='菜單備妥，等你確認';detail='導演劇本可修改；確認後才正式爆炒。';
   } else if (status === 'running') {
@@ -53,7 +53,7 @@ function render(job) {
   } else if (status === 'done' && segments.length && finished.length === segments.length && (job?.video || job?.final_video)) {
     stage='banquet';heading='滿漢全席上桌！';detail='蕉彌與蕉大師完成全部 ' + finished.length + ' 道菜，整部影片可享用！';
   } else if (status === 'error') {
-    stage='error';heading='這道火候出了狀況';detail='已完成的片段保留，可檢查錯誤後續跑。';
+    stage='error';heading='這鍋先關火。';detail='已完成的菜都在。看一下出錯原因，再接著炒。';
   } else if (status === 'interrupted' || status === 'cancelled') {
     stage='paused';heading='廚房暫停營業';detail='完成的盤數不重算，下次從剩餘片段接著炒。';
   } else if (status === 'done') {
