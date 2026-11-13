@@ -106,6 +106,32 @@ class FilmManualDirectorTests(unittest.TestCase):
             film.validate_plan(json.dumps(too_long),req,0)
         self.assertNotIn('180.0',str(req['max_seconds']))
 
+    def test_faithful_repair_never_adds_new_story(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            photo,work,req,job,cfg=fixtures.FilmTests().fixture(Path(tmp))
+            req.update(auto_director=False,rewrite_retries=1)
+            rejected=fixtures.draft()
+            rejected['segments'][0]['seconds']=12  # over the 10-sec clip cap
+            valid=fixtures.draft()
+            with patch.object(app,'job_dir',return_value=work),patch.object(
+                 app.backend,'rewrite_local',
+                 side_effect=[json.dumps(rejected),json.dumps(valid)]) as mock:
+                film.plan_film(cfg,job,[photo])
+            repair=json.loads(mock.call_args_list[1].args[2][-1][1].split('only. ',1)[1])
+            self.assertIn('不可新增劇情',repair['instruction'])
+            self.assertNotIn('請新增有因果的後續事件',repair['instruction'])
+            first=json.loads(mock.call_args_list[0].args[2][0][1])
+            self.assertIn('FAITHFUL',first['adaptation'])
+
+    def test_legacy_projects_are_not_rewritten_by_new_duration_contract(self):
+        old={'max_seconds':180,'target_seconds':35,'duration_policy':'target'}
+        self.assertEqual(film.duration_contract(old),{})
+        self.assertIsNone(film.validate_planned_duration({'duration':72.33},old))
+        manual={'max_seconds':36.5,'target_seconds':35,'timeline_tolerance':1.5,
+                'duration_contract_version':3,'auto_director':False,'target_is_exact':True}
+        with self.assertRaisesRegex(ValueError,'超過指定'):
+            film.validate_planned_duration({'duration':72.33},manual)
+
     def test_retake_manual_mode_requires_complete_h3_and_no_9b(self):
         req={'production':'film','manual_h3':True,'sound_mode':'auto'}
         job={'request':req}
