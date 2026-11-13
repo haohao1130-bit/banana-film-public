@@ -52,11 +52,15 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "4b637d48e95702c5a6201ed6ae515fde0a59e74cfc612b53bc8915bd1140ba49"
+      "sha256": "7172ede4c396705db306f61aecae377c2fd033390d2c275f3e85f2812b7d0080"
     },
     {
       "path": "banana_mv/film_continuity.py",
       "sha256": "6f09a062452e15201cbccdf51bf86ca12076939af1fd711e9662cbb3cf5bc7bb"
+    },
+    {
+      "path": "banana_mv/film_manual.py",
+      "sha256": "57f7cbc0cffccf1e515bc9c493e2fd75d4ca640354255bb38b764326448a6dae"
     },
     {
       "path": "banana_mv/film_media.py",
@@ -116,7 +120,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "a357577bfe5129d125e59279003c9144f6d96965ed2e33aeda2d33bcd94e9099"
+      "sha256": "47c1ff7227ae15b0abec464ccd048443a3a9c30395689141ac33817e862d9715"
     },
     {
       "path": "banana_mv/web/clip_review.js",
@@ -124,15 +128,15 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "48ffb70c2415c0a021f039b7d0735ef4ff1cf1df9a1c092a3d545f1facd0bbec"
+      "sha256": "84c1025a86d7eb358d399fd9375ec978c05e9d497c79ca67f1a2a7ea6ec10173"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "cf8d31b24ed61b9ac2e5116964a46404dceb59d29a92c727345a81fdf5c89218"
+      "sha256": "51a28ad7ae937e93529e6ae7968a16d2c29f3183d59507a548e3d0937485618f"
     },
     {
       "path": "banana_mv/web/film_review.js",
-      "sha256": "adfda24d0a68ffbe7e1bbfba77dfe7a78bb3552e1effaf85008da81172b62cf1"
+      "sha256": "24343669a9d60761c1b2f88e72270bf4383b0a754b38b113d5a212b3eaf7b46b"
     },
     {
       "path": "banana_mv/web/index.html",
@@ -176,7 +180,7 @@
     },
     {
       "path": "tests/check_film_browser.cjs",
-      "sha256": "b05f40a2b19f9464e1cc3ae7c119800944a973951262b1d1183da9f18d4e5cd2"
+      "sha256": "02bb7f03005fb64d3ad07a1da0b13148c346764d34d56cf619733e1961744bed"
     },
     {
       "path": "tests/check_film_ui.cjs",
@@ -237,6 +241,10 @@
     {
       "path": "tests/test_film_dynamic.py",
       "sha256": "1ee5dd489d8f406dd02bf9edf7a0a9da840305dfa4617531d623a86efa76fb51"
+    },
+    {
+      "path": "tests/test_film_manual_director.py",
+      "sha256": "df2129fa3c4c2c1c2c5e34d19de0cdea0789898983b6dd3a5c13f2ecf793be1f"
     },
     {
       "path": "tests/test_film_motion_context.py",

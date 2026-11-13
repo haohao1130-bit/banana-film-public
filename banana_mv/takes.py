@@ -135,14 +135,14 @@ def require_idle(job,cfg,check_queue=True):
             raise ValueError('ComfyUI 還有工作，請等佇列清空再回爐。')
 
 
-def corrections(indices,instructions):
+def corrections(indices,instructions,limit=3000):
     if instructions is None:return {}
     if not isinstance(instructions,dict):raise ValueError('局部修改建議需按段落提供。')
     result={}
     for key,text in instructions.items():
         if key not in {str(i) for i in indices} or not isinstance(text,str):
             raise ValueError('局部修改建議只能指定已勾選的段落，內容需為文字。')
-        if len(text)>3000:raise ValueError('每段局部修改建議最多 3000 字。')
+        if len(text)>limit:raise ValueError(f'每段局部修改最多 {limit} 字。')
         if text.strip():result[int(key)]=text.strip()
     return result
 
@@ -150,6 +150,17 @@ def corrections(indices,instructions):
 def repair_prompt(cfg,job,seg,prompt,note,originals,tail,dest,prefix=""):
     """One bounded edit of the chosen clip prompt; never sees the full story."""
     if job['request'].get('production')=='film':
+        if job['request'].get('manual_h3'):
+            # Absolute manual authority: a retake correction is a complete H3
+            # replacement, never a hidden call to the 9B screenplay model.
+            from banana_mv.film import normalize_prompt,validate_film_format
+            from banana_mv.direction_contract import validate_h3_sections
+            if not note.lstrip().startswith('subject_definitions:'):
+                raise ValueError('手動全咒補拍不呼叫 9B。請在局部修改欄貼上該段完整六區塊 H3 提示詞；只換 Seed 可留空。')
+            corrected=normalize_prompt(note,len(originals)+int(bool(tail)))
+            validate_h3_sections(corrected)
+            validate_film_format(corrected,seg['seconds'],job['request']['sound_mode'])
+            return corrected
         from banana_mv.film import write_prompt
         return write_prompt(cfg,job,seg,originals,tail,correction=note,base=prompt,dest=dest,artifact_prefix=prefix)
     from banana_mv.shoot_plan import NATIVE_ENHANCER_SYSTEM,REFERENCE_PERFORMANCE,_pictures,_text
@@ -186,8 +197,9 @@ def retake(job_id,indices,instructions=None):
         job=app.read_state(job_id);cfg=copy.deepcopy(app.backend.load_config());require_idle(job,cfg)
         for i in indices:segment(job,i)
         indices=sorted(set(indices))
-        notes=corrections(indices,instructions)
-        if notes:
+        is_manual=bool(job['request'].get('manual_h3'))
+        notes=corrections(indices,instructions,30000 if is_manual else 3000)
+        if notes and not is_manual:
             if not Path(cfg.get('guides',{}).get('ref','')).is_file():
                 raise ValueError('局部修改需要本地 9B 與原生指南，請先完成 Colab 模型下載。')
             app.preflight(cfg,{'encoder':{'class_type':'CLIPLoader','inputs':{'clip_name':cfg['rewriter']['model']}},
