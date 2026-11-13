@@ -404,12 +404,12 @@ def protect_chain5_opening(prompt):
 _FILM_SHARED_HEADING = re.compile(
     r'^\s*(?:#{1,6}\s*)?(?:【)?(?:共同設定|共通設定|共用設定|全局設定|'
     r'全域設定|固定設定|全片固定設定|角色設定|人物設定|角色綁定|'
-    r'世界觀|場景設定|全局電影設定|電影設定)(?:】)?\s*[：:]?\s*$')
+    r'世界觀|場景設定|全局電影設定|電影設定|[Ss]hared [Ss]ettings|[Cc]ommon [Ss]ettings|subject_definitions)(?:】)?\s*[：:]?\s*$')
 _FILM_STORY_HEADING = re.compile(
     r'^\s*(?:#{1,6}\s*)?(?:【)?(?:故事內容|故事劇情|劇情內容|'
     r'劇本內容|故事大綱|劇情大綱|故事分段|劇情分段|'
     r'分鏡時間軸|分鏡腳本|分鏡內容|拍攝段落|'
-    r'段落安排|演出內容|故事開始|正片內容)(?:】)?\s*[：:]?\s*$')
+    r'段落安排|演出內容|故事開始|正片內容|精密鏡頭時間軸|鏡頭時間軸|[Ss]hot [Tt]imeline|[Ss]toryboard|detailed_description)(?:】)?\s*[：:]?\s*$')
 _FILM_EVENT_HEADING = re.compile(
     r'^\s*(?:#{1,6}\s*)?(?:第[一二三四五六七八九十百零〇\d]+[幕段場鏡]'
     r'(?:\s*[｜|:：\-—].*)?|(?:ACT|SCENE|SHOT)\s*\d+'
