@@ -455,7 +455,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
     if req.get('mode')=='chain5' and seg['index']>0:
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
-    if tail:task['continuity_reference']='<Picture 1> is the previous last frame as visual reference, not a locked first frame or another actor.'
+    if tail:task['continuity_reference']='<Picture 1> is the previous last frame anchored at frame zero. Continue from its exact composition, poses, and eyelines; this image is not another actor.'
     if correction:task.update(original_prompt=base,local_correction=correction)
     text=json.dumps(task,ensure_ascii=False)
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
