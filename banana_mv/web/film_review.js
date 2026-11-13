@@ -15,7 +15,7 @@ function updateClipActions(){
   $('clips-all').disabled=clipView.locked||!clipView.rows.size;
   $('clips-clear').disabled=clipView.locked||!count;
   $('clips-retake').disabled=!clipIdle()||!count;
-  $('clips-retake').textContent=count?`將所選 ${count} 段鏡頭重拍重煉`:'將所選片段重拍重煉';
+  $('clips-retake').textContent=count?`重新炒菜（${count} 段）`:'重新炒菜';
 }
 function showClipVersion(row){
   const take=row.segment.takes.find(t=>t.id===row.select.value&&t.status==='ready');
@@ -40,7 +40,8 @@ function renderClipPreviews(job){
       const use=document.createElement('button');use.type='button';use.className='secondary';use.textContent='選用此版';
       const note=document.createElement('p');note.className='muted';version.append(select,use);card.append(label,video,version,note);$('clip-list').append(card);
       const fixLabel=document.createElement('label');fixLabel.textContent='局部修改建議（選填）';
-      const correction=document.createElement('textarea');correction.rows=3;correction.maxLength=3000;
+      const correction=document.createElement('textarea');correction.rows=3;correction.maxLength=job.request?.manual_h3?30000:3000;
+       if(job.request?.manual_h3)correction.placeholder='手動 H3：若要修改此段，貼上該段替換提示詞；只想換 Seed 請留空。';
       correction.setAttribute('aria-label',`第 ${i+1} 段鏡頭的局部修改建議`);
       correction.placeholder='例如：表情更憤怒；增加手部操作特寫；保留事件，只改這段拍法。';
       const help=document.createElement('p');help.className='muted';help.textContent='以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。填寫後勾選此段，9B 只修這段原稿。';
@@ -52,7 +53,7 @@ function renderClipPreviews(job){
       use.onclick=()=>adoptClip(row.index,row.select.value);
     }
     const desired=segment.pending_take||segment.selected_take;const changed=(row.segment.pending_take||row.segment.selected_take)!==desired;row.segment=segment;
-    row.title.textContent=`第 ${i+1} 顆 · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
+    row.title.textContent=`${i===0?'第一道菜上桌':`第 ${i+1} 段`} · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
     const ready=segment.takes.filter(t=>t.status==='ready');
     const signature=ready.map(t=>t.id+':'+(t.id===segment.selected_take)+':'+(t.id===desired)).join('|');
     if(row.signature!==signature){
