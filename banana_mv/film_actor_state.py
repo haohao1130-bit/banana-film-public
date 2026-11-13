@@ -78,3 +78,77 @@ def _actor_state_lines(state):
         else:
             lines.append(f'- {kind}: {item["label"]} worn.')
     return '\n'.join(lines)
+
+
+# Ported without a new state machine from banana-mv-public's proven Python Slot
+# experiment (banana_mv/python_slots.py + banana_mv/shoot_plan.py).
+def _current_appearance_anchor(state):
+    """A factual, non-filmable starting condition beside local filming actions.
+
+    The marker is separate from new plot actions: no removal or redressing is
+    staged by this line. The Python ledger remains the authority for each
+    explicitly known property; unspecified properties still use the references.
+    """
+    names = {'Torso': '上身', 'Bottom': '下身', 'Feet': '雙腳'}
+    facts = []
+    for kind in ('Torso', 'Bottom', 'Feet'):
+        item = state.get(kind)
+        if item is None:
+            continue
+        label, status = item['label'], item['status']
+        if status == 'removed':
+            fact = ('雙腳赤腳' if kind == 'Feet' else names[kind] + '已無' + label)
+            facts.append(fact + f'（{label}已卸除）')
+        elif status == 'unfastened':
+            facts.append(f'{names[kind]}的{label}已解開，尚未移除')
+        else:
+            facts.append(f'{names[kind]}穿著{label}')
+    return ('- 【Python當前狀態：既定外觀，非新增動作】'
+            + '；'.join(facts) + '。以下拍攝沿用此狀態；只有本段明確指定的事件可改變，'
+            '已移除物品不重新出現，也不重演移除過程。')
+
+
+def _fixed_reference_with_python_priority(fixed_setup, event):
+    """Remove superseded opening-wardrobe facts, not reference identities.
+
+    Only slots with a populated Python state take this path. Untracked
+    appearance properties continue to fall back to the original reference.
+    """
+    match = re.search(
+        r'(?s)^CURRENT_ACTOR_STATE[^\n]*\n(.*?)\nEXPECTED_ACTOR_STATE_AFTER_THIS_CLIP',
+        event)
+    if not match:
+        return fixed_setup
+    known = [line.strip() for line in match.group(1).splitlines()
+             if re.match(r'^- (?:Torso|Bottom|Feet): ', line)]
+    if not known:
+        return fixed_setup
+    # Bind identity to the reference, but never bind today's clothing to the
+    # reference's historic opening wardrobe.
+    fixed_setup = fixed_setup.replace(
+        '與開場服裝依照參考圖片',
+        '依照參考圖片；開場服裝僅是初始造型，不代表本段外觀')
+    output = []
+    opening = False
+    for line in fixed_setup.splitlines():
+        stripped = line.strip().lstrip('-* ').strip()
+        opener = re.match(r'^(開場穿著|初始穿著|初始服裝|開場服裝)\s*[：:]\s*(.*)$',
+                          stripped)
+        if opener:
+            opening = True
+            output.append('初始服裝僅作歷史參考；本段已記錄的屬性由 Python 當前狀態決定。')
+            inline = opener.group(2).strip()
+            if inline and not any(inline in entry for entry in known):
+                output.append(inline)
+            continue
+        if opening:
+            if (not stripped or stripped.endswith(('：', ':')) or
+                    stripped.startswith(('服裝依', '已卸除', '不重新', '人物', '整體',
+                                         '故事', '演唱', '攝影', '後半段'))):
+                opening = False
+            elif any(stripped in entry for entry in known):
+                # The Python-ledger category is known; discard the stale
+                # reference outfit for this category. Other items stay.
+                continue
+        output.append(line)
+    return '\n'.join(output)
