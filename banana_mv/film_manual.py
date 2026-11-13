@@ -423,12 +423,18 @@ def _split_film_shared_source(source):
             break
     if first_story is None or first_story == 0:
         return '', source
-    shared_lines = lines[:first_story]
-    # Global setting declarations must be explicit. This protects unheaded
-    # plots from accidentally becoming a spoiler-bearing shared setup.
-    if not any(_FILM_SHARED_HEADING.fullmatch(line) for line in shared_lines):
+    # Like Classic's setup/story split: keep the *setting* section, not a
+    # leading premise or overview which may reveal a later outcome. Start at
+    # the first explicitly marked shared/role section in the prelude.
+    starts = [i for i, line in enumerate(lines[:first_story])
+              if _FILM_SHARED_HEADING.fullmatch(line)]
+    if not starts:
         return '', source
-    common = '\n'.join(shared_lines).strip()
+    explicit_common = next((i for i in starts if re.match(
+        r'^\s*(?:#{1,6}\s*)?(?:【)?(?:共同設定|共通設定|共用設定|全局設定|全域設定|固定設定|全片固定設定)',
+        lines[i])), None)
+    start_at = explicit_common if explicit_common is not None else starts[0]
+    common = '\n'.join(lines[start_at:first_story]).strip()
     narrative = '\n'.join(lines[first_story + int(strip_heading):]).strip()
     return (common, narrative) if narrative else ('', source)
 
