@@ -79,6 +79,21 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     atoms = []
     for chapter_index, chapter in enumerate(chapters):
         actions = _shot_action_units("\n".join(chapter['actions']))
+        # One interrupted utterance with a short pause is still one dramatic
+        # phrase (e.g. "所以……" / "到底還要修多久？"). Keep it in one clip.
+        merged = []
+        position = 0
+        while position < len(actions):
+            head = re.search(r'\(S\d+\)', actions[position])
+            if (head and position + 2 < len(actions)
+                and re.fullmatch(r'(?:短暫|片刻)?(?:停頓|沉默)[。…！!]*', actions[position+1])
+                and head.group() in actions[position+2]):
+                merged.append('\n'.join(actions[position:position+3]))
+                position += 3
+            else:
+                merged.append(actions[position])
+                position += 1
+        actions = merged
         if not actions:
             continue
         weights = []
@@ -106,16 +121,21 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
 
     # Jointly choose frame-grid durations AND boundaries between complete
     # performed units. Prefer authored SHOT boundaries, but never split a line.
+    target = round(total_seconds * FPS)
     states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
     for clip_no in range(1, count + 1):
         following = {}
         for (used, cursor), (cost, path) in states.items():
             for frames in choices:
                 new_used = used + frames
-                if new_used > (total_seconds + 1.5) * FPS:
+                remaining = count - clip_no
+                if (new_used + remaining*minimum > target + 1.5*FPS
+                    or new_used + remaining*maximum < target - 1.5*FPS):
                     continue
                 last_clip = clip_no == count
-                stops = [len(atoms)] if last_clip else range(cursor + 1, len(atoms) - (count - clip_no) + 1)
+                stops = ([len(atoms)] if last_clip else
+                         (boundary for boundary in range(cursor + 1, len(atoms) - (count - clip_no) + 1)
+                          if abs(atoms[boundary-1]['source_end'] - new_used / FPS) <= 4.0))
                 for stop in stops:
                     if stop <= cursor:
                         continue
