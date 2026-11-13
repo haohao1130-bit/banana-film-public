@@ -127,7 +127,7 @@ def _last_narrative(actions, previous):
     return previous
 
 
-def allocate_timed_chapters(chapters, segments, commission, *, timeline='SONG'):
+def allocate_timed_chapters(chapters, segments, commission, *, timeline='SONG', skip_empty_commissions=False):
     """Map time-anchored scenes onto exact audio slots (including transitions).
 
     commission is the existing local 9B handoff writer, unmodified. No future
@@ -150,6 +150,11 @@ def allocate_timed_chapters(chapters, segments, commission, *, timeline='SONG'):
                 continue
             phase = matches.index(i)
             assigned, _ = commission(chapter, phase, len(matches), previous)
+            # A chapter crossing a clip boundary may have no event beat in this
+            # window. Never deliver only its camera/music constraints as a shot.
+            # Film opts into this rule; existing MV callers retain old behavior.
+            if skip_empty_commissions and not assigned.strip():
+                continue
             begin = max(chapter['start'], clip_start)-clip_start
             end = min(chapter['end'], clip_end)-clip_start
             fragments.append(
@@ -166,7 +171,8 @@ def allocate_timed_chapters(chapters, segments, commission, *, timeline='SONG'):
             first = phase*size//len(matches)
             last = (phase+1)*size//len(matches)
             local = chapter['actions'][first:last]
-            previous = _last_narrative(local, previous)
+            if local:
+                previous = _last_narrative(local, previous)
         if not fragments:
             fragments = [
                 'PYTHON-OWNED SOURCE INTERVAL — no explicitly timed story event '
