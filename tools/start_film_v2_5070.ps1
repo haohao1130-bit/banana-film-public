@@ -1,6 +1,6 @@
 # BANANA FILM 5070 STUDIO - Windows 10/11 PowerShell 5.1, no model installations.
 param(
- [string]$DataRoot='F:\BANANA_FILM_5070_STUDIO\Media',
+ [string]$DataRoot='F:\AI\BANANA_FILM_5070_STUDIO\Media',
  [string]$ComfyUrl='http://127.0.0.1:8000',
  [string]$ComfyBase='',
  [string]$ComfySource='',
@@ -43,7 +43,7 @@ Write-Host "Film backend Python: $python (CUDA version is NOT a frontend gate)"
 foreach($bin in @('ffmpeg','ffprobe')){
  if(-not (Get-Command $bin -ErrorAction SilentlyContinue)){ throw "$bin not found in PATH." }
 }
-foreach($name in @('','library','videos','films_v2','logs','comfy_input','comfy_output','comfy_temp')){
+foreach($name in @('','library','films','_runtime\logs','_runtime\comfy_input','_runtime\comfy_output','_runtime\comfy_temp')){
  New-Item -ItemType Directory -Force -Path (Join-Path $DataRoot $name) | Out-Null
 }
 function Read-JsonUrl([string]$url){
@@ -68,25 +68,25 @@ if(-not $nodes){
  $main=Join-Path $ComfySource 'main.py'
  if(-not (Test-Path -LiteralPath $main -PathType Leaf)){throw "ComfyUI source missing: $main. Set -ComfySource or start port 8000 manually."}
  if($ComfyUrl -ne 'http://127.0.0.1:8000'){throw 'Auto-launch only supports default local ComfyUI port 8000.'}
- $input=Join-Path $DataRoot 'comfy_input'
- $output=Join-Path $DataRoot 'comfy_output'
- $temp=Join-Path $DataRoot 'comfy_temp'
+ $input=Join-Path $DataRoot '_runtime\comfy_input'
+ $output=Join-Path $DataRoot '_runtime\comfy_output'
+ $temp=Join-Path $DataRoot '_runtime\comfy_temp'
  $comfyArgs=@('-u',('"' + $main + '"'),'--base-directory',('"' + $ComfyBase + '"'),'--input-directory',('"' + $input + '"'),'--output-directory',('"' + $output + '"'),'--temp-directory',('"' + $temp + '"'),'--listen','127.0.0.1','--port','8000','--lowvram','--preview-method','none')
  Write-Host 'Starting existing CUDA13 ComfyUI with F: cache / --lowvram.'
  if(-not $comfyPython){throw 'No working CUDA13 ComfyUI Python found. Start ComfyUI with the existing MV V4 launcher, or repair your CU130 environment; no Torch was modified.'}
  Write-Host "Starting ComfyUI with CUDA13 Python: $comfyPython"
- $comfy=Start-Process -FilePath $comfyPython -ArgumentList $comfyArgs -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\comfy.stderr.log')
+ $comfy=Start-Process -FilePath $comfyPython -ArgumentList $comfyArgs -WorkingDirectory $ComfySource -PassThru -RedirectStandardOutput (Join-Path $DataRoot '_runtime\logs\comfy.stdout.log') -RedirectStandardError (Join-Path $DataRoot '_runtime\logs\comfy.stderr.log')
  $comfyLaunched=$true
  $deadline=(Get-Date).AddMinutes(3)
  while(-not $nodes -and (Get-Date) -lt $deadline){
   Start-Sleep -Seconds 3
   $nodes=Read-JsonUrl "$ComfyUrl/object_info"
-  if($comfy.HasExited){throw 'ComfyUI startup exited; inspect F:\BANANA_FILM_5070_STUDIO\Media\logs\comfy.stderr.log.'}
+  if($comfy.HasExited){throw 'ComfyUI startup exited; inspect F:\AI\BANANA_FILM_5070_STUDIO\Media\_runtime\logs\comfy.stderr.log.'}
  }
- if(-not $nodes){throw 'ComfyUI did not become ready; inspect Media\logs\comfy.stderr.log.'}
+ if(-not $nodes){throw 'ComfyUI did not become ready; inspect Media\_runtime\logs\comfy.stderr.log.'}
 }
 if(-not $ComfyInputDir){
- if($comfyLaunched){$ComfyInputDir=Join-Path $DataRoot 'comfy_input'}
+ if($comfyLaunched){$ComfyInputDir=Join-Path $DataRoot '_runtime\comfy_input'}
  else{$ComfyInputDir=Join-Path $ComfyBase 'input'}
 }
 if(-not (Test-Path -LiteralPath $ComfyInputDir -PathType Container)){
@@ -118,7 +118,7 @@ $config | Add-Member -NotePropertyName 'comfy_input_dir' -NotePropertyValue $Com
 $env:BANANA_DATA=$DataRoot
 $env:BANANA_PORT=[string]$Port
 $healthUrl="http://127.0.0.1:$Port/api/health"
-$receiptPath=Join-Path $DataRoot 'logs\server_process.json'
+$receiptPath=Join-Path $DataRoot '_runtime\logs\server_process.json'
 $expectedRoot=[System.IO.Path]::GetFullPath($DataRoot).TrimEnd('\')
 $expectedCommit=(& git -C $project rev-parse --short=9 HEAD)
 if($LASTEXITCODE -ne 0 -or -not $expectedCommit){throw 'Cannot read current Git commit; verify the F-drive checkout.'}
@@ -176,12 +176,12 @@ if($health){
  }
 }
 if(-not $health){
- $proc=Start-Process -FilePath $python -ArgumentList @('-u','-m','film_v2.local_classic_server') -WorkingDirectory $project -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\server.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\server.stderr.log')
+ $proc=Start-Process -FilePath $python -ArgumentList @('-u','-m','film_v2.local_classic_server') -WorkingDirectory $project -PassThru -RedirectStandardOutput (Join-Path $DataRoot '_runtime\logs\server.stdout.log') -RedirectStandardError (Join-Path $DataRoot '_runtime\logs\server.stderr.log')
  $deadline=(Get-Date).AddSeconds(80)
  while(-not $health -and (Get-Date) -lt $deadline){
   Start-Sleep -Seconds 2
   $health=Read-JsonUrl $healthUrl
-  if($proc.HasExited){throw 'V2 service failed; check F:\BANANA_FILM_5070_STUDIO\Media\logs\server.stderr.log.'}
+  if($proc.HasExited){throw 'V2 service failed; check F:\AI\BANANA_FILM_5070_STUDIO\Media\_runtime\logs\server.stderr.log.'}
  }
 }
 if(-not $health -or $health.engine -ne 'colab_film' -or $health.variant -ne 'rtx5070-fdrive'){
@@ -202,7 +202,7 @@ Write-Host ''
 Write-Host 'BANANA FILM 5070 STUDIO - FULL COLAB UI + FUNCTION PARITY READY'
 Write-Host "UI: http://127.0.0.1:$Port"
 Write-Host "Uploaded originals: $(Join-Path $DataRoot 'library')"
-Write-Host "Finished videos: $(Join-Path $DataRoot 'videos')"
+Write-Host "Finished videos: $(Join-Path (Split-Path -Parent $DataRoot) 'videos')"
 Write-Host "Colab-compatible Film projects: $(Join-Path $DataRoot 'films')"
 Write-Host "Original Python-Owned V2 projects preserved: $(Join-Path $DataRoot 'films_v2')"
 Write-Host "ComfyUI: $ComfyUrl; input: $ComfyInputDir"
