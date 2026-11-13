@@ -18,6 +18,15 @@ from banana_mv.film_continuity import motion_prefix,render_frames,prepare_motion
 import test_film as film_tests
 
 
+def fake_prepare_tail(source,dest,input_dir,stem,sha):
+    # RGB context files exist on disk in the production path; older mocks
+    # returned filenames without writing the files, then read_bytes failed.
+    dest=Path(dest);dest.mkdir(parents=True,exist_ok=True)
+    names=[f'tail{i}.png' for i in range(5)]
+    for name in names:(dest/name).write_bytes(b'fake-context-image')
+    return names,{'source_sha256':sha}
+
+
 class MotionGraphTests(unittest.TestCase):
     def test_five_frame_guide_preserves_all_nine_reference_ordinals(self):
         graph=build_workflow([f'actor{i}.png' for i in range(9)],None,64,64,226,'prompt',1,native_audio=True)
@@ -70,7 +79,10 @@ class MotionGraphTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'wait_generation',return_value={}))
                 stack.enter_context(patch.object(app,'video_info',return_value={}))
                 stack.enter_context(patch.object(app.backend,'comfy_download',side_effect=lambda c,e,p:p.write_bytes(b'raw')))
-                prepare=stack.enter_context(patch('banana_mv.film_continuity.prepare_motion_tail',return_value=([f'tail{i}.png' for i in range(5)],{'source_sha256':'source'})))
+                prepare=stack.enter_context(patch('banana_mv.film_continuity.prepare_motion_tail',
+                    side_effect=lambda source,dest,inp,stem:fake_prepare_tail(source,dest,inp,stem,'source')))
+                stack.enter_context(patch('banana_mv.services.upload_comfy_image',
+                                          side_effect=lambda cfg,name,data,mime:name))
                 stack.enter_context(patch.object(film,'trim_native',side_effect=trim))
                 stack.enter_context(patch.object(film,'require_audio'))
                 stack.enter_context(patch.object(app,'assemble',side_effect=lambda parts,song,dst,*_:dst.write_bytes(b'final')))
@@ -99,7 +111,10 @@ class MotionGraphTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'wait_generation',return_value={}))
                 stack.enter_context(patch.object(app,'video_info',return_value={}))
                 stack.enter_context(patch.object(app.backend,'comfy_download',side_effect=lambda c,e,p:p.write_bytes(b'raw')))
-                prepare=stack.enter_context(patch('banana_mv.film_continuity.prepare_motion_tail',return_value=([f'tail{i}.png' for i in range(5)],{'source_sha256':'new-source'})))
+                prepare=stack.enter_context(patch('banana_mv.film_continuity.prepare_motion_tail',
+                    side_effect=lambda source,dest,inp,stem:fake_prepare_tail(source,dest,inp,stem,'new-source')))
+                stack.enter_context(patch('banana_mv.services.upload_comfy_image',
+                                          side_effect=lambda cfg,name,data,mime:name))
                 stack.enter_context(patch('banana_mv.film_media.trim_native',side_effect=trim))
                 app.GPU_LOCK.acquire();takes.retake_worker(job,cfg,None,None,batch,'done',[photo])
             self.assertEqual(job['retake']['status'],'done',job['retake'].get('error'))
