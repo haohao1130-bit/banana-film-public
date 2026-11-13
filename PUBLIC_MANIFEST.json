@@ -68,7 +68,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "051ff88d50a0d69a3cbbab2a8ce6f4b15552cd6d24c05233958c897eddd6a4b2"
+      "sha256": "a35521ec6525f7764498b41f91904bdcbf26aff0797632192985a143683b354e"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -136,7 +136,7 @@
     },
     {
       "path": "banana_mv/web/film_review.js",
-      "sha256": "78cae7cb381f33d035a0daae91c50c616bb4a7e92485a8e0eb72c773507b2c50"
+      "sha256": "91f668b377593f7fb0b2ee6213264ff52abf886a6f84f3e1d59e8989eca51c32"
     },
     {
       "path": "banana_mv/web/index.html",
