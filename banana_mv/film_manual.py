@@ -52,6 +52,22 @@ def split_native_h3(story, single_seconds):
     return result
 
 
+def distribute_manual_prompt(clips, total_seconds, ceiling):
+    """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
+    if len(clips) != 1 or total_seconds <= ceiling:
+        return clips
+    _, source = clips[0]
+    largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
+    count = math.ceil(total_seconds / largest)
+    units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
+             if part.strip()]
+    if len(units) < count:
+        raise ValueError(f'全片 {total_seconds:g} 秒需分成 {count} 段。請用換行分開各段事件，或標出 CLIP 邊界。')
+    cuts = [round(i * len(units) / count) for i in range(count + 1)]
+    return [(total_seconds / count, '\n'.join(units[cuts[i]:cuts[i+1]]))
+            for i in range(count)]
+
+
 def legal_frames(seconds, ceiling):
     if not isinstance(seconds, (int,float)) or isinstance(seconds,bool) or not math.isfinite(seconds):
         raise ValueError('手動分段秒數必須是正確的有限數字。')
