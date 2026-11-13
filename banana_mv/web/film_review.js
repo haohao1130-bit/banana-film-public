@@ -41,7 +41,7 @@ function renderClipPreviews(job){
       const note=document.createElement('p');note.className='muted';version.append(select,use);card.append(label,video,version,note);$('clip-list').append(card);
       const fixLabel=document.createElement('label');fixLabel.textContent='局部修改建議（選填）';
       const correction=document.createElement('textarea');correction.rows=3;correction.maxLength=job.request?.manual_h3?30000:3000;
-       if(job.request?.manual_h3)correction.placeholder='手動 H3：若要修改此段，貼上完整六區塊提示詞；只想換 Seed 請留空。';
+       if(job.request?.manual_h3)correction.placeholder='手動 H3：若要修改此段，貼上該段替換提示詞；只想換 Seed 請留空。';
       correction.setAttribute('aria-label',`第 ${i+1} 段鏡頭的局部修改建議`);
       correction.placeholder='例如：表情更憤怒；增加手部操作特寫；保留事件，只改這段拍法。';
       const help=document.createElement('p');help.className='muted';help.textContent='以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。填寫後勾選此段，9B 只修這段原稿。';
