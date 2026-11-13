@@ -124,7 +124,8 @@ $expectedCommit=(& git -C $project rev-parse --short=9 HEAD)
 if($LASTEXITCODE -ne 0 -or -not $expectedCommit){throw 'Cannot read current Git commit; verify the F-drive checkout.'}
 $health=Read-JsonUrl $healthUrl
 if($health){
- if($health.engine -ne 'python_owned_film_v2' -or $health.variant -ne 'rtx5070-fdrive'){
+ if($health.variant -ne 'rtx5070-fdrive' -or
+    $health.engine -notin @('colab_film','python_owned_film_v2')){
   throw "Port $Port is used by a different application. Refusing to stop it."
  }
  $reportedRoot=[string]$health.data_root
@@ -132,8 +133,9 @@ if($health){
   throw "Port $Port is already bound to another data root: $reportedRoot"
  }
  $runningCommit=[string]$health.version.commit
- if($runningCommit -ne $expectedCommit){
-  Write-Host "Loaded V2 build $runningCommit differs from updated checkout $expectedCommit."
+ # Old Python-Owned V2 process must also be upgraded to the actual Colab Film UI.
+ if($runningCommit -ne $expectedCommit -or $health.engine -ne 'colab_film'){
+  Write-Host "Colab Film parity: switching 8195 backend from $($health.engine) / $runningCommit to colab_film / $expectedCommit."
   if($null -eq $health.busy){
    throw 'Existing 8195 backend is too old to report GPU activity. Close ONLY the old BANANA FILM backend once, then double-click again. ComfyUI can stay on.'
   }
@@ -161,8 +163,8 @@ if($health){
   }
   $processInfo=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
   if(-not $processInfo -or
-     [string]$processInfo.CommandLine -notmatch '(?i)(?:^|\s)-m\s+film_v2\.server(?:\s|$)'){
-   throw "PID $ownerPid is not a verified film_v2.server process. Refusing to kill it."
+     [string]$processInfo.CommandLine -notmatch '(?i)(?:^|\s)-m\s+film_v2\.(?:server|local_classic_server)(?:\s|$)'){
+   throw "PID $ownerPid is not a verified local Film backend process. Refusing to kill it."
   }
   Write-Host "Safely restarting outdated Film-only process PID $ownerPid ..."
   Stop-Process -Id $ownerPid -ErrorAction Stop
@@ -174,7 +176,7 @@ if($health){
  }
 }
 if(-not $health){
- $proc=Start-Process -FilePath $python -ArgumentList @('-u','-m','film_v2.server') -WorkingDirectory $project -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\server.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\server.stderr.log')
+ $proc=Start-Process -FilePath $python -ArgumentList @('-u','-m','film_v2.local_classic_server') -WorkingDirectory $project -PassThru -RedirectStandardOutput (Join-Path $DataRoot 'logs\server.stdout.log') -RedirectStandardError (Join-Path $DataRoot 'logs\server.stderr.log')
  $deadline=(Get-Date).AddSeconds(80)
  while(-not $health -and (Get-Date) -lt $deadline){
   Start-Sleep -Seconds 2
@@ -182,8 +184,8 @@ if(-not $health){
   if($proc.HasExited){throw 'V2 service failed; check F:\BANANA_FILM_5070_STUDIO\Media\logs\server.stderr.log.'}
  }
 }
-if(-not $health -or $health.engine -ne 'python_owned_film_v2' -or $health.variant -ne 'rtx5070-fdrive'){
- throw 'Wrong/missing V2 service at requested port.'
+if(-not $health -or $health.engine -ne 'colab_film' -or $health.variant -ne 'rtx5070-fdrive'){
+ throw 'Wrong/missing full Colab Film Studio backend at requested port.'
 }
 if(([string]$health.data_root).TrimEnd('\') -ine $expectedRoot){
  throw "Data root mismatch: $($health.data_root); expected $expectedRoot"
@@ -197,11 +199,12 @@ if($proc -and -not $proc.HasExited){
 }
 Write-Host "Running backend version: $($health.version.branch) | $($health.version.commit)"
 Write-Host ''
-Write-Host 'BANANA FILM 5070 STUDIO - READY'
+Write-Host 'BANANA FILM 5070 STUDIO - FULL COLAB UI + FUNCTION PARITY READY'
 Write-Host "UI: http://127.0.0.1:$Port"
 Write-Host "Uploaded originals: $(Join-Path $DataRoot 'library')"
 Write-Host "Finished videos: $(Join-Path $DataRoot 'videos')"
-Write-Host "Saved clips/projects: $(Join-Path $DataRoot 'films_v2')"
+Write-Host "Colab-compatible Film projects: $(Join-Path $DataRoot 'films')"
+Write-Host "Original Python-Owned V2 projects preserved: $(Join-Path $DataRoot 'films_v2')"
 Write-Host "ComfyUI: $ComfyUrl; input: $ComfyInputDir"
 Write-Host 'No Torch/CUDA/model changes. Do NOT generate from MV concurrently.'
 if(-not $NoBrowser){Start-Process "http://127.0.0.1:$Port/" | Out-Null}
