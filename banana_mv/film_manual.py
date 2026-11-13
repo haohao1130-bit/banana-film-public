@@ -212,7 +212,8 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
     return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
             + '\n\nsummary:\nFilm the assigned shots in order within '
-            + f'{length:.3f} seconds. Preserve the written lines and speaker IDs.'
+            + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; ' 
+            + 'all other Chinese stage directions describe silent actions. Preserve speaker IDs.'
             + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
             + '\n\ndetailed_description:\n' + details
             + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
