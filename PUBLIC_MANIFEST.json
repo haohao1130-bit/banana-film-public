@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "7df2663bf1c4d24d41af6e7143f9026e51d1dc61723bbc035354e09487f01370"
+      "sha256": "a4bf01059f9eda50965790a8b99f87798eb2dbaba417244d7a768983e82ca607"
     },
     {
       "path": "banana_mv/film_continuity.py",
@@ -104,7 +104,7 @@
     },
     {
       "path": "banana_mv/services.py",
-      "sha256": "d49c59753f696a7a3831380b1a1428e30f97367b3205dd0dcc14605e7218e642"
+      "sha256": "f9984d1e5aab5c791f6995184e365d8887cfcddce29249ced637851944ff0806"
     },
     {
       "path": "banana_mv/shoot_plan.py",
