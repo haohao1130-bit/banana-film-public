@@ -811,6 +811,15 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     if marked and (len(marked)!=len(rows) or len(set(marked))!=1):
         raise ValueError('手動分段共同設定交接不完整或互相矛盾，請保留相同的固定設定。')
     common=marked[0] if marked else ''
+    if not common and shared_sources:
+        # Compiled SHOT work orders already embed the original fixed settings
+        # in subject_definitions. Surface that same immutable identity/world
+        # table as shared_setup rather than leaving the job-level field blank.
+        # Local evolving wardrobe notes must stay specific to each slot.
+        baseline=[fixed.split('\nCURRENT_ACTOR_STATE (',1)[0].strip()
+                  for fixed,_ in shared_sources]
+        if baseline[0] and len(set(baseline)) == 1:
+            common=baseline[0]
     for row,(fixed,_) in zip(rows,shared_sources):
         # The fixed reference is a real per-slot work-order field, just like
         # Classic MV. Do NOT copy the previous clip's final source sentence as
