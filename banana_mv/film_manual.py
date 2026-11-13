@@ -836,6 +836,26 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         raise ValueError(f'手動全咒總時長 {total_authored:.2f} 秒超過本次設定 {target:g} 秒。')
     if req.get('target_is_exact') and abs(total_authored-target)>tolerance + 1e-8:
         raise ValueError(f'手動全咒 {total_authored:.2f} 秒與指定總長 {target:g} 秒不一致。')
+    ceiling=float(req['segment_seconds'])
+    model_counts=[legal_frames(seconds,ceiling) for seconds,_ in clips]
+    delivery_counts=model_counts
+    aligned_duration=sum(model_counts)/FPS
+    if req.get('target_is_exact') and abs(aligned_duration-target)>tolerance + 1e-8:
+        # Keep authored clip boundaries on the delivery timeline. The model
+        # renders on its coarser grid and trim_native trims the excess.
+        boundaries=[0]
+        elapsed=0.0
+        for seconds,_ in clips:
+            elapsed+=seconds
+            boundaries.append(round(elapsed*FPS))
+        authored_counts=[end-start for start,end in zip(boundaries,boundaries[1:])]
+        from banana_mv.film_continuity import render_frames
+        required=[render_frames(frames) if i and req.get('mode')=='chain5'
+                  else 5+17*math.ceil((frames-5)/17)
+                  for i,frames in enumerate(authored_counts)]
+        if max(required)<=math.floor(ceiling*FPS):
+            delivery_counts=authored_counts
+            model_counts=required
     for i,(seconds,text) in enumerate(clips):
         if not isinstance(text,str) or not text.strip():
             raise ValueError(f'第 {i+1} 段是空的。')
@@ -849,11 +869,11 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
             fixed=mapped.split('subject_definitions:\n',1)[1].split(
                 '\n\nsummary:',1)[0].strip()
         shared_sources.append((fixed, mapped.startswith(_FILM_FIXED_BLOCK_START)))
-        frames=legal_frames(seconds,float(req['segment_seconds']))
+        frames=delivery_counts[i]
         actual=frames/FPS
         validator(mapped,actual,req['sound_mode'])
         row={'index':i,'start_frame':frame_start,'frames':frames,
-             'start':frame_start/FPS,'seconds':actual,'model_frames':frames,
+             'start':frame_start/FPS,'seconds':actual,'model_frames':model_counts[i],
              'status':'waiting','director_mode':'story',
              'director_plan':{'index':i,'mode':'story','event':mapped},
              'manual_h3_prompt':mapped}
