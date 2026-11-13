@@ -15,7 +15,7 @@
     'overflow-wrap:anywhere', 'margin:6px 0'
   ].join(';');
   // Keep the original Colab masthead layout; place only the commit stamp in its edition label.
-  (header.querySelector('.edition') || header).append(label);
+  (document.getElementById('film-studio-tools') || header).append(label);
   const restart = document.createElement('button');
   restart.type = 'button';
   restart.textContent = '重啟廚房';
@@ -26,7 +26,7 @@
   switchRoom.disabled = true;
   switchRoom.title = '切換服務尚未啟用';
   switchRoom.textContent = '切換至煉丹室（MV）';
-  label.after(restart, switchRoom);
+  label.after(switchRoom, restart);
   let restarting = false;
   restart.addEventListener('click', async () => {
     if (!window.confirm('重啟本機短片廚房？')) return;
