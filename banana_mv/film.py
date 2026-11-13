@@ -222,6 +222,11 @@ def review_draft(job):
 
 
 
+def validate_manual_sound(text, seconds, sound_mode):
+    if sound_mode == 'ambient' and re.search(r'\(S[12]\)|<d>', text, re.I):
+        raise ValueError('無對白模式不可使用說話者標記或 <d> 台詞。')
+
+
 def validate_film_format(text,seconds,sound_mode):
     """Deterministic MiniMax H3 format checks; no plot or camera-style judgement."""
     if text.lstrip().startswith('subject_definitions:'):
@@ -521,7 +526,7 @@ def start(req):
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','chain5') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
-    req.setdefault('mode','chain5');req.setdefault('intensity','high')
+    req.setdefault('mode','chain5');req.setdefault('intensity','normal')
     if req['intensity'] not in FILM_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
     if req['sound_mode'] not in ('auto','ambient','dialogue'):raise ValueError('未知聲音模式。')
@@ -554,8 +559,6 @@ def start(req):
         from banana_mv.film_manual import split_native_h3,make_manual_plan
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         manual_clips=split_native_h3(story,single_seconds)
-        if manual_clips is None:
-            raise ValueError('純手動模式需要 H3 官方六區塊全咒。一般故事文字請開啟自動導演。')
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
             # Explicit CLIP timing sets the duration in prompt mode.
@@ -566,7 +569,7 @@ def start(req):
                            timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
             req['manual_h3']=True
             manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
-                                         len(rows),validate_film_format,
+                                         len(rows),validate_manual_sound,
                                          title=str(req.get('project_name') or '手動 H3 原生攝影'))
     size=dimensions(req.get('aspect','16:9'),req.get('width'));out=output_dimensions(req.get('aspect','16:9'),req.get('width'))
     if not manual_plan:
@@ -620,7 +623,7 @@ def save_script(job_id,draft,revision,render=False):
             from banana_mv.film_manual import make_manual_plan
             clips=[(row.get('seconds'),row.get('brief')) for row in draft.get('segments',[])]
             plan=make_manual_plan(clips,job['request'],normalize_prompt,map_story,
-                                  len(job['images_comfy']),validate_film_format,
+                                  len(job['images_comfy']),validate_manual_sound,
                                   title=str(draft.get('title') or job['title']))
         else:
             plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
@@ -736,7 +739,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                     if tail:
                         prompt=re.sub(r'<Picture (\d+)>',
                                       lambda m:f'<Picture {int(m[1])+1}>',prompt)
-                    validate_film_format(normalize_prompt(prompt,len(originals)+int(bool(tail))),
+                    validate_manual_sound(normalize_prompt(prompt,len(originals)+int(bool(tail))),
                                          seg['seconds'],job['request']['sound_mode'])
                 else:
                     prompt=write_prompt(cfg,job,seg,originals,tail)
