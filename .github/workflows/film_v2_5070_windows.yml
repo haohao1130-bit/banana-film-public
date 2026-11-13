@@ -36,8 +36,12 @@ jobs:
         env:
           BANANA_DATA: /tmp/banana-film-5070-ci
         run: python -m unittest discover -s tests -p 'test_film_v2_*.py' -v
-      - name: Local UI JavaScript syntax
-        run: node --check film_v2/web/app.js
+      - name: Colab identical Film interface + local Git badge JS syntax
+        run: |
+          node --check banana_mv/web/film.js
+          node --check banana_mv/web/film_review.js
+          node --check film_v2/web/build_5070.js
+          node --check film_v2/web/app.js
 
   windows-powershell-syntax:
     runs-on: windows-latest
