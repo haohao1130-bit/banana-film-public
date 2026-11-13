@@ -15,12 +15,27 @@ class ComfyTests(unittest.TestCase):
         class Fake(BaseHTTPRequestHandler):
             def log_message(self,*args):pass
             def do_POST(self):
-                payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                body=self.rfile.read(int(self.headers['Content-Length']))
+                if self.path=='/upload/image':
+                    # Real ComfyUI accepts native multipart/form-data image
+                    # upload; do not interpret binary JPEG content as JSON.
+                    self.assert_multipart(body)
+                    payload=json.dumps({'name':'uploaded.jpg','subfolder':''}).encode()
+                    self.send_response(200);self.send_header('Content-Type','application/json')
+                    self.end_headers();self.wfile.write(payload);return
+                payload=json.loads(body)
                 if self.path=='/free':
                     self.send_response(200);self.end_headers();return
                 requests.append(payload)
                 result={'prompt_id':'p1'} if payload['prompt'] else {'error':'invalid'}
                 data=json.dumps(result).encode();self.send_response(200);self.end_headers();self.wfile.write(data)
+            def assert_multipart(self,body):
+                if not self.headers.get('Content-Type','').startswith('multipart/form-data;'):
+                    raise AssertionError('Expected native multipart upload')
+                if b'name="image"' not in body or b'Content-Type: image/jpeg' not in body:
+                    raise AssertionError('Missing image field or JPEG MIME type')
+                if b'\xff\xd8' not in body:
+                    raise AssertionError('Expected actual JPEG bytes')
             def do_GET(self):
                 if self.path=='/empty':
                     self.send_response(200);self.end_headers();return
