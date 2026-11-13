@@ -54,6 +54,25 @@ def split_native_h3(story, single_seconds):
     return result
 
 
+
+def _shot_action_units(body):
+    """Split a timed SHOT into indivisible performed beats, not one opaque blob.
+
+    Keep dialogue with its introducing cue and keep camera/music constraints
+    attached to actual performance in the same SHOT/clip only.
+    """
+    units=[]
+    for raw in body.splitlines():
+        line=raw.strip()
+        if not line:
+            continue
+        if units and units[-1].endswith(('：', ':')) and re.match(r'^\(S\d+\)\s*[「『<]',line):
+            units[-1]+='\n'+line
+        else:
+            units.append(line)
+    return units
+
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
@@ -78,8 +97,11 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
                 if re.match(r'^\s*配樂', line):
                     notes.extend(clause for clause in re.split(r'[，。；]', line)
                                  if re.search(rf'\bSHOT\s+0*{int(shot[1])}(?!\d)', clause, re.I))
+            actions=_shot_action_units(body)
+            if not actions:
+                raise ValueError(f'SHOT {int(shot[1]):02d} 沒有可拍攝的演出內容。')
             chapters.append({'start':float(shot[2]), 'end':float(shot[3]),
-                             'actions':[body], 'constraints':notes})
+                             'actions':actions, 'constraints':notes})
         global_audio = re.split(r'(?m)^[ \t]*(?:電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', appendix, maxsplit=1)[0]
         setup += '\n' + '\n'.join(
             line for line in global_audio.splitlines()
@@ -111,13 +133,21 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         def commission(chapter, phase, phases, previous):
             actions = chapter['actions']
             local = actions[phase*len(actions)//phases:(phase+1)*len(actions)//phases]
+            if not local:
+                return '', previous
             prior_lines = [line for line in previous.splitlines()
-                           if not re.search(r'[(]S\d+[)]|[「」『』]|台詞|攝影機|鏡頭', line)]
+                           if line.strip() and not re.search(
+                               r'[(]S\d+[)]|[「」『』]|台詞|攝影機|鏡頭|'
+                               r'Follow the authored|Follow the specified|'
+                               r'^(?:subject_definitions|non_diegetic_music|overall_soundscape):',
+                               line, re.I)]
             context = ('ALREADY ESTABLISHED; continue without replay: '+prior_lines[-1]
                        if prior_lines else '')
-            return '\n'.join(filter(None, [context, *local])), local[-1] if local else previous
+            return '\n'.join(filter(None, [context, *local])), local[-1]
 
-        prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
+        prompts = allocate_timed_chapters(
+            chapters, windows, commission, timeline='FILM',
+            skip_empty_commissions=True)
         if shots:
             state = _opening_actor_state(setup, chapters)
             return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds'], state))
@@ -154,7 +184,103 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     for i, match in enumerate(matches):
         stop = matches[i+1].start() if i+1 < len(matches) else len(prompt)
         body = prompt[match.end():stop].strip()
-        if not body or body.startswith('ALREADY ESTABLISHED;') and '\n' not in body:
+        actual=body.split('Constraints for THIS chapter only',1)[0]
+        actual=re.sub(r'(?m)^ALREADY ESTABLISHED;[^\n]*
+        if state:
+            actions = body.split('Constraints for THIS chapter only', 1)[0]
+            for line in actions.splitlines():
+                if not re.search(r'^ALREADY ESTABLISHED|\(S\d+\)|[「」『』]', line):
+                    before = {kind: item['status'] for kind, item in state.items()}
+                    _advance_actor_state(state, line)
+                    for kind, item in state.items():
+                        if item['status'] != before[kind]:
+                            item['changed'] = True
+        body = re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
+                      r'\1 <d>[Chinese] \2</d>', body)
+        prefix = f'[Shot {len(shots)+1}]'
+        if shots:
+            ms = max(previous_ms+1, round(float(match[1]) * length/source_length * 1000))
+            minutes, remaining = divmod(ms, 60000)
+            seconds, millis = divmod(remaining, 1000)
+            prefix += f' At {minutes:02d}:{seconds:02d}.{millis:03d},'
+            previous_ms = ms
+        shots.append(prefix + ' ' + body)
+    details = '\n\n'.join(shots) if shots else '[Shot 1] Continue the established scene.'
+    if opening:
+        details = details.replace('[Shot 1] ', '[Shot 1] Starting wardrobe state: '
+                                  + opening + '\nContinue this state. Perform only the current shot actions.\n', 1)
+    refs = sorted(set(re.findall(r'<Picture (\d+)>', fixed + '\n' + details)), key=int)
+    retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
+    return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
+            + '\n\nsummary:\nFilm the assigned shots in order within '
+            + f'{length:.3f} seconds. Preserve the written lines and speaker IDs.'
+            + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
+            + '\n\ndetailed_description:\n' + details
+            + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
+            + '\n\nnon_diegetic_music:\nFollow the authored music cues for these shots.')
+
+
+
+def legal_frames(seconds, ceiling):
+    if not isinstance(seconds, (int,float)) or isinstance(seconds,bool) or not math.isfinite(seconds):
+        raise ValueError('手動分段秒數必須是正確的有限數字。')
+    if not 124/FPS <= seconds <= ceiling + 1e-8:
+        raise ValueError(f'手動段落需介於 {124/FPS:.3f}–{ceiling:g} 秒；超長全咒須明確拆成 CLIP。')
+    # The valid native AV counts are 5+17*k; choose the closest legal count
+    # rather than the legacy floor so a 35-second commissioned film can align.
+    candidates=range(124,math.floor(ceiling*FPS)+1,17)
+    try:
+        return min(candidates,key=lambda frames:(abs(frames/FPS-seconds),frames))
+    except ValueError as e:
+        raise ValueError('這個片段上限沒有 H3 合法影格數。') from e
+
+
+def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator,
+                     title='手動 H3 原生攝影'):
+    """Validate authored material, preserve *every* original shot and six fields."""
+    if not 1 <= len(clips) <= 34:
+        raise ValueError('手動 H3 需提供 1–34 段。')
+    rows=[]
+    frame_start=0
+    total_authored=sum(seconds for seconds,_ in clips)
+    if not math.isfinite(total_authored):
+        raise ValueError('總時長無效。')
+    cap = float(req['max_seconds'])
+    target = float(req.get('target_seconds',cap))
+    tolerance=float(req.get('timeline_tolerance',0))
+    if total_authored > target + tolerance + 1e-8:
+        raise ValueError(f'手動全咒總時長 {total_authored:.2f} 秒超過本次設定 {target:g} 秒。')
+    if req.get('target_is_exact') and abs(total_authored-target)>tolerance + 1e-8:
+        raise ValueError(f'手動全咒 {total_authored:.2f} 秒與指定總長 {target:g} 秒不一致。')
+    for i,(seconds,text) in enumerate(clips):
+        if not isinstance(text,str) or not text.strip():
+            raise ValueError(f'第 {i+1} 段是空的。')
+        mapped=normalize(map_mentions(req,text,image_count),image_count)
+        frames=legal_frames(seconds,float(req['segment_seconds']))
+        actual=frames/FPS
+        validator(mapped,actual,req['sound_mode'])
+        row={'index':i,'start_frame':frame_start,'frames':frames,
+             'start':frame_start/FPS,'seconds':actual,'model_frames':frames,
+             'status':'waiting','director_mode':'story',
+             'director_plan':{'index':i,'mode':'story','event':mapped},
+             'manual_h3_prompt':mapped}
+        rows.append(row)
+        frame_start+=frames
+    duration=frame_start/FPS
+    if duration>min(300.0,cap)+1e-8:
+        raise ValueError(f'對齊合法 H3 幀數後是 {duration:.2f} 秒，超出本次上限。請微調各段秒數。')
+    if req.get('target_is_exact') and abs(duration-target)>tolerance + 1e-8:
+        raise ValueError(f'合法影格對齊後為 {duration:.2f} 秒，超出指定 {target:g}±{tolerance:g} 秒；請調整 CLIP 長度。')
+    for row in rows:
+        # H3's six-section prompt ends with music. The previous last-line
+        # shortcut mistook the music template for a performed actor state and
+        # repeated it in every next clip. SHOT commissions already carry
+        # the actual prior action inside detailed_description.
+        row.update(song_seconds=duration,segment_count=len(rows),fixed_reference_settings='')
+    return {'title':title[:120],'duration':duration,'segments':rows,'shared_setup':''}
+, '', actual).strip()
+        if not actual or actual.startswith('PYTHON-OWNED SOURCE INTERVAL'):
+            # A camera/music-only fragment must not become an empty H3 [Shot].
             continue
         if state:
             actions = body.split('Constraints for THIS chapter only', 1)[0]
