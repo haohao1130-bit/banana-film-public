@@ -185,7 +185,7 @@ def _dialogue_budget_seconds(action):
     return 0.035
 
 
-def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
+def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, chain5=False):
     """Fit complete authored action/dialogue units to native H3 frame windows.
 
     A generation clip is not an authored SHOT: editorial SHOTs may cross clip
@@ -262,6 +262,8 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
             following = {}
             for (used, cursor), (cost, path) in states.items():
                 for frames in choices:
+                    if chain5 and slot_no > 1 and frames + 17 > maximum:
+                        continue
                     new_used = used + frames
                     remaining = slot_count - slot_no
                     if (new_used + remaining * minimum > target + 1.5 * FPS
@@ -585,7 +587,7 @@ def _native_master_storyboard(source):
     return '\n'.join(rows)
 
 
-def distribute_manual_prompt(clips, total_seconds, ceiling):
+def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
         return clips
@@ -655,7 +657,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
             if suffix:
                 fixed += '\n' + suffix
         if shots:
-            return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count)
+            return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, chain5=chain5)
         # Quantize the full timeline once, then distribute legal frame counts.
         minimum = 124
         maximum = math.floor(ceiling * FPS)
