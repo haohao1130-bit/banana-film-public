@@ -173,6 +173,7 @@ class FilmShotHandoffTests(unittest.TestCase):
         self.assertIn('Torso: Bare;',after_coat)
         self.assertIn('藍色外套 already removed, stays off.',after_coat)
         self.assertIn('初始服裝僅作歷史參考',after_coat)
+        self.assertIn('人物五官依照參考圖片',after_coat)
         self.assertNotIn('開場穿著：\n藍色外套',after_coat)
         self.assertIn('灰色長褲 worn.',after_coat)
         self.assertIn('黑色長靴 worn.',after_coat)
