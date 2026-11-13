@@ -16,6 +16,29 @@
   ].join(';');
   // Keep the original Colab masthead layout; place only the commit stamp in its edition label.
   (header.querySelector('.edition') || header).append(label);
+  const restart = document.createElement('button');
+  restart.type = 'button';
+  restart.textContent = '重啟丹爐';
+  restart.hidden = true;
+  label.after(restart);
+  let restarting = false;
+  restart.addEventListener('click', async () => {
+    if (!window.confirm('重啟本機短片丹爐？')) return;
+    restarting = true;
+    restart.disabled = true;
+    restart.textContent = '重啟中…';
+    try {
+      const response = await fetch('/api/film/restart', {
+        method: 'POST', headers: {'X-Banana-Control': 'film-restart'}
+      });
+      if (!response.ok) throw Error(response.status === 409 ? '作品處理中' : 'HTTP ' + response.status);
+    } catch (error) {
+      restarting = false;
+      restart.textContent = '重啟丹爐';
+      window.alert('重啟失敗：' + error.message);
+      void refreshVersion();
+    }
+  });
   let instance = null;
   async function refreshVersion() {
     try {
@@ -24,6 +47,8 @@
       const health = await response.json();
       if (health.engine !== 'colab_film' ||
           health.variant !== 'rtx5070-fdrive') throw Error('非 5070 製片服務');
+      restart.hidden = !health.restart_available;
+      restart.disabled = restarting || health.busy;
       const version = health.version || {};
       const branch = version.branch || 'unknown';
       const commit = version.commit || 'unknown';
@@ -40,5 +65,5 @@
     }
   }
   void refreshVersion();
-  setInterval(() => { void refreshVersion(); }, 15000);
+  setInterval(() => { void refreshVersion(); }, 3000);
 })();
