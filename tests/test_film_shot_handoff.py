@@ -110,6 +110,82 @@ class FilmShotHandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'不同的全片秒數'):
             film.declared_film_seconds('全片 35 秒。製作一支 40 秒影片。')
 
+    def test_real_style_sixty_second_shot_ruler_has_full_common_work_orders(self):
+        # Regression from cloud project c2f5019ac640: SHOT lines have no 秒,
+        # the global sections are numbered, and SHOT 11A is a camera subshot.
+        # The old branch treated the entire setup as actions in only clip 0.
+        intro=(
+            '大乘蕉宗影像｜測試片\n'
+            '影片類型：超寫實雙人對戲。\n'
+            '全片60秒\n'
+            '畫面比例：16:9橫屏。\n'
+            '對白語言：自然台灣華語。\n'
+            '故事核心\n'
+            '最後才知道這場離別其實是在修理電腦。\n'
+            '一、角色身份鎖定\n'
+            '(S1) = <Picture 1> = 女主角 = 台灣華語。\n'
+            '(S2) = <Picture 2> = 男主角 = 低沉台灣華語。\n'
+            '兩位人物五官、髮型與服裝嚴格依照角色參考圖片。\n'
+            '二、場景與攝影全局鎖定\n'
+            '場景：雨後的台灣公寓騎樓。\n'
+            '人物站位：女主角畫面左、男主角畫面右。\n'
+            '三、聲音與演技全局控制\n'
+            '聲音系統：遠處車聲、雨水滴答、自然華語。\n'
+            '固定演技：人物演出內斂真誠。\n'
+            '四、精密鏡頭時間軸\n'
+        )
+        shots=[]
+        for i in range(12):
+            a=i*5
+            lines=[f'SHOT {i+1:02d}｜{a:.2f}–{a+5:.2f}',
+                   f'{a:.2f}–{a+1:.2f}',
+                   f'女主角觀察第{i+1}個環境細節。',
+                   f'{a+1:.2f}–{a+3:.2f}',
+                   '(S1)「請你聽我說完。」',
+                   f'{a+3:.2f}–{a+5:.2f}',
+                   '男主角看著她，保持沉默。']
+            if i==10:
+                lines += ['SHOT 11A｜50.00–52.00',
+                          '女主角換一個攝影角度。']
+            shots.append('\n'.join(lines))
+        source=intro+'\n'.join(shots)
+        clips=film_manual.distribute_manual_prompt([(10,source)],60,10)
+        self.assertGreaterEqual(len(clips),6)
+        self.assertAlmostEqual(sum(t for t,_ in clips),60,delta=1.5)
+        self.assertTrue(all(prompt.startswith('subject_definitions:')
+                            for _,prompt in clips))
+        for _,prompt in clips:
+            self.assertIn('<Picture 1> = 女主角',prompt)
+            self.assertIn('<Picture 2> = 男主角',prompt)
+            self.assertIn('人物站位：女主角畫面左',prompt)
+            self.assertIn('聲音系統：遠處車聲',prompt)
+            self.assertNotIn('最後才知道這場離別',prompt)
+        for i in range(12):
+            self.assertEqual(sum(prompt.count(f'第{i+1}個環境細節')
+                                 for _,prompt in clips),1)
+        self.assertEqual(sum(prompt.count('SHOT 11A')
+                             for _,prompt in clips),1)
+        req={'max_seconds':61.5,'target_seconds':60,'target_is_exact':True,
+             'timeline_tolerance':1.5,'segment_seconds':10,'sound_mode':'auto'}
+        plan=film_manual.make_manual_plan(
+            clips,req,film.normalize_prompt,film.map_story,2,film.validate_manual_sound)
+        self.assertIn('<Picture 1> = 女主角',plan['shared_setup'])
+        self.assertIn('人物站位：女主角畫面左',plan['shared_setup'])
+        self.assertEqual(len(plan['segments']),len(clips))
+        for seg in plan['segments']:
+            self.assertIn('聲音系統：遠處車聲',seg['fixed_reference_settings'])
+
+    def test_prompt_total_cannot_hide_longer_final_shot(self):
+        # The most recent original source said 全片56秒, yet had a 58秒
+        # final SHOT and a 58秒 title. Never silently drop the ending.
+        source=('影片類型：短片。\n全片56秒\n'
+                '一、角色身份鎖定\n<Picture 1>：成年女性。\n'
+                '四、精密鏡頭時間軸\n'
+                'SHOT 01｜00.00–28.00\n角色往前走。\n'
+                'SHOT 02｜28.00–58.00\n角色完成最後一句對白。')
+        with self.assertRaisesRegex(ValueError,'56 秒.*58 秒'):
+            film_manual.distribute_manual_prompt([(10,source)],56,10)
+
     def test_sixty_second_shared_setup_is_a_full_order_for_every_clip(self):
         # Classic MV contract: settings are read once, not distributed as
         # chapter-1 actions. Every H3 segment must see the identical cast,
