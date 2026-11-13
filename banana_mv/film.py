@@ -329,12 +329,24 @@ def validate_plan(raw,req,image_count):
 
 
 def duration_contract(req):
-    """No minimum story length, including older saved target-policy projects."""
-    return {}
+    """Legacy saved jobs keep their old contract; new jobs carry the selected cap."""
+    if req.get('duration_contract_version') != 3:
+        return {}
+    return {'requested_seconds': req['target_seconds'],
+            'duration_source': req.get('duration_source','selector'),
+            'target_is_exact': bool(req.get('target_is_exact',False))}
 
 
 def validate_planned_duration(plan,req):
-    """Duration limits are enforced by the existing plan segment and hard-ceiling rules."""
+    """No lower-bound for AUTO. Explicit total-time scripts cannot silently drift."""
+    if req.get('duration_contract_version') != 3:
+        return None
+    target=req['target_seconds']
+    tolerance=req.get('timeline_tolerance',0)
+    if plan['duration'] > target + tolerance + 1e-8:
+        raise ValueError(f'導演排出 {plan["duration"]:.2f} 秒，超過指定 {target:g} 秒，不可擅自擴寫。')
+    if req.get('target_is_exact') and plan['duration'] < target - tolerance - 1e-8:
+        raise ValueError(f'劇本只有 {plan["duration"]:.2f} 秒，與明確指定 {target:g} 秒不符；只能安排原有事件。')
     return None
 
 
@@ -392,8 +404,11 @@ def plan_film(cfg,job,originals):
                     'max_clip_seconds':req['segment_seconds'],'min_clip_seconds':(req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS),
                     'instruction':'修正剛才拒絕稿並回傳完整 JSON。所有超限段落都必須拆分成更多合法生成段；不要原樣交回，'
                                   '不要只縮短秒數卻塞入原來過量的動作或台詞，也不要把同一事件完整重複兩遍。'
-                                  '保留必須事件、角色、原句、因果與結局。若故事總長不足，請新增有因果的後續事件再分段，'
-                                  '不要只拉長原段落或重複結局。共用設定 shared_setup 必須用標準 <Picture N> 標籤'
+                                  '保留必須事件、角色、原句、因果與結局。'
+                                  + ('若長度不足，僅重新安排原有事件，不可新增劇情、對白或額外結局。'
+                                     if not req.get('auto_director',True) else
+                                     '若長度不足，可在原主軸內增加必要的因果事件，不得湊秒或重複結局。')
+                                  + '共用設定 shared_setup 必須用標準 <Picture N> 標籤'
                                   '補齊 missing_reference_bindings 中所有已連接圖片的原始姓名／角色／用途對照；'
                                   '依使用者故事與圖片判斷，不得交換身分，也不要求所有參考角色每段都出場。'}
             parts=[*original_parts,('text','Previous rejected draft:\n'+raw),
@@ -454,17 +469,49 @@ def inputs(job,cfg):
     return originals,None,None
 
 
+_TOTAL_DURATION = re.compile(
+    r'(?i)(?:全片|全長|影片總長|總長|總時長|總時間|片長|總計|total\s+duration|total\s+length)'
+    r'\s*(?:[:：=]|為|是|約)?\s*(\d+(?:\.\d+)?)\s*(?:秒鐘?|s(?:ec(?:onds?)?)?\b)')
+
+
+def declared_film_seconds(story):
+    """Only explicit TOTAL time, not a numbered shot or action timestamp."""
+    declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
+    if not declared:return None
+    if any(not 6<=value<=180 for value in declared):
+        raise ValueError('提示詞全片時間需在 6–180 秒之內。')
+    if max(declared)-min(declared)>0.01:
+        raise ValueError('提示詞有不同的全片秒數，請先統一。')
+    return declared[0]
+
+
 def start(req):
     cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
-    maximum=req.get('max_seconds',60);chunk=req.get('segment_seconds','auto')
+    selected=req.get('max_seconds',60)
+    declaration=declared_film_seconds(story)
+    preference=req.get('duration_preference','selector' if 'max_seconds' in req else 'prompt')
+    if preference not in ('prompt','selector','custom'):
+        raise ValueError('未知的全片秒數選擇方式。')
+    if preference=='prompt' and declaration is not None:
+        maximum=declaration;duration_source='prompt'
+    else:
+        maximum=selected;duration_source='custom' if preference=='custom' else 'selector'
+    if declaration is not None and preference in ('selector','custom') and abs(maximum-declaration)>1.5:
+        raise ValueError(f'選定 {maximum:g} 秒與提示詞的全片 {declaration:g} 秒不一致；請統一。')
+    chunk=req.get('segment_seconds','auto')
     dynamic=chunk=='auto'
     if dynamic:chunk=15
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
         raise ValueError('片長上限為 6–180 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    req.update(production='film',fixed_reference_version=1,h3_validation_version=1,target_seconds=float(maximum),max_seconds=180.0,segment_seconds=float(chunk),
+    exact=declaration is not None or preference=='custom'
+    tolerance=1.5 if exact else 0.0
+    req.update(production='film',fixed_reference_version=1,h3_validation_version=1,
+               duration_contract_version=3,duration_source=duration_source,target_is_exact=exact,
+               timeline_tolerance=tolerance,target_seconds=float(maximum),
+               max_seconds=min(180.0,float(maximum)+tolerance),segment_seconds=float(chunk),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
@@ -472,7 +519,7 @@ def start(req):
     req.setdefault('mode','chain5');req.setdefault('intensity','high')
     if req['intensity'] not in FILM_INTENSITY:raise ValueError('未知攝影強度。')
     if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
-    if req['sound_mode'] not in ('ambient','dialogue'):raise ValueError('未知聲音模式。')
+    if req['sound_mode'] not in ('auto','ambient','dialogue'):raise ValueError('未知聲音模式。')
     req['rewrite_retries']=rewrite_retry_count(req)
     req.setdefault('auto_director',True);req.setdefault('script_review',True)
     if not isinstance(req['auto_director'],bool) or not isinstance(req['script_review'],bool):
