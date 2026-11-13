@@ -28,6 +28,46 @@ CLIP = re.compile(
 CLIP_LIKE = re.compile(r'(?im)^[ \t]*===\s*CLIP\b')
 
 
+MASTER_SEGMENT = re.compile(
+    r'(?im)^SEGMENT[ \t]+(\d+)[ \t]*\n[ \t]*GLOBAL TIME[^\n]*\n'
+    r'[ \t]*LOCAL TIME[ \t]+00:00(?:\.000)?[ \t]*[-–—][ \t]*(\d+):(\d+(?:\.\d+)?)[ \t]*$')
+MASTER_FIELDS = re.compile(
+    r'(?m)^(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music):[ \t]*$')
+
+
+def split_segment_master(source):
+    """Compile authored local timelines without repartitioning dialogue."""
+    fields = list(MASTER_FIELDS.finditer(source))
+    sections = {field[1]: source[field.end():fields[i+1].start() if i+1<len(fields)
+                                else len(source)].strip()
+                for i,field in enumerate(fields)}
+    detail = sections.get('detailed_description','')
+    segments = list(MASTER_SEGMENT.finditer(detail))
+    if not segments:
+        return None
+    prelude = detail[:segments[0].start()].strip()
+    retention = '\n'.join(line for line in sections.get('retention_analysis','').splitlines()
+                          if not re.search(r'\bsegment\s+\d+|develops continuously from', line, re.I)).strip()
+    clips = []
+    for i, segment in enumerate(segments):
+        if int(segment[1]) != i+1:
+            raise ValueError('SEGMENT 必須從 1 開始依序連號。')
+        seconds = int(segment[2])*60 + float(segment[3])
+        stop = segments[i+1].start() if i+1<len(segments) else len(detail)
+        body = detail[segment.end():stop].strip()
+        if '[Shot 1]' not in body:
+            raise ValueError(f'SEGMENT {i+1:02d} 缺少 [Shot 1]。')
+        clips.append((seconds, '\n\n'.join((
+            'subject_definitions:\n' + '\n\n'.join(filter(None, (sections.get('subject_definitions'), prelude))),
+            f'summary:\nFilm only the assigned shots in {seconds:g} seconds. Preserve the local speech and silence timings.',
+            'retention_analysis:\n' + (retention or 'Preserve established identities and appearances.'),
+            'detailed_description:\n' + body,
+            'overall_soundscape:\nFollow local sound cues. ' + sections.get('overall_soundscape','').split('\n\n')[0],
+            'non_diegetic_music:\nFollow local music cues and continue any established score.',
+        ))))
+    return clips
+
+
 def split_native_h3(story, single_seconds):
     """Return authored (seconds, prompt text) pairs.
 
@@ -839,7 +879,13 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     ceiling=float(req['segment_seconds'])
     model_counts=[legal_frames(seconds,ceiling) for seconds,_ in clips]
     delivery_counts=model_counts
-    aligned_duration=sum(model_counts)/FPS
+    if req.get('authored_segment_master'):
+        from banana_mv.film_continuity import render_frames
+        delivery_counts=[round(seconds*FPS) for seconds,_ in clips]
+        model_counts=[render_frames(frames) if i and req.get('mode')=='chain5'
+                      else 5+17*math.ceil((frames-5)/17)
+                      for i,frames in enumerate(delivery_counts)]
+    aligned_duration=sum(delivery_counts)/FPS
     if req.get('target_is_exact') and abs(aligned_duration-target)>tolerance + 1e-8:
         # Keep authored clip boundaries on the delivery timeline. The model
         # renders on its coarser grid and trim_native trims the excess.
