@@ -47,7 +47,8 @@ actor/action assignment unambiguous without inventing events.
 Read the user's story and references, develop a compelling complete film within the
 supplied duration contract. A max_seconds value is only a ceiling. Preserve any authored
 scene timings and stop when the story ends. With duration_policy='target' (legacy) or 'flexible', treat target_seconds
-as a soft preference, NEVER a minimum. Preserve identities, required lines and
+as a soft preference unless target_is_exact is true. For an exact target, allocate
+clip durations to reach requested_seconds within H3 frame alignment. Preserve identities, required lines and
 outcome; do not exceed max_seconds. Allocate believable performance time before dividing into clips.
 Do not merely inflate seconds, repeat events, add unrelated incidents or hold an
 already completed ending. With no target contract, choose a natural finished length
@@ -355,7 +356,7 @@ def validate_planned_duration(plan,req):
     tolerance=req.get('timeline_tolerance',0)
     if plan['duration'] > target + tolerance + 1e-8:
         raise ValueError(f'導演排出 {plan["duration"]:.2f} 秒，超過指定 {target:g} 秒，不可擅自擴寫。')
-    if req.get('target_is_exact') and not req.get('auto_director',True) and plan['duration'] < target - tolerance - 1e-8:
+    if req.get('target_is_exact') and plan['duration'] < target - tolerance - 1e-8:
         raise ValueError(f'劇本只有 {plan["duration"]:.2f} 秒，與明確指定 {target:g} 秒不符；只能安排原有事件。')
     return None
 
@@ -516,7 +517,7 @@ def start(req):
     if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=300:
         raise ValueError('片長上限為 6–300 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    exact=declaration is not None or preference=='custom'
+    exact=declaration is not None or preference in ('custom','selector')
     tolerance=1.5 if exact else 0.0
     req.update(production='film',fixed_reference_version=1,h3_validation_version=1,
                duration_contract_version=3,duration_source=duration_source,target_is_exact=exact,
@@ -556,9 +557,11 @@ def start(req):
     map_story(req,story,len(rows))
     manual_plan=None
     if not req['auto_director']:
-        from banana_mv.film_manual import split_native_h3,make_manual_plan
+        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         manual_clips=split_native_h3(story,single_seconds)
+        if exact and not CLIP.search(story):
+            manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk))
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
             # Explicit CLIP timing sets the duration in prompt mode.
