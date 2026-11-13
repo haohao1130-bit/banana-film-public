@@ -528,7 +528,7 @@ def start(req):
     genres=req.get('genres',[])
     if not isinstance(genres,list) or any(not isinstance(g,str) or g not in GENRES for g in genres):
         raise ValueError('請選擇有效題材。')
-    req['genres']=list(dict.fromkeys(genres))
+    req['genres']=list(dict.fromkeys(genres)) if req['auto_director'] else []
     if 'image_slots' in req:
         slots=req['image_slots']
         if not isinstance(slots,list) or len(slots)!=9 or any(x is not None and (not isinstance(x,str) or not x) for x in slots):
@@ -544,10 +544,28 @@ def start(req):
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
     map_story(req,story,len(rows))
+    manual_plan=None
+    if not req['auto_director']:
+        from banana_mv.film_manual import split_native_h3,make_manual_plan
+        single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
+        manual_clips=split_native_h3(story,single_seconds)
+        if manual_clips is not None:
+            authored=sum(seconds for seconds,_ in manual_clips)
+            # Explicit CLIP timing is stronger than an untouched 60s menu default.
+            # Custom time always wins and conflicting supplied CLIPs must error.
+            if preference=='prompt' and declaration is None:
+                if not 6<=authored<=180:raise ValueError('H3 全咒總長需為 6–180 秒。')
+                req.update(target_seconds=authored,max_seconds=min(180.,authored+1.5),
+                           timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
+            req['manual_h3']=True
+            manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
+                                         len(rows),validate_film_format,
+                                         title=str(req.get('project_name') or '手動 H3 原生攝影'))
     size=dimensions(req.get('aspect','16:9'),req.get('width'));out=output_dimensions(req.get('aspect','16:9'),req.get('width'))
-    if not Path(cfg['guides']['ref']).is_file():raise ValueError('請先執行 Colab ② 下載 9B 與原生指南。')
-    app.preflight(cfg,{'encoder':{'class_type':'CLIPLoader','inputs':{'clip_name':cfg['rewriter']['model']}},
-                       'generate':{'class_type':'TextGenerate','inputs':{}}})
+    if not manual_plan:
+        if not Path(cfg['guides']['ref']).is_file():raise ValueError('請先執行 Colab ② 下載 9B 與原生指南。')
+        app.preflight(cfg,{'encoder':{'class_type':'CLIPLoader','inputs':{'clip_name':cfg['rewriter']['model']}},
+                           'generate':{'class_type':'TextGenerate','inputs':{}}})
     if not req['script_review']:
         app.preflight(cfg,app.build_workflow([r['comfy_name'] for r in rows],None,*size,124,'',0,
                                            **app.graph_options(req,6)))
@@ -562,11 +580,18 @@ def start(req):
         source_dir=work/'sources';source_dir.mkdir();paths=[]
         for i,p in enumerate(originals):
             target=source_dir/f'image_{i}{p.suffix.lower()}';shutil.copyfile(p,target);paths.append(str(target.relative_to(work)))
-        job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,'duration':0,
-             'segments':[],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
+        job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,
+             'duration':manual_plan['duration'] if manual_plan else 0,
+             'segments':manual_plan['segments'] if manual_plan else [],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
              'images_comfy':[r['comfy_name'] for r in rows],'sources':{'images':paths},
              'title':str(req.get('project_name') or '新短片')[:120],'timeline_source':'film_plan',
              'note':'H3 原生影音生成；未做 GPU 品質驗證，跨段聲線與音樂不保證一致。'}
+        if manual_plan:
+            job['shared_setup']=''
+            job['title']=manual_plan['title']
+            job['timeline_source']='manual_native_h3'
+            atomic_json(work/'director_plan.json',dict(manual_plan,
+                         input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
         app.write_state(job)
         threading.Thread(target=worker,args=(job,cfg,*inputs(job,cfg)),daemon=True).start()
         return job
@@ -584,7 +609,14 @@ def save_script(job_id,draft,revision,render=False):
         if not isinstance(revision,str) or revision!=job.get('script_revision'):
             raise ValueError('劇本已有更新，請重新開啟作品後再確認，避免覆蓋新版。')
         if not isinstance(draft,dict):raise ValueError('缺少劇本。')
-        plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
+        if job['request'].get('manual_h3'):
+            from banana_mv.film_manual import make_manual_plan
+            clips=[(row.get('seconds'),row.get('brief')) for row in draft.get('segments',[])]
+            plan=make_manual_plan(clips,job['request'],normalize_prompt,map_story,
+                                  len(job['images_comfy']),validate_film_format,
+                                  title=str(draft.get('title') or job['title']))
+        else:
+            plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
         if any(s.get('prompt_id') or s.get('prompt') for s in job['segments']):
             raise ValueError('已有生成稿，請建立新作品而非覆寫劇本。')
         cfg=copy.deepcopy(app.backend.load_config())
@@ -624,6 +656,8 @@ def revise_script(job_id,draft,revision,instruction):
             raise ValueError('只有尚未開拍的劇本可以請導演細修。')
         if revision!=job.get('script_revision'):raise ValueError('劇本已有更新，請重新開啟作品。')
         req=job['request'];count=len(job['images_comfy'])
+        if req.get('manual_h3'):
+            raise ValueError('原生 H3 手動模式不使用 9B 細修，請在劇本欄直接修改六段式全咒再儲存。')
         current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
         instruction=map_story(req,instruction,count)
         cfg=copy.deepcopy(app.backend.load_config());originals,_,_=inputs(job,cfg)
@@ -690,7 +724,16 @@ def worker(job,cfg,originals,song=None,drive=None):
             else:
                 prompt_file=work/f'{i:02d}_prompt_v1.txt'
                 job['status']='running';seg['status']='rewriting';app.write_state(job)
-                prompt=write_prompt(cfg,job,seg,originals,tail);prompt_file.write_text(prompt,encoding='utf-8')
+                if job['request'].get('manual_h3'):
+                    prompt=seg['manual_h3_prompt']
+                    if tail:
+                        prompt=re.sub(r'<Picture (\d+)>',
+                                      lambda m:f'<Picture {int(m[1])+1}>',prompt)
+                    validate_film_format(normalize_prompt(prompt,len(originals)+int(bool(tail))),
+                                         seg['seconds'],job['request']['sound_mode'])
+                else:
+                    prompt=write_prompt(cfg,job,seg,originals,tail)
+                prompt_file.write_text(prompt,encoding='utf-8')
                 seg.pop('prompt_id',None);seg.pop('refresh_prompt',None)
             seg.update(prompt=prompt,status='generating');job['status']='running';app.write_state(job)
             first=None
