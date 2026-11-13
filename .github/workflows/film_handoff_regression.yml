@@ -38,7 +38,7 @@ jobs:
       - name: Install tiny offline dependencies
         run: python -m pip install Pillow
       - name: Syntax
-        run: python -m compileall -q banana_mv/film_manual.py banana_mv/timed_slots.py banana_mv/film_continuity.py banana_mv/film_media.py
+        run: python -m compileall -q banana_mv/film.py banana_mv/film_manual.py banana_mv/timed_slots.py banana_mv/film_continuity.py banana_mv/film_media.py
       - name: Film kitchen UI, direct prompt and selected version retakes
         run: node tests/check_film_ui.cjs
       - name: 30s shot handoff, spoken dialogue, music template, and 5-frame audio alignment
