@@ -73,7 +73,9 @@ Clip boundaries are production windows, not mandatory scene endings. An intermed
 brief may end with an action or attention still developing; its exit state describes
 that instant and does not require the actors to stop, reset, bow or conclude.
 sound='ambient' means no speech, dialogue or vocals. sound='dialogue' permits concise
-dialogue as the story requires. Use environmental sound and effects; add a score
+dialogue as the story requires. sound='auto' follows the original user's requested
+voices and lines; never invent speech to fill running time. If the prompt is
+explicitly silent or without dialogue, write only ambient sound and effects. Use environmental sound and effects; add a score
 only when explicitly requested by the story, not an obligatory background song.
 The next director sees ONLY one brief, the reference images, its duration and local
 sound rules. Each brief must be self-contained: original <Picture N> identity bindings,
@@ -345,7 +347,7 @@ def validate_planned_duration(plan,req):
     tolerance=req.get('timeline_tolerance',0)
     if plan['duration'] > target + tolerance + 1e-8:
         raise ValueError(f'導演排出 {plan["duration"]:.2f} 秒，超過指定 {target:g} 秒，不可擅自擴寫。')
-    if req.get('target_is_exact') and plan['duration'] < target - tolerance - 1e-8:
+    if req.get('target_is_exact') and not req.get('auto_director',True) and plan['duration'] < target - tolerance - 1e-8:
         raise ValueError(f'劇本只有 {plan["duration"]:.2f} 秒，與明確指定 {target:g} 秒不符；只能安排原有事件。')
     return None
 
