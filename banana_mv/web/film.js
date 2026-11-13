@@ -32,7 +32,7 @@ function renderPrompt(){const index=Number($('prompt-segment').value);$('rewritt
 $('prompt-segment').onchange=renderPrompt;
 $('copy-prompt').onclick=async()=>{try{await navigator.clipboard.writeText($('rewritten-prompt').value);$('copy-feedback').textContent='已複製';}catch{$('rewritten-prompt').select();$('copy-feedback').textContent='請長按選取文字複製。';}};
 function renderJob(j){
- currentJob=j;$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
+ currentJob=j;window.BananaKitchen?.render(j);$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
  busy(working);$('resume-project').hidden=!['error','cancelled','interrupted'].includes(j.status);
  $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
  if(j.status==='running'&&j.current){const s=segments[j.current-1];$('activity').textContent=`第 ${j.current} 段｜${s?.status==='rewriting'?'攝影導演寫稿':'H3 原生影音生成中'}`;}
