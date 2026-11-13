@@ -214,90 +214,115 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     if len(atoms) < count:
         raise ValueError('原始 SHOT 無足夠的完整事件切點；請減少分段數或延長片長上限。')
 
+    # The 10-second selector is a CEILING, not a fixed clip duration and
+    # definitely not a fixed number of segments. First try the original number
+    # of legal H3 clips. If a sentence will run into the cut, end the preceding
+    # clip before that sentence and move the intact performance to the next.
+    # When the original number of slots cannot accommodate all completed
+    # speech, retry with one more (shorter) legal slot instead of rejecting.
+    # Frame grid, entire story duration and prompt order remain unchanged.
     maximum = 5 + 17 * ((math.floor(ceiling * FPS) - 5) // 17)
-    # 7 seconds is a preference for a 10s clip cap, not a license to drop
-    # material. Short projects can retain the model's lower legal duration.
-    minimum = 175 if ceiling >= 10 and count * 175 <= round(total_seconds * FPS) else 124
-    choices = list(range(minimum, maximum + 1, 17))
-    if not choices:
-        raise ValueError('沒有符合片長上限的 H3 合法影格。')
-
-    # Jointly choose frame-grid durations AND boundaries between complete
-    # performed units. Prefer authored SHOT boundaries, but never split a line.
     target = round(total_seconds * FPS)
-    cumulative_budget=[0.0]
-    cumulative_speakers=[0]
+    last_allowed_count = min(
+        len(atoms), math.floor((target + 1.5 * FPS) / 124))
+    if last_allowed_count < count:
+        raise ValueError('整片時長無法排入 H3 最短合法鏡頭。')
+
+    cumulative_budget = [0.0]
+    cumulative_speakers = [0]
     for atom in atoms:
         cumulative_budget.append(cumulative_budget[-1] + atom['budget'])
         cumulative_speakers.append(cumulative_speakers[-1] + int(atom['speaks']))
-    states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
-    for clip_no in range(1, count + 1):
-        following = {}
-        for (used, cursor), (cost, path) in states.items():
-            for frames in choices:
-                new_used = used + frames
-                remaining = count - clip_no
-                if (new_used + remaining*minimum > target + 1.5*FPS
-                    or new_used + remaining*maximum < target - 1.5*FPS):
-                    continue
-                last_clip = clip_no == count
-                stops = ([len(atoms)] if last_clip else
-                         (boundary for boundary in range(cursor + 1, len(atoms) - (count - clip_no) + 1)
-                          if abs(atoms[boundary-1]['source_end'] - new_used / FPS) <= 4.0))
-                for stop in stops:
-                    if stop <= cursor:
-                        continue
-                    speech_present = cumulative_speakers[stop] > cumulative_speakers[cursor]
-                    duration = frames / FPS
-                    safe_capacity = duration
-                    if speech_present:
-                        safe_capacity -= FILM_DIALOGUE_TAIL_SECONDS
-                        safe_capacity -= (FILM_CHAIN5_OPENING_SECONDS if clip_no > 1 else 0.18)
-                    spoken_and_pauses = cumulative_budget[stop] - cumulative_budget[cursor]
-                    # A clip with more speech than time is not a viable DP state.
-                    # Never silently trim its last word or postpone it into the
-                    # already discarded raw tail.
-                    if spoken_and_pauses > safe_capacity + 1e-8:
-                        continue
-                    spare = safe_capacity - spoken_and_pauses
-                    if last_clip:
-                        delta = (new_used / FPS) - total_seconds
-                        extra = delta * delta * 35.0
-                    else:
-                        before, after = atoms[stop-1], atoms[stop]
-                        delta = (new_used / FPS) - before['source_end']
-                        # Source shot boundaries are desirable, not mandatory.
-                        middle_shot = before['chapter'] == after['chapter']
-                        same_voice = bool(before['speaker'] and before['speaker'] == after['speaker'])
-                        extra = delta * delta * 1.3 + (0.45 if middle_shot else 0.0)
-                        if same_voice and middle_shot:
-                            extra += 0.65
-                    if speech_present:
-                        # Prefer some breathing room in addition to the hard
-                        # 0.65 s protected tail when alternatives exist.
-                        extra += max(0.0, 0.35 - spare)**2 * 12.0
-                    key = (new_used, stop)
-                    value = cost + extra
-                    if key not in following or value < following[key][0]:
-                        following[key] = (value, path + [(frames, stop)])
-        if not following:
-            estimated=(cumulative_budget[-1]
-                       + count*FILM_DIALOGUE_TAIL_SECONDS
-                       + (count-1)*FILM_CHAIN5_OPENING_SECONDS + 0.18)
-            raise ValueError(
-                f'對白／吸氣停頓太密集：40秒類型劇本需估算完整發聲與尾音。'
-                f'本稿約需 {estimated:.1f} 秒（含每段尾音緩衝），'
-                '已無符合 H3 合法片長的完整語句切點。請增加全片秒數或精簡台詞，'
-                'Python 不會把尚未說完的字硬塞到片段尾端。')
-        states = following
 
-    target = round(total_seconds * FPS)
-    _, (score, selected) = min(
-        states.items(), key=lambda row: (
-            abs(row[0][0] - target) * 100 + row[1][0],
-            abs(row[0][0] - target)))
-    if abs(sum(frames for frames, _ in selected) - target) > 1.5 * FPS:
-        raise ValueError('H3 合法影格無法在指定片長內容納完整劇本。')
+    selected = None
+    for slot_count in range(count, last_allowed_count + 1):
+        # Prefer 7–10 seconds, but allow native 5.167–6.583-second shots
+        # only when necessary to keep every spoken phrase intact.
+        minimum = (175 if ceiling >= 10 and slot_count * 175 <= target
+                   else 124)
+        choices = list(range(minimum, maximum + 1, 17))
+        if not choices:
+            break
+        states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
+        for slot_no in range(1, slot_count + 1):
+            following = {}
+            for (used, cursor), (cost, path) in states.items():
+                for frames in choices:
+                    new_used = used + frames
+                    remaining = slot_count - slot_no
+                    if (new_used + remaining * minimum > target + 1.5 * FPS
+                        or new_used + remaining * maximum < target - 1.5 * FPS):
+                        continue
+                    last_slot = slot_no == slot_count
+                    if last_slot:
+                        stops = [len(atoms)]
+                    else:
+                        # Bound the DP search near the authored timeline but
+                        # allow cutting *earlier* before a full next utterance.
+                        stops = (
+                            boundary for boundary in
+                            range(cursor + 1, len(atoms) - remaining + 1)
+                            if abs(atoms[boundary-1]['source_end'] -
+                                   new_used / FPS) <= 6.0)
+                    for stop in stops:
+                        if stop <= cursor:
+                            continue
+                        speech_present = (
+                            cumulative_speakers[stop] >
+                            cumulative_speakers[cursor])
+                        safe_capacity = frames / FPS
+                        if speech_present:
+                            safe_capacity -= FILM_DIALOGUE_TAIL_SECONDS
+                            safe_capacity -= (FILM_CHAIN5_OPENING_SECONDS
+                                              if slot_no > 1 else 0.18)
+                        speech_seconds = (
+                            cumulative_budget[stop] -
+                            cumulative_budget[cursor])
+                        # NO hard timing boundary through a dialogue unit:
+                        # move that whole unit to the following clip.
+                        if speech_seconds > safe_capacity + 1e-8:
+                            continue
+                        spare = safe_capacity - speech_seconds
+                        if last_slot:
+                            delta = new_used / FPS - total_seconds
+                            extra = delta * delta * 35.0
+                        else:
+                            before, after = atoms[stop-1], atoms[stop]
+                            delta = new_used / FPS - before['source_end']
+                            same_shot = before['chapter'] == after['chapter']
+                            same_voice = bool(
+                                before['speaker'] and
+                                before['speaker'] == after['speaker'])
+                            extra = delta * delta * 1.3
+                            extra += 0.45 if same_shot else 0.0
+                            if same_shot and same_voice:
+                                extra += 0.65
+                        if speech_present:
+                            extra += max(0.0, 0.35-spare)**2 * 12.0
+                        key = (new_used, stop)
+                        value = cost + extra
+                        if key not in following or value < following[key][0]:
+                            following[key] = (
+                                value, path + [(frames, stop)])
+            if not following:
+                break  # Try an additional shorter native H3 clip.
+            states = following
+        else:
+            valid = [
+                (key, value) for key, value in states.items()
+                if key[1] == len(atoms) and
+                abs(key[0] - target) <= 1.5 * FPS]
+            if valid:
+                _, (score, selected) = min(
+                    valid, key=lambda row: (
+                        abs(row[0][0]-target) * 100 + row[1][0],
+                        abs(row[0][0]-target)))
+                break
+    if selected is None:
+        raise ValueError(
+            '已嘗試提前收鏡並把完整台詞移到下一段，但在全片秒數及 '
+            'H3 合法影格限制下仍無法容納全部對白。請增加全片長度；'
+            '程式不會裁字或重複台詞。')
 
     state = _opening_actor_state(fixed, chapters)
     delivered = []
