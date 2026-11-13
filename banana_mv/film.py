@@ -716,8 +716,8 @@ def revise_script(job_id,draft,revision,instruction):
     finally:app.GPU_LOCK.release()
 
 def worker(job,cfg,originals,song=None,drive=None):
-    work=app.job_dir(job['id']);tail=None;motion_files=[]
-    from banana_mv.film_continuity import motion_prefix,prepare_motion_tail,add_motion_guide
+    work=app.job_dir(job['id']);tail=None
+    from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
     try:
         if not job['segments']:
             job['status']='planning_story';app.write_state(job)
@@ -737,8 +737,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             tail=None;context_names=[];prefix=motion_prefix(job,seg)
             if prefix:
                 source=app.adopted_part(job,job['segments'][i-1])
-                context_names,receipt=prepare_motion_tail(source,work/'motion_context',Path(cfg['comfy_input_dir']),f'banana_motion_{job["id"]}_{i:02d}')
-                motion_files.extend(Path(cfg['comfy_input_dir'])/name for name in context_names)
+                context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{i:02d}')
                 previous=seg.get('motion_context')
                 if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
                     raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
@@ -801,5 +800,4 @@ def worker(job,cfg,originals,song=None,drive=None):
         traceback.print_exc()
         job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
     finally:
-        for path in motion_files:path.unlink(missing_ok=True)
         app.CANCEL.discard(job['id']);app.GPU_LOCK.release()
