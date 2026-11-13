@@ -135,6 +135,56 @@ def _join_unfinished_dialogue(actions):
     return result
 
 
+
+# Editorial timing guidance for native H3, not a promise of exact speech speed.
+# Unlike the older allocator, count only the spoken text, not <d> markup.
+# Keep this light: most silent camera/blocking cues happen while someone speaks.
+FILM_DIALOGUE_TAIL_SECONDS = 0.65
+FILM_CHAIN5_OPENING_SECONDS = 0.35
+
+
+def _dialogue_budget_seconds(action):
+    """Estimate on-screen speech time without an extra model or ASR runtime.
+
+    Taiwanese Mandarin words plus breath/ellipsis pauses are budgeted before
+    choosing the H3 duration. Stage direction is allowed to overlap dialogue.
+    This is a conservative planning estimate, not speech recognition.
+    """
+    spoken=list(re.finditer(
+        r'\(S\d+\)\s*(?:<d>(?:\[[^\]]+\])?\s*([^<]*)</d>|[「『]([^」』]*)[」』])',
+        action))
+    if spoken:
+        seconds=0.0
+        for match in spoken:
+            words=(match.group(1) or match.group(2) or '').strip()
+            chinese=sum('\u4e00'<=char<='\u9fff' for char in words)
+            latin=len(re.findall(r'[A-Za-z]+|\d+',words))
+            ellipses=len(re.findall(r'…+|\.{3,}|—{2,}',words))
+            seconds+=(0.18 + 0.15*chinese + 0.35*latin
+                      + 0.22*ellipses
+                      + 0.11*sum(char in '，,、' for char in words)
+                      + 0.06*sum(char in '？?!！' for char in words))
+        # Voice and staging overlap; explicit breath/silence does not.
+        for line in action.splitlines():
+            if re.search(r'\(S\d+\)\s*(?:<d>|[「『])',line):
+                continue
+            if re.search(r'沉默半秒',line):
+                seconds+=0.40
+            elif re.search(r'吸氣|深呼吸|短暫停頓|片刻停頓',line):
+                seconds+=0.20
+            elif re.search(r'沉默片刻',line):
+                seconds+=0.20
+        return seconds
+    if re.search(r'沉默半秒',action):
+        return 0.40
+    if re.search(r'短暫停頓|片刻停頓|短暫吸氣',action):
+        return 0.20
+    if re.search(r'深吸一口氣|深深吸氣',action):
+        return 0.25
+    # Short visual cue; acting/camera work can overlap with the dialogue.
+    return 0.035
+
+
 def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     """Fit complete authored action/dialogue units to native H3 frame windows.
 
@@ -148,15 +198,16 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
             _shot_action_units("\n".join(chapter['actions'])))
         if not actions:
             continue
-        weights = []
-        for action in actions:
-            dialogue = re.findall(r'\(S\d+\)\s*(?:<d>[^<]+</d>|[「『][^」』]+[」』])', action)
-            chars = sum(len(re.sub(r'\s+', '', line)) for line in dialogue)
-            weights.append(max(0.4, 0.36 + chars * 0.16) if dialogue else 0.42)
+        budgets = [_dialogue_budget_seconds(action) for action in actions]
+        # Proxy weights place scene actions approximately on the authored SHOT
+        # timeline; the actual budgets below decide if a clip can fit.
+        weights = [max(0.42, budget) for budget in budgets]
         elapsed = 0.0
-        for action, weight in zip(actions, weights):
+        for action, weight, budget in zip(actions, weights, budgets):
             elapsed += weight
             atoms.append({'chapter': chapter_index, 'text': action, 'weight': weight,
+                          'budget': budget,
+                          'speaks': bool(re.search(r'\(S\d+\)\s*(?:<d>|[「『])', action)),
                           'speaker': re.findall(r'\(S\d+\)', action)[-1:] or [],
                           'source_end': chapter['start'] + (chapter['end']-chapter['start'])
                           * elapsed / sum(weights)})
@@ -174,6 +225,11 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     # Jointly choose frame-grid durations AND boundaries between complete
     # performed units. Prefer authored SHOT boundaries, but never split a line.
     target = round(total_seconds * FPS)
+    cumulative_budget=[0.0]
+    cumulative_speakers=[0]
+    for atom in atoms:
+        cumulative_budget.append(cumulative_budget[-1] + atom['budget'])
+        cumulative_speakers.append(cumulative_speakers[-1] + int(atom['speaks']))
     states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
     for clip_no in range(1, count + 1):
         following = {}
@@ -191,6 +247,19 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
                 for stop in stops:
                     if stop <= cursor:
                         continue
+                    speech_present = cumulative_speakers[stop] > cumulative_speakers[cursor]
+                    duration = frames / FPS
+                    safe_capacity = duration
+                    if speech_present:
+                        safe_capacity -= FILM_DIALOGUE_TAIL_SECONDS
+                        safe_capacity -= (FILM_CHAIN5_OPENING_SECONDS if clip_no > 1 else 0.18)
+                    spoken_and_pauses = cumulative_budget[stop] - cumulative_budget[cursor]
+                    # A clip with more speech than time is not a viable DP state.
+                    # Never silently trim its last word or postpone it into the
+                    # already discarded raw tail.
+                    if spoken_and_pauses > safe_capacity + 1e-8:
+                        continue
+                    spare = safe_capacity - spoken_and_pauses
                     if last_clip:
                         delta = (new_used / FPS) - total_seconds
                         extra = delta * delta * 35.0
@@ -203,12 +272,23 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
                         extra = delta * delta * 1.3 + (0.45 if middle_shot else 0.0)
                         if same_voice and middle_shot:
                             extra += 0.65
+                    if speech_present:
+                        # Prefer some breathing room in addition to the hard
+                        # 0.65 s protected tail when alternatives exist.
+                        extra += max(0.0, 0.35 - spare)**2 * 12.0
                     key = (new_used, stop)
                     value = cost + extra
                     if key not in following or value < following[key][0]:
                         following[key] = (value, path + [(frames, stop)])
         if not following:
-            raise ValueError('完整台詞無法放入合法的 H3 時長；請調整分段上限或劇本時間。')
+            estimated=(cumulative_budget[-1]
+                       + count*FILM_DIALOGUE_TAIL_SECONDS
+                       + (count-1)*FILM_CHAIN5_OPENING_SECONDS + 0.18)
+            raise ValueError(
+                f'對白／吸氣停頓太密集：40秒類型劇本需估算完整發聲與尾音。'
+                f'本稿約需 {estimated:.1f} 秒（含每段尾音緩衝），'
+                '已無符合 H3 合法片長的完整語句切點。請增加全片秒數或精簡台詞，'
+                'Python 不會把尚未說完的字硬塞到片段尾端。')
         states = following
 
     target = round(total_seconds * FPS)
@@ -415,6 +495,14 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     if not shots:
         raise ValueError('這個生成窗只有已發生事項／攝影備註，沒有當段演出。請調整 SHOT 時間或加入明確動作。')
     details = '\n\n'.join(shots)
+    # H3 jointly generates video and audio; a 17k+5 frame boundary is not
+    # speech-aware. The final delivered frames must be a quiet acting beat.
+    dialogue_end_note = (' All spoken lines must end at least '
+        f'{FILM_DIALOGUE_TAIL_SECONDS:.2f} seconds before the clip ends; '
+        'finish the last word and its trailing phoneme before then. '
+        'Use the remaining end beat for silent acting and existing ambience, '
+        'without another utterance or repeated words.'
+        if re.search(r'<d>', details) else '')
     state_note = ''
     fixed_for_clip = fixed
     if start_state:
@@ -444,8 +532,9 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     if state_note: subject+='\n'+state_note
     return ('subject_definitions:\n' + subject
             + '\n\nsummary:\nFilm the assigned shots in order within '
-            + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; ' 
+            + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; '
             + 'all other Chinese stage directions describe silent actions. Preserve speaker IDs.'
+            + dialogue_end_note
             + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
             + '\n\ndetailed_description:\n' + details
             + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
