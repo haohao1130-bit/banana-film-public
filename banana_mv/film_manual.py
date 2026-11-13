@@ -32,6 +32,9 @@ def split_native_h3(story, single_seconds):
     Broken CLIP boundaries must error, never be silently sent to the 9B writer.
     """
     source = story.strip()
+    fence = re.fullmatch(r'```(?:text|h3|plaintext)?[ \t]*\n([\s\S]*?)\n```[ \t]*', source, re.I)
+    if fence:
+        source = fence[1].strip()
     matches = list(CLIP.finditer(source))
     if not matches:
         if CLIP_LIKE.search(source):
