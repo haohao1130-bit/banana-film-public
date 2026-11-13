@@ -64,6 +64,21 @@ const server=http.createServer((req,res)=>{
   await prompt.fill('x'.repeat(30001));await prompt.press('a');assert.equal((await prompt.inputValue()).length,30002);
   assert.equal(await prompt.evaluate(e=>e.checkValidity()),false);
   assert((await page.locator('#prompt-count').textContent()).includes('超過上限'));
+  // Product contract: AUTO remains default. OFF disables genre interference;
+  // an authored H3 prompt is visibly treated as direct, not rewritten prose.
+  assert.equal(await page.locator('#auto-director').isChecked(),true);
+  assert.equal(await page.locator('#sound-mode').inputValue(),'auto');
+  await page.locator('#auto-director').uncheck();
+  assert(await page.locator('#genre-comedy').isDisabled());
+  assert(await page.locator('#manual-h3-help').isVisible());
+  await page.locator('#max-seconds').selectOption('custom');
+  assert(await page.locator('#custom-seconds').isVisible());
+  await page.locator('#custom-seconds').fill('35');
+  await prompt.fill('=== CLIP 1 (12s) ===\nsubject_definitions:\n<Subject 1>...');
+  assert((await page.locator('#generate').textContent()).includes('驗證完整 H3 全咒'));
+  await page.locator('#auto-director').check();
+  assert(await page.locator('#genre-comedy').isEnabled());
+  assert(await page.locator('#manual-h3-help').isHidden());
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.deepEqual(errors,[]);
