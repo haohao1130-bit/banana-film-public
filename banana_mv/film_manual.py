@@ -104,7 +104,7 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         rows.append(row)
         frame_start+=frames
     duration=frame_start/FPS
-    if duration>min(180.0,cap)+1e-8:
+    if duration>min(300.0,cap)+1e-8:
         raise ValueError(f'對齊合法 H3 幀數後是 {duration:.2f} 秒，超出本次上限。請微調各段秒數。')
     if req.get('target_is_exact') and abs(duration-target)>tolerance + 1e-8:
         raise ValueError(f'合法影格對齊後為 {duration:.2f} 秒，超出指定 {target:g}±{tolerance:g} 秒；請調整 CLIP 長度。')
