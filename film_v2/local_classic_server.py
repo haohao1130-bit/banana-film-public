@@ -20,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app
 
+if app.backend.DATA.name.lower() == "media":
+    os.environ.setdefault("BANANA_FINISHED_VIDEOS", str(app.backend.DATA.parent / "videos"))
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_SCRIPT = ROOT / "film_v2" / "web" / "build_5070.js"
 
