@@ -15,7 +15,7 @@ function updateClipActions(){
   $('clips-all').disabled=clipView.locked||!clipView.rows.size;
   $('clips-clear').disabled=clipView.locked||!count;
   $('clips-retake').disabled=!clipIdle()||!count;
-  $('clips-retake').textContent=count?`將所選 ${count} 段鏡頭重拍重煉`:'將所選片段重拍重煉';
+  $('clips-retake').textContent=count?`重新炒菜（${count} 段）`:'重新炒菜';
 }
 function showClipVersion(row){
   const take=row.segment.takes.find(t=>t.id===row.select.value&&t.status==='ready');
@@ -53,7 +53,7 @@ function renderClipPreviews(job){
       use.onclick=()=>adoptClip(row.index,row.select.value);
     }
     const desired=segment.pending_take||segment.selected_take;const changed=(row.segment.pending_take||row.segment.selected_take)!==desired;row.segment=segment;
-    row.title.textContent=`第 ${i+1} 顆 · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
+    row.title.textContent=`${i===0?'第一道菜上桌':`第 ${i+1} 段`} · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
     const ready=segment.takes.filter(t=>t.status==='ready');
     const signature=ready.map(t=>t.id+':'+(t.id===segment.selected_take)+':'+(t.id===desired)).join('|');
     if(row.signature!==signature){
