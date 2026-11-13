@@ -606,9 +606,9 @@ def start(req):
             single_seconds=legal_frames(single_seconds,float(chunk))/FPS
             req.update(duration_source='manual_single_clip',target_seconds=single_seconds)
         manual_clips=split_native_h3(story,single_seconds)
-        if exact and not has_clips:
+        if not has_clips:
             req['python_manual_handoff']=True
-            manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk),
+            manual_clips=distribute_manual_prompt(manual_clips,float(req['target_seconds']),float(chunk),
                                                        chain5=req['mode']=='chain5')
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
