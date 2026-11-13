@@ -58,7 +58,7 @@ function renderClipPreviews(job){
       correction.placeholder=film?'此版本攝影咒載入中；修改完整原稿後勾選重炒。原稿不變則只換 Seed。':'例如：表情更憤怒；增加手部操作特寫；保留事件，只改這段拍法。';
       const help=document.createElement('p');help.className='muted';help.textContent=film?
         '直接修改選中版本的完整攝影咒 → H3 拍攝，不經 9B；完全不改則只換 Seed。歷史版本不覆蓋，選用後再確認合成。':
-        '以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。填寫後勾選此段，9B 只修這段原稿。';
+        '以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。想改哪裡就在這裡交代，勾選此段後，9B 只修這道。';
       if(!film){try{correction.value=JSON.parse(localStorage.getItem('banana_film_clip_fixes:'+job.id)||'{}')[i]||'';}catch{}}
       correction.oninput=()=>{try{
         const key=film?'banana_film_clip_prompts:'+job.id:'banana_film_clip_fixes:'+job.id;
