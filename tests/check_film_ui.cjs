@@ -12,11 +12,13 @@ class Element{
 const els=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>[m[1],new Element()]));
 const values={'mode':'independent','aspect':'16:9','resolution':'720p','segment':'10','max-seconds':'60','visual-style':'動畫','sound-mode':'dialogue','intensity':'extreme','prompt':'<script>not executable</script>故事','seed':'0','project-name':'短片'};
 for(const [id,v]of Object.entries(values))els[id].value=v;
-const posts=[],uploads=[],copied=[],store=new Map(),creationRoutes=[];
+const posts=[],uploads=[],copied=[],store=new Map(),session=new Map(),creationRoutes=[];
 let status={id:'film123',title:'短片',status:'planning_story',seed:0,duration:0,segments:[],request:{production:'film',max_seconds:60,mode:'independent'}};
 const context=vm.createContext({document:{getElementById:id=>{assert(els[id],id);return els[id];},createElement:()=>new Element()},console,
  URL:{createObjectURL:f=>'blob:'+f.name,revokeObjectURL(){}},setTimeout:()=>0,clearTimeout(){},navigator:{clipboard:{writeText:async t=>copied.push(t)}},
- localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)},
+ localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),
+  removeItem:k=>store.delete(k),key:i=>Array.from(store.keys())[i]||null,get length(){return store.size;}},
+ sessionStorage:{getItem:k=>session.get(k)||null,setItem:(k,v)=>session.set(k,v)},
  fetch:async(url,options)=>({ok:true,json:async()=>{
   if(url==='api/upload'){uploads.push(options.body);return {id:'ref'+uploads.length};}
   if(['api/film/plan','api/film/start'].includes(url)){creationRoutes.push(url);const body=JSON.parse(options.body);posts.push(body);status={...status,status:'planning_story',request:{...status.request,...body}};return status;}
@@ -65,5 +67,18 @@ vm.runInContext(fs.readFileSync('banana_mv/web/film_review.js','utf8'),context);
  status={...status,status:'running'};await vm.runInContext('poll()',context);assert.equal(els.stop.hidden,false);
  await els.stop.onclick();assert.equal(els.stop.disabled,true);await vm.runInContext('poll()',context);assert.equal(els.stop.disabled,true);assert(els.stop.textContent.includes('已要求停爐'));
  status={...status,status:'cancelled'};await vm.runInContext('poll()',context);assert.equal(els.stop.hidden,true);assert.equal(els['resume-project'].hidden,false);
+ store.set('banana_film_job','outdated-project');
+ store.set('banana_film_clip_prompts:outdated-project','{"0:original":"unsaved"}');
+ els.prompt.value='舊丹爐殘留全咒';
+ const oldCalls=posts.length;
+ vm.runInContext('clearFilmWorkspaceCache()',context);
+ assert.equal(store.get('banana_film_job'),undefined);
+ assert.equal(store.get('banana_film_clip_prompts:outdated-project'),undefined);
+ assert.equal(els.prompt.value,'');
+ assert.equal(vm.runInContext('active',context),null);
+ assert.equal(els['plan-panel'].hidden,true);
+ assert.equal(els['script-review'].hidden,true);
+ assert.equal(posts.length,oldCalls); // no deletion or restart API call
+ assert(els.status.textContent.includes('歷史作品仍可'));
  console.log('Film UI checks passed: story-only request, fixed image slots, zero seed, planning, native audio previews, stable correction drafts, versions and selective retakes.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
