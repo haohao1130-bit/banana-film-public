@@ -176,7 +176,7 @@
     },
     {
       "path": "tests/check_film_browser.cjs",
-      "sha256": "d48fe812888a3cb8f14e4356d660c235eb95d1c014826736acab40ffddc0ae56"
+      "sha256": "b05f40a2b19f9464e1cc3ae7c119800944a973951262b1d1183da9f18d4e5cd2"
     },
     {
       "path": "tests/check_film_ui.cjs",
