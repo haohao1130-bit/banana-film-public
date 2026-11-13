@@ -195,7 +195,8 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     atoms = []
     for chapter_index, chapter in enumerate(chapters):
         actions = _join_unfinished_dialogue(
-            _shot_action_units("\n".join(chapter['actions'])))
+            _compact_film_micro_beats(
+                _shot_action_units("\n".join(chapter['actions']))))
         if not actions:
             continue
         budgets = [_dialogue_budget_seconds(action) for action in actions]
@@ -448,6 +449,88 @@ def _split_film_handoff(prompt):
     return (fixed.strip(), local) if sep else ('',prompt)
 
 
+
+# Match the authored SHOT time ruler as well as the common "SHOT 01 | 0-5秒"
+# form. H3 style sub-camera headings SHOT 11A/B/C belong to parent SHOT 11.
+_FILM_SHOT_HEADER = re.compile(
+    r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)(?![A-Za-z0-9])'
+    r'[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)[ \t]*[-–—~～至][ \t]*'
+    r'(\d+(?:\.\d+)?)(?:[ \t]*(?:秒(?:鐘)?|s(?:ec)?\b))?[^\n]*$'
+)
+_FILM_MICRO_RANGE = re.compile(
+    r'^\s*\d+(?:\.\d+)?\s*[-–—~～至]\s*\d+(?:\.\d+)?\s*(?:秒)?\s*$')
+_FILM_FIXED_NUMBERED = re.compile(
+    r'^\s*[一二三四五六七八九十百零〇\d]+[、.．]\s*'
+    r'(?:角色|人物|身份|身分|場景|攝影|聲音|演技|固定|共用|共同|全局|全域)')
+_FILM_STORY_NUMBERED = re.compile(
+    r'^\s*[一二三四五六七八九十百零〇\d]+[、.．]\s*'
+    r'(?:精密鏡頭時間軸|鏡頭時間軸|劇情|故事|分鏡|正片)')
+_FILM_METADATA = re.compile(
+    r'^\s*(?:影片類型|畫面比例|影格率|對白語言|對白模式|整體影像|'
+    r'固定角色|人物外貌|角色綁定|世界觀|背景設定|演出風格)\s*[：:]')
+_FILM_FUTURE_SETUP = re.compile(
+    r'第一次落淚發生於SHOT|說出「[^」]*」時|最後耳光前|'
+    r'耳光慢動作開始時|三角度重播期間|最後一句台詞說完')
+_FILM_END_APPENDIX = re.compile(
+    r'(?m)^\s*(?:(?:[一二三四五六七八九十]+[、.．]\s*)?'
+    r'(?:最終生成優先級|禁止與連續性檢查|聲音與表演控制|電影攝影控制|核心敘事))'
+    r'\s*[:：]?\s*$')
+
+
+def _film_shared_before_shots(source):
+    """Classic-style fixed work order, from an *authored* common source.
+
+    Include complete marked cast/world/sound blocks and introductory technical
+    metadata. Never smuggle the 'story core' synopsis or a later plot outcome
+    into every clip; future scene-local cues stay with the scene.
+    """
+    fixed=[]
+    mode='intro'
+    for raw in source.replace('\r\n','\n').splitlines():
+        line=raw.strip()
+        if not line:
+            continue
+        if line in ('故事核心','故事概念','劇情核心','故事簡介'):
+            mode='synopsis'
+            continue
+        if _FILM_STORY_NUMBERED.match(line) or _FILM_STORY_HEADING.fullmatch(line):
+            mode='story'
+            continue
+        if _FILM_FIXED_NUMBERED.match(line) or _FILM_SHARED_HEADING.fullmatch(line):
+            mode='fixed'
+            fixed.append(raw)
+            continue
+        if mode=='fixed':
+            if not _FILM_FUTURE_SETUP.search(line):
+                fixed.append(raw)
+        elif mode=='intro' and (_FILM_METADATA.match(line) or re.match(
+            r'^\s*(?:@圖片\d+|<Picture\s+\d+>|\(S\d+\)\s*=|全片使用)',line)):
+            fixed.append(raw)
+    return '\n'.join(fixed).strip()
+
+
+def _compact_film_micro_beats(actions):
+    """Keep timestamped dialogue, its breath, and its visible acting as a unit.
+
+    Source scripts often have 5-15 sub-second ranges in one SHOT. Dividing
+    each raw line instead of each authored beat causes the last word to migrate
+    into the wrong clip and blows up the DP search.
+    """
+    if not any(_FILM_MICRO_RANGE.fullmatch(line.strip()) for line in actions):
+        return actions
+    groups=[]
+    current=[]
+    for line in actions:
+        if _FILM_MICRO_RANGE.fullmatch(line.strip()) and current:
+            groups.append('\n'.join(current))
+            current=[line]
+        else:
+            current.append(line)
+    if current:
+        groups.append('\n'.join(current))
+    return groups
+
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
@@ -461,13 +544,11 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         source = story
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
-    shots = list(re.finditer(
-        r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)'
-        r'\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|s(?:ec)?\b)[^\n]*$', source))
+    shots = list(_FILM_SHOT_HEADER.finditer(source))
     if shots:
         setup = (shared_setup + '\n' + source[:shots[0].start()]
                  if shared_setup else source[:shots[0].start()])
-        end = re.search(r'(?m)^\s*(?:聲音與表演控制|電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', source[shots[-1].end():])
+        end = _FILM_END_APPENDIX.search(source[shots[-1].end():])
         body_end = shots[-1].end() + end.start() if end else len(source)
         appendix = source[body_end:]
         chapters = []
@@ -494,14 +575,21 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         setup, chapters = timed if timed else ('', [])
     if chapters:
         if any(not 0 <= row['start'] < row['end'] <= total_seconds+1e-8 for row in chapters):
-            raise ValueError('章節時間超出全片範圍。')
+            longest=max(row['end'] for row in chapters)
+            raise ValueError(
+                f'全片指定 {total_seconds:g} 秒，但最後 SHOT 延伸到 {longest:g} 秒；'
+                '請先統一全片長度與 SHOT 時間軸。Python 不會截斷最後台詞。')
         setup_lines=setup.splitlines()
         opening_lines=_opening_wardrobe_indices(setup_lines)
-        fixed = (shared_setup if shared_setup else '\n'.join(
-            line for index,line in enumerate(setup_lines)
-            if (index in opening_lines or re.match(
-                r'^\s*(?:主角|角色|人物(?:外貌|五官|身分|身份)|服裝(?:隨|依)|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
-            and not re.search(r'最後才|結局|修復AI|修電腦', line)))
+        # SHOT stories use complete authored fixed blocks, not a whitelist
+        # of isolated lines. The old whitelist removed most of the cast/world
+        # settings and led to the first clip stealing the entire setup.
+        fixed = (_film_shared_before_shots(setup) if shots else
+                 shared_setup if shared_setup else '\n'.join(
+                     line for index,line in enumerate(setup_lines)
+                     if (index in opening_lines or re.match(
+                         r'^\s*(?:主角|角色|人物(?:外貌|五官|身分|身份)|服裝(?:隨|依)|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
+                     and not re.search(r'最後才|結局|修復AI|修電腦', line)))
         # Global audio and continuity rules after the last SHOT remain
         # shared, but source-plot notes are never copied into every clip.
         if shared_setup:
