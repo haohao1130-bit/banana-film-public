@@ -679,6 +679,7 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     if not 1 <= len(clips) <= 34:
         raise ValueError('手動 H3 需提供 1–34 段。')
     rows=[]
+    shared_sources=[]
     frame_start=0
     total_authored=sum(seconds for seconds,_ in clips)
     if not math.isfinite(total_authored):
@@ -694,6 +695,15 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         if not isinstance(text,str) or not text.strip():
             raise ValueError(f'第 {i+1} 段是空的。')
         mapped=normalize(map_mentions(req,text,image_count),image_count)
+        # Every clip is a self-contained native H3 work order. For sectioned
+        # plain-text source, retain a separately inspectable shared_setup too.
+        # For already-compiled six-field H3 prompts, the complete reference
+        # rules are already inside this clip's subject_definitions.
+        fixed,_=_split_film_handoff(mapped)
+        if not fixed and mapped.lstrip().startswith('subject_definitions:\n'):
+            fixed=mapped.split('subject_definitions:\n',1)[1].split(
+                '\n\nsummary:',1)[0].strip()
+        shared_sources.append((fixed, mapped.startswith(_FILM_FIXED_BLOCK_START)))
         frames=legal_frames(seconds,float(req['segment_seconds']))
         actual=frames/FPS
         validator(mapped,actual,req['sound_mode'])
@@ -709,9 +719,15 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         raise ValueError(f'對齊合法 H3 幀數後是 {duration:.2f} 秒，超出本次上限。請微調各段秒數。')
     if req.get('target_is_exact') and abs(duration-target)>tolerance + 1e-8:
         raise ValueError(f'合法影格對齊後為 {duration:.2f} 秒，超出指定 {target:g}±{tolerance:g} 秒；請調整 CLIP 長度。')
-    for row in rows:
-        # Six-field H3 text ends with the music block; the old "last source
-        # line" fallback incorrectly carried its music template into the next
-        # scene as actor history. Let the current shot and image guide lead.
-        row.update(song_seconds=duration,segment_count=len(rows),fixed_reference_settings='')
-    return {'title':title[:120],'duration':duration,'segments':rows,'shared_setup':''}
+    marked=[fixed for fixed,is_handoff in shared_sources if is_handoff]
+    if marked and (len(marked)!=len(rows) or len(set(marked))!=1):
+        raise ValueError('手動分段共同設定交接不完整或互相矛盾，請保留相同的固定設定。')
+    common=marked[0] if marked else ''
+    for row,(fixed,_) in zip(rows,shared_sources):
+        # The fixed reference is a real per-slot work-order field, just like
+        # Classic MV. Do NOT copy the previous clip's final source sentence as
+        # a pseudo-state or add another performed event.
+        row.update(song_seconds=duration,segment_count=len(rows),
+                   fixed_reference_settings=fixed)
+    return {'title':title[:120],'duration':duration,
+            'segments':rows,'shared_setup':common}
