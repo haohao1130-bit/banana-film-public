@@ -16,7 +16,7 @@ class Handler(app.Handler):
     def do_GET(self):
         path=urllib.parse.urlparse(self.path).path
         if path in ('/','/film','/mv'):return self.send_file(app.WEB/'film.html')
-        if path in ('/film.js','/film_review.js'):return self.send_file(app.WEB/path.lstrip('/'))
+        if path in ('/film.js','/film_review.js','/kitchen.js'):return self.send_file(app.WEB/path.lstrip('/'))
         if path=='/api/health':return self.send_json({'service':'banana-film','standalone':True})
         return super().do_GET()
 
