@@ -10,6 +10,7 @@ import json
 import urllib.parse
 from http.server import ThreadingHTTPServer
 from banana_mv import server as app, film
+from banana_mv.takes import describe
 
 
 class Handler(app.Handler):
@@ -25,7 +26,7 @@ class Handler(app.Handler):
                 return self.send_json({'error':'找不到作品狀態','code':'film_state_missing'},404)
             except ValueError as error:
                 return self.send_json({'error':str(error)},400)
-            return self.send_json(job)
+            return self.send_json(describe(job))
         if path=='/api/health':return self.send_json({'service':'banana-film','standalone':True})
         return super().do_GET()
 
