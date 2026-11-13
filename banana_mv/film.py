@@ -606,7 +606,8 @@ def start(req):
             raise ValueError('手動模式未辨識到全片秒數。請在片長欄指定秒數，或寫「全片35秒」。')
         if exact and not CLIP.search(story):
             req['python_manual_handoff']=True
-            manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk))
+            manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk),
+                                                       chain5=req['mode']=='chain5')
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
             # Explicit CLIP timing sets the duration in prompt mode.
