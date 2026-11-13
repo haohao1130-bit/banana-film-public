@@ -7,25 +7,25 @@ def md(text):return {'cell_type':'markdown','metadata':{},'source':text.splitlin
 def code(text):return {'cell_type':'code','metadata':{},'execution_count':None,'outputs':[],'source':text.splitlines(True)}
 
 clone=(ROOT/'tools/public_clone.py').read_text()
-cells=[md('''# 🎬 大乘蕉宗・映像製片所
+cells=[md('''# 🍽️ 大乘蕉宗・蕉其林三星中餐廳
 
-故事＋角色／場景圖 → 9B 劇本預覽／細修 → 確認開拍 → H3 原生影音 → 完整短片。這是公開測試版，使用你自己的 Colab GPU，作品保存在自己的執行階段或 Drive。
+故事、角色圖、場景圖就是今天的食材。蕉彌備料，蕉大師掌勺。先用 9B 預覽或細修劇本，確認開拍後由 H3 生成原生影音。這是公開測試版，使用你自己的 Colab GPU，作品保存在自己的執行階段或 Drive。
 
-**初版尚待 GPU 實測，請先用 15 秒上限試拍。** 執行階段選 G4 或 A100 GPU，依序執行①②③。模型與既有 MV 版本相同，9B 為必要元件。
+**先試吃 15 秒。** Colab GPU 出片尚待實測。 執行階段選 G4 或 A100 GPU，依序執行①②③。模型與既有 MV 版本相同，9B 為必要元件。
 
 程式可匿名下載，不需要 GitHub Token。模型通常可匿名下載；需要時可在 Colab 左側 🔑 設定唯讀 `HF_TOKEN`，不要貼進程式。
 
 本入口不需歌曲，聲音由 H3 逐段生成；跨段聲線與配樂連續性不保證。第一次選無對白、15 秒試拍。
-'''),code('#@title ① 安裝獨立短片製作所\n'+clone+'''
+'''),code('#@title ① 開灶｜安裝短片製作所\n'+clone+'''
 PROJECT=Path('/content/banana-film-public')
 clone_project(PROJECT,'https://github.com/haohao1130-bit/banana-film-public.git')
 sys.path.insert(0,str(PROJECT/'tools'))
 import film_runtime as runtime
 runtime.install(globals())
-'''),code('''#@title ② 下載 H3 與 9B 導演模型
+'''),code('''#@title ② 備料｜下載 H3 與 9B 模型
 USE_DRIVE_CACHE = False #@param {type:"boolean"}
 runtime.download(globals(),use_drive_cache=USE_DRIVE_CACHE)
-'''),code('''#@title ③ 啟動蕉宗映像製片所
+'''),code('''#@title ③ 開席｜啟動短片介面
 SAVE_TO_DRIVE = True #@param {type:"boolean"}
 runtime.launch(globals(),save_to_drive=SAVE_TO_DRIVE)
 '''),md('''## 劇本確認、開拍與補拍

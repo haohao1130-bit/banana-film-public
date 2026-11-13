@@ -12,7 +12,7 @@
     },
     {
       "path": "Banana_Film_Studio.ipynb",
-      "sha256": "b3db8dd9f889973f11e551283c2160d6cf6fc74dc5f895ec660783d2bfcb9ace"
+      "sha256": "fdf49bb18acfd683bfed88b7a68b07118e0a7967817b3998677432475e6d5071"
     },
     {
       "path": "LICENSE",
@@ -336,7 +336,7 @@
     },
     {
       "path": "tools/build_film_notebook.py",
-      "sha256": "6fb84cda5156ecc6296d95d8e9ad6691a24891a2849180c449a7940d375fad6c"
+      "sha256": "cc295015708d6112b1d7a8d5f0d61673e0e52aefc1295be9264bd3661fec58aa"
     },
     {
       "path": "tools/colab_runtime.py",
