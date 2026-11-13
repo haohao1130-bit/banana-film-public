@@ -110,6 +110,76 @@ class FilmShotHandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'不同的全片秒數'):
             film.declared_film_seconds('全片 35 秒。製作一支 40 秒影片。')
 
+    def test_sixty_second_shared_setup_is_a_full_order_for_every_clip(self):
+        # Classic MV contract: settings are read once, not distributed as
+        # chapter-1 actions. Every H3 segment must see the identical cast,
+        # picture bindings, world and voice rules.
+        fixed=(
+            '共通設定\n'
+            '<Picture 1> = 女主角，黑色高馬尾。\n'
+            '<Picture 2> = 男主角，穿深藍色外套。\n'
+            '固定場景：台灣海邊的雨後街道。\n'
+            '全片聲線：女主角使用台灣華語；男主角聲音低沉。\n'
+            '服裝連續性：已完成的變化不重演。\n'
+        )
+        scenes='\n'.join(f'第{i+1}段：\n角色在場景內完成第{i+1}次獨立行動。'
+                         for i in range(10))
+        source=fixed+'\n故事內容\n'+scenes
+        clips=film_manual.distribute_manual_prompt([(15,source)],60,15)
+        self.assertGreater(len(clips),1)
+        self.assertAlmostEqual(sum(seconds for seconds,_ in clips),60)
+        for _,prompt in clips:
+            self.assertTrue(prompt.startswith(film_manual._FILM_FIXED_BLOCK_START))
+            self.assertIn(fixed.strip(),prompt)
+            self.assertIn(film_manual._FILM_LOCAL_BLOCK_START,prompt)
+        for i in range(10):
+            self.assertEqual(sum(prompt.count(f'第{i+1}次獨立行動')
+                                 for _,prompt in clips),1)
+        req={'max_seconds':61.5,'target_seconds':60,'target_is_exact':True,
+             'timeline_tolerance':1.5,'segment_seconds':15,'sound_mode':'auto'}
+        plan=film_manual.make_manual_plan(
+            clips,req,film.normalize_prompt,film.map_story,2,film.validate_manual_sound)
+        self.assertIn('服裝連續性：已完成的變化不重演。',plan['shared_setup'])
+        self.assertEqual(len(plan['segments']),len(clips))
+        for seg in plan['segments']:
+            self.assertEqual(seg['fixed_reference_settings'],plan['shared_setup'])
+            self.assertIn('<Picture 1> = 女主角',seg['manual_h3_prompt'])
+            self.assertIn('<Picture 2> = 男主角',seg['manual_h3_prompt'])
+
+    def test_sixty_second_authored_shots_repeat_global_world_not_story_outcome(self):
+        fixed=(
+            '大乘蕉宗｜情境練習\n'
+            '故事概念：男主角要解決一個祕密，最後真相尚未公開。\n'
+            '共通設定\n'
+            '(S1) = <Picture 1> = 成年女性，台灣華語。\n'
+            '(S2) = <Picture 2> = 成年男性，低沉聲線。\n'
+            '全場景：濕潤的台灣街道，冷色光線。\n'
+            '不得任意替換角色及場景。\n'
+            '分鏡時間軸\n'
+        )
+        shots='\n'.join(
+            f'SHOT {i+1:02d}｜{i*5:.2f}–{(i+1)*5:.2f}秒\n'
+            f'主角走到第{i+1}個指定位置，觀察雨後的街景。'
+            for i in range(12))
+        clips=film_manual.distribute_manual_prompt([(10,fixed+shots)],60,10)
+        self.assertGreaterEqual(len(clips),6)
+        for _,prompt in clips:
+            self.assertTrue(prompt.startswith('subject_definitions:'))
+            self.assertIn('不得任意替換角色及場景',prompt)
+            self.assertIn('全場景：濕潤的台灣街道',prompt)
+            self.assertIn('<Picture 1>',prompt)
+            self.assertNotIn('最後真相尚未公開',prompt)
+        for i in range(12):
+            self.assertEqual(sum(prompt.count(f'第{i+1}個指定位置')
+                                 for _,prompt in clips),1)
+
+    def test_plain_story_without_shared_heading_is_not_promoted_to_global(self):
+        source='\n'.join(f'演員完成事件{i+1}，接著向前走。' for i in range(8))
+        clips=film_manual.distribute_manual_prompt([(15,source)],60,15)
+        self.assertTrue(all('FIXED_REFERENCE_SETTINGS' not in prompt
+                            for _,prompt in clips))
+        self.assertEqual(sum(prompt.count('事件8') for _,prompt in clips),1)
+
     def test_interrupted_spoken_thought_survives_the_shot_02_boundary(self):
         # Repro for 5070 fb62b2239: two <d> utterances from the SAME SHOT
         # were split into separate generated clips at a silent inhale.
