@@ -216,7 +216,7 @@
     },
     {
       "path": "tests/test_comfy.py",
-      "sha256": "096da2142c16819da8da895d362e73549a8f374d3af4ec5a4b47f5062d7707c7"
+      "sha256": "546e28e33a8cb47f6b6fa8aae761b4fd5cc03118f6859545a23c0cca45318d1b"
     },
     {
       "path": "tests/test_core.py",
@@ -248,7 +248,7 @@
     },
     {
       "path": "tests/test_film_motion_context.py",
-      "sha256": "f44d8ea95ca3f95ae76d951027fece7f34fcd672f5c82b9ac73e55f923f29a43"
+      "sha256": "5497eb5139d47ee21a37c4e24e00a79d58eb64b1179477d48d9e4bb98977e42d"
     },
     {
       "path": "tests/test_film_reference_settings.py",
@@ -260,7 +260,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "4c6acb6329050ebd6553e3b537f8fd719e262a9bd16a69cfbf8f9bbcc7333e54"
+      "sha256": "46878cba76cb70f771675a3793128afbdb86b20f958a57bbc1cea70996380045"
     },
     {
       "path": "tests/test_h3_prompt.py",
@@ -320,7 +320,7 @@
     },
     {
       "path": "tests/test_services.py",
-      "sha256": "f5463bd44c2b178239af896d6d9925b2f205f8497a212c0a94024c520adc3d7e"
+      "sha256": "0d104a5a521578c969f6e2486ededa565c356a53a224a5c334a6c8b01a770d06"
     },
     {
       "path": "tests/test_shoot_plan.py",
