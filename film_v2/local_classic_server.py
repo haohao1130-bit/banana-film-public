@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import urllib.parse
 import uuid
 from http.server import ThreadingHTTPServer
@@ -47,8 +48,37 @@ SERVER_BUILD = detect_build_version()
 SERVER_INSTANCE = uuid.uuid4().hex
 
 
+RESTART_LAUNCHER = os.environ.get("BANANA_FILM_RESTART_LAUNCHER")
+
+
 class Handler(colab.Handler):
     """Colab production routes remain inherited verbatim."""
+
+    def do_POST(self):
+        if self.path != "/api/film/restart":
+            return super().do_POST()
+        origin = self.headers.get("Origin")
+        expected_origin = f"http://127.0.0.1:{app.backend.PORT}"
+        if origin != expected_origin or self.headers.get("X-Banana-Control") != "film-restart":
+            return self.send_error(403)
+        if not RESTART_LAUNCHER or not Path(RESTART_LAUNCHER).is_file():
+            return self.send_error(503, "Restart launcher unavailable")
+        if not app.GPU_LOCK.acquire(blocking=False):
+            return self.send_error(409, "Film job is active")
+        try:
+            subprocess.Popen(
+                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", RESTART_LAUNCHER, "-WaitForFilmPid", str(os.getpid()),
+                 "-NoBrowser"],
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+        except OSError:
+            app.GPU_LOCK.release()
+            return self.send_error(500, "Could not start Film launcher")
+        try:
+            return self.send_json({"ok": True})
+        finally:
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
@@ -80,7 +110,8 @@ class Handler(colab.Handler):
                 "data_root": str(app.backend.DATA.resolve()),
                 "version": SERVER_BUILD,
                 "instance": SERVER_INSTANCE,
-                "busy": app.GPU_LOCK.locked()
+                "busy": app.GPU_LOCK.locked(),
+                "restart_available": bool(RESTART_LAUNCHER and Path(RESTART_LAUNCHER).is_file())
             })
         return super().do_GET()
 
