@@ -494,351 +494,47 @@ _TOTAL_DURATION = re.compile(
 
 
 _NATURAL_FILM_DURATION = re.compile(
-    r'(?im)(?:^|[。！？\\n])\\s*(?:請|我要|幫我)?\\s*'
-    r'(?:(?:生成|製作|拍攝|創作|拍出|做出)\\s*)?'
-    r'(?:一支|一部|一段)\\s*(\\d+(?:\\.\\d+)?)\\s*'
-    r'(?:秒(?:鐘)?|s(?:ec(?:onds?)?)?\\b)'
+    r'(?im)(?:^|[。！？\n])\s*(?:請|我要|幫我)?\s*'
+    r'(?:(?:生成|製作|拍攝|創作|拍出|做出)\s*)?'
+    r'(?:一支|一部|一段)\s*(\d+(?:\.\d+)?)\s*'
+    r'(?:秒(?:鐘)?|s(?:ec(?:onds?)?)?\b)'
 )
 
 _SHOT_DURATION_RANGE = re.compile(
-    r'(?im)^[ \\t]*(?:#{1,6}[ \\t]+)?SHOT[ \\t]+(\\d+)[ \\t]*'
-    r'[｜|:：][ \\t]*(\\d+(?:\\.\\d+)?)\\s*[-–—~～至]\\s*'
-    r'(\\d+(?:\\.\\d+)?)\\s*(?:秒(?:鐘)?|s(?:ec)?\\b)[^\\n]*
-
-
-def start(req):
-    cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
-    story=req.get('prompt','')
-    if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
-    selected=req.get('max_seconds',300)
-    declaration=declared_film_seconds(story)
-    preference=req.get('duration_preference','selector' if 'max_seconds' in req else 'prompt')
-    if preference not in ('prompt','selector','custom'):
-        raise ValueError('未知的全片秒數選擇方式。')
-    if preference=='prompt' and declaration is not None:
-        maximum=declaration;duration_source='prompt'
-    else:
-        maximum=300 if preference=='prompt' else selected;duration_source='custom' if preference=='custom' else 'prompt_ceiling' if preference=='prompt' else 'selector'
-    if declaration is not None and preference in ('selector','custom') and abs(maximum-declaration)>1.5:
-        raise ValueError(f'選定 {maximum:g} 秒與提示詞的全片 {declaration:g} 秒不一致；請統一。')
-    chunk=req.get('segment_seconds','auto')
-    dynamic=chunk=='auto'
-    if dynamic:chunk=15
-    if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=300:
-        raise ValueError('片長上限為 6–300 秒。')
-    if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
-    exact=declaration is not None or preference in ('custom','selector')
-    tolerance=1.5 if exact else 0.0
-    req.update(production='film',fixed_reference_version=1,h3_validation_version=1,
-               duration_contract_version=3,duration_source=duration_source,target_is_exact=exact,
-               timeline_tolerance=tolerance,target_seconds=float(maximum),
-               max_seconds=min(300.0,float(maximum)+tolerance),segment_seconds=float(chunk),
-               segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
-               sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
-               rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
-    if req.get('mode','chain5') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
-    req.setdefault('mode','chain5');req.setdefault('intensity','normal')
-    if req['intensity'] not in FILM_INTENSITY:raise ValueError('未知攝影強度。')
-    if req['visual_style'] not in ('真人電影','動畫','特攝','依故事決定'):raise ValueError('未知影像風格。')
-    if req['sound_mode'] not in ('auto','ambient','dialogue'):raise ValueError('未知聲音模式。')
-    req['rewrite_retries']=rewrite_retry_count(req)
-    req.setdefault('auto_director',True);req.setdefault('script_review',True)
-    if not isinstance(req['auto_director'],bool) or not isinstance(req['script_review'],bool):
-        raise ValueError('自動導演與劇本確認必須為勾選值。')
-    req['python_auto_handoff']=req['auto_director']
-    req['duration_policy']='flexible' if req['auto_director'] else 'ceiling'
-    genres=req.get('genres',[])
-    if not isinstance(genres,list) or any(not isinstance(g,str) or g not in GENRES for g in genres):
-        raise ValueError('請選擇有效題材。')
-    req['genres']=list(dict.fromkeys(genres)) if req['auto_director'] else []
-    if 'image_slots' in req:
-        slots=req['image_slots']
-        if not isinstance(slots,list) or len(slots)!=9 or any(x is not None and (not isinstance(x,str) or not x) for x in slots):
-            raise ValueError('圖片需使用九個獨立格，空格填 null。')
-        req['image_ids']=[x for x in slots if x is not None]
-    ids=req.get('image_ids',[])
-    if not isinstance(ids,list):raise ValueError('圖片素材需為清單。')
-    if ids:ids=reference_images(ids,req['mode']=='chain')
-    if req['mode']=='chain5':
-        from banana_mv.film_continuity import preflight_nodes
-        app.preflight(cfg,preflight_nodes())
-    rows=[app.backend.asset(aid) for aid in ids]
-    if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
-    originals=[app.backend.LIBRARY/r['file'] for r in rows]
-    map_story(req,story,len(rows))
-    manual_plan=None
-    if not req['auto_director']:
-        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan
-        single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
-        manual_clips=split_native_h3(story,single_seconds)
-        if preference == 'prompt' and declaration is None and not CLIP.search(story):
-            raise ValueError('手動模式未辨識到全片秒數。請在片長欄指定秒數，或寫「全片35秒」。')
-        if exact and not CLIP.search(story):
-            req['python_manual_handoff']=True
-            manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk))
-        if manual_clips is not None:
-            authored=sum(seconds for seconds,_ in manual_clips)
-            # Explicit CLIP timing sets the duration in prompt mode.
-            # Custom time always wins and conflicting supplied CLIPs must error.
-            if preference=='prompt' and declaration is None:
-                if not 6<=authored<=300:raise ValueError('H3 全咒總長需為 6–300 秒。')
-                req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
-                           timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
-            req['manual_h3']=True
-            manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
-                                         len(rows),validate_manual_sound,
-                                         title=str(req.get('project_name') or '手動 H3 原生攝影'))
-    size=dimensions(req.get('aspect','16:9'),req.get('width'));out=output_dimensions(req.get('aspect','16:9'),req.get('width'))
-    if not manual_plan:
-        if not Path(cfg['guides']['ref']).is_file():raise ValueError('請先執行 Colab ② 下載 9B 與原生指南。')
-        app.preflight(cfg,{'encoder':{'class_type':'CLIPLoader','inputs':{'clip_name':cfg['rewriter']['model']}},
-                           'generate':{'class_type':'TextGenerate','inputs':{}}})
-    if not req['script_review']:
-        app.preflight(cfg,app.build_workflow([r['comfy_name'] for r in rows],None,*size,124,'',0,
-                                           **app.graph_options(req,6)))
-    if not app.GPU_LOCK.acquire(blocking=False):raise ValueError('已有作品製作中，請先等它完成。')
-    try:
-        q=app.backend.comfy(cfg,'/queue')
-        if q.get('queue_running') or q.get('queue_pending'):raise ValueError('ComfyUI 還有工作，請稍後再開拍。')
-        seed=req.get('seed')
-        if seed in ('',None):seed=random.randrange(2**48)
-        if isinstance(seed,bool) or not str(seed).isdigit() or not 0<=int(seed)<2**48:raise ValueError('Seed 需為 0–281474976710655 的整數。')
-        job_id=uuid.uuid4().hex[:12];work=app.RUNS/job_id;work.mkdir()
-        source_dir=work/'sources';source_dir.mkdir();paths=[]
-        for i,p in enumerate(originals):
-            target=source_dir/f'image_{i}{p.suffix.lower()}';shutil.copyfile(p,target);paths.append(str(target.relative_to(work)))
-        job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,
-             'duration':manual_plan['duration'] if manual_plan else 0,
-             'segments':manual_plan['segments'] if manual_plan else [],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
-             'images_comfy':[r['comfy_name'] for r in rows],'sources':{'images':paths},
-             'title':str(req.get('project_name') or '新短片')[:120],'timeline_source':'film_plan',
-             'note':'H3 原生影音生成；未做 GPU 品質驗證，跨段聲線與音樂不保證一致。'}
-        if manual_plan:
-            job['shared_setup']=''
-            job['title']=manual_plan['title']
-            job['timeline_source']='manual_native_h3'
-            atomic_json(work/'director_plan.json',dict(manual_plan,
-                         input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
-        app.write_state(job)
-        threading.Thread(target=worker,args=(job,cfg,*inputs(job,cfg)),daemon=True).start()
-        return job
-    except Exception:app.GPU_LOCK.release();raise
-
-
-def save_script(job_id,draft,revision,render=False):
-    """Only unrendered review drafts may change. Approval atomically starts rendering."""
-    if not app.GPU_LOCK.acquire(blocking=False):raise ValueError('已有作品製作中，請稍後再確認劇本。')
-    handed_off=False
-    try:
-        job=app.read_state(job_id)
-        if job['request'].get('production')!='film' or job['status']!='script_ready':
-            raise ValueError('只有尚未開拍的劇本草稿可以修改或確認。')
-        if not isinstance(revision,str) or revision!=job.get('script_revision'):
-            raise ValueError('劇本已有更新，請重新開啟作品後再確認，避免覆蓋新版。')
-        if not isinstance(draft,dict):raise ValueError('缺少劇本。')
-        if job['request'].get('manual_h3'):
-            from banana_mv.film_manual import make_manual_plan
-            clips=[(row.get('seconds'),row.get('brief')) for row in draft.get('segments',[])]
-            plan=make_manual_plan(clips,job['request'],normalize_prompt,map_story,
-                                  len(job['images_comfy']),validate_manual_sound,
-                                  title=str(draft.get('title') or job['title']))
-        else:
-            plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
-        if any(s.get('prompt_id') or s.get('prompt') for s in job['segments']):
-            raise ValueError('已有生成稿，請建立新作品而非覆寫劇本。')
-        cfg=copy.deepcopy(app.backend.load_config())
-        if render:
-            queue=app.backend.comfy(cfg,'/queue')
-            if queue.get('queue_running') or queue.get('queue_pending'):raise ValueError('ComfyUI 尚有工作，請稍後開拍。')
-            app.preflight(cfg,app.build_workflow(job['images_comfy'],None,*job['size'],plan['segments'][0]['model_frames'],'',job['seed'],
-                                               **app.graph_options(job['request'],plan['segments'][0]['seconds'],plan['segments'][0])))
-        job.setdefault('script_history',[]).append({'revision':revision,'script':job.get('script_draft',review_draft(job)),'note':'確認開拍' if render else '手動儲存','created':time.time()})
-        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],
-                   script_revision=uuid.uuid4().hex,script_approved=render,resumed=time.time())
-        job['script_draft']=review_draft(job)
-        previous=json.loads((app.job_dir(job_id)/'director_plan.json').read_text(encoding='utf-8'))
-        atomic_json(app.job_dir(job_id)/'director_plan.json',dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
-        if render:
-            originals,_,_=inputs(job,cfg);job['status']='running';app.CANCEL.discard(job_id)
-        app.write_state(job)
-        if render:
-            thread=threading.Thread(target=worker,args=(job,cfg,originals,None,None),daemon=True)
-            try:thread.start();handed_off=True
-            except Exception:
-                job.update(status='script_ready',script_approved=False);app.write_state(job);raise
-        return job
-    finally:
-        if not handed_off:app.GPU_LOCK.release()
-
-
-
-def revise_script(job_id,draft,revision,instruction):
-    """Revise the submitted current draft; never render or silently replace a newer draft."""
-    if not isinstance(instruction,str) or not 1<=len(instruction.strip())<=3000:
-        raise ValueError('請填寫劇本修改意見，最多 3000 字。')
-    if not app.GPU_LOCK.acquire(blocking=False):raise ValueError('導演正在工作，請稍後再修稿。')
-    try:
-        job=app.read_state(job_id)
-        if job['status']!='script_ready' or job['request'].get('production')!='film':
-            raise ValueError('只有尚未開拍的劇本可以請導演細修。')
-        if revision!=job.get('script_revision'):raise ValueError('劇本已有更新，請重新開啟作品。')
-        req=job['request'];count=len(job['images_comfy'])
-        if req.get('manual_h3'):
-            raise ValueError('原生 H3 手動模式不使用 9B 細修，請在劇本欄直接修改六段式全咒再儲存。')
-        current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
-        instruction=map_story(req,instruction,count)
-        cfg=copy.deepcopy(app.backend.load_config());originals,_,_=inputs(job,cfg)
-        source={'original_story':map_story(req,req['prompt'],count),
-                'fixed_reference_settings':current['shared_setup'],
-                'current_script':{'title':current['title'],'segments':[
-                    {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']} for s in current['segments']]},
-                'revision_request':instruction,'max_seconds':req['max_seconds'],
-                'max_clip_seconds':req['segment_seconds'],'sound':req['sound_mode'],
-                'style':req['visual_style'],'intensity':req['intensity'],
-                'reference_count':count,'genres':[GENRES[g] for g in req.get('genres',[])]}
-        system=PLANNER+"\nREVISION TASK: Edit the CURRENT SCRIPT according to revision_request. Preserve the title and all unaffected scenes, dialogue, actor identities, causal order and outcome unless the revision explicitly asks to change them. Do not restart from the original story or apply unrelated creative expansion. Return the complete revised JSON using the same schema."
-        parts=[('text',json.dumps(source,ensure_ascii=False))]+_pictures(originals)
-        for attempt in range(req['rewrite_retries']+1):
-            raw=app.backend.rewrite_local(cfg,system,parts,uuid.uuid4().hex[:8])
-            (app.job_dir(job_id)/f'script_revision_{revision}_{attempt}.txt').write_text(raw,encoding='utf-8')
-            try:
-                plan=validate_plan(raw,req,count);break
-            except (ValueError,TypeError,KeyError) as error:
-                if attempt==req['rewrite_retries']:raise
-                parts=[*parts,('text','Return corrected complete JSON. '+str(error))]
-        history=job.setdefault('script_history',[])
-        history.append({'revision':revision,'script':draft,'note':instruction,'created':time.time()})
-        job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],script_revision=uuid.uuid4().hex)
-        job['script_draft']=review_draft(job)
-        path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text(encoding='utf-8'))
-        atomic_json(path,dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
-        app.write_state(job);return job
-    finally:app.GPU_LOCK.release()
-
-def worker(job,cfg,originals,song=None,drive=None):
-    work=app.job_dir(job['id']);tail=None
-    from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
-    try:
-        if not job['segments']:
-            job['status']='planning_story';app.write_state(job)
-            plan=plan_film(cfg,job,originals)
-            job.update(segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'])
-            if not job['request'].get('project_name'):job['title']=plan['title']
-            app.write_state(job)
-        if job['request'].get('script_review') and not job.get('script_approved'):
-            job.update(status='script_ready',script_revision=uuid.uuid4().hex)
-            job['script_draft']=review_draft(job);app.write_state(job);return
-        for seg in job['segments']:
-            if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
-            i=seg['index'];part=app.adopted_part(job,seg);job['current']=i+1
-            if seg.get('takes') and not part.is_file():raise ValueError('採用版片段遺失，請恢復該版本或另選版本。')
-            if seg.get('status')=='done' and app.valid_part(part,seg,job['size']):
-                require_audio(part);continue
-            tail=None;context_names=[];prefix=motion_prefix(job,seg)
-            if prefix:
-                source=app.adopted_part(job,job['segments'][i-1])
-                context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{i:02d}')
-                previous=seg.get('motion_context')
-                if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
-                    raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
-                seg['motion_context']=receipt
-            if i and job['request']['mode']=='chain':
-                tail=work/f'{i:02d}_opening.png';app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
-            from banana_mv.takes import existing_file
-            prompt_file=existing_file(job,i,seg.get('selected_take','original'),'prompt.txt')
-            if prompt_file.exists() and not seg.get('refresh_prompt'):prompt=prompt_file.read_text(encoding='utf-8')
-            else:
-                prompt_file=work/f'{i:02d}_prompt_v1.txt'
-                job['status']='running';seg['status']='rewriting';app.write_state(job)
-                if job['request'].get('manual_h3'):
-                    prompt=seg['manual_h3_prompt']
-                    if seg.get('continuity_context'):
-                        prompt=('Already established before this clip; continue from its result without replaying it: '
-                                + seg['continuity_context'] + '\n\n' + prompt)
-                    if tail:
-                        prompt=re.sub(r'<Picture (\d+)>',
-                                      lambda m:f'<Picture {int(m[1])+1}>',prompt)
-                    validate_manual_sound(normalize_prompt(prompt,len(originals)+int(bool(tail))),
-                                         seg['seconds'],job['request']['sound_mode'])
-                else:
-                    prompt=write_prompt(cfg,job,seg,originals,tail)
-                prompt_file.write_text(prompt,encoding='utf-8')
-                seg.pop('prompt_id',None);seg.pop('refresh_prompt',None)
-            if prefix:
-                from banana_mv.film_manual import protect_chain5_opening
-                guarded = protect_chain5_opening(prompt)
-                if guarded != prompt:
-                    prompt = guarded
-                    prompt_file.write_text(prompt, encoding='utf-8')
-            seg.update(prompt=prompt,status='generating');job['status']='running';app.write_state(job)
-            first=None
-            if tail:
-                first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
-            graph=app.build_workflow(job['images_comfy'],None,*job['size'],seg['model_frames'],prompt,
-                                     (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
-            if context_names:add_motion_guide(graph,context_names,seg['frames'])
-            graph['16']['inputs']['filename_prefix']=f'BananaFilm/{job["id"]}/{i:02d}_v1'
-            atomic_json(work/f'{i:02d}_workflow_v1.json',graph);app.preflight(cfg,graph)
-            entry=app.backend.history_entry(cfg,seg['prompt_id']) if seg.get('prompt_id') else None
-            if entry is None and job.get('resuming'):seg.pop('prompt_id',None)
-            if entry and entry.get('status',{}).get('status_str')=='error':entry=None;seg.pop('prompt_id',None)
-            if not entry or not entry.get('status',{}).get('completed'):
-                if not seg.get('prompt_id'):seg['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
-                entry=app.wait_generation(cfg,seg['prompt_id'],job)
-            app.backend.comfy_download(cfg,app.video_info(entry),work/f'{i:02d}_raw_v1.mp4')
-            part=work/f'{i:02d}_part_v1.mp4'
-            if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
-            else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
-            if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
-            seg['status']='done';app.write_state(job)
-            if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
-        if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
-        job['status']='assembling';app.write_state(job);masters.preserve_current(job,work)
-        pending=work/'final_pending.mp4'
-        app.assemble([app.adopted_part(job,s) for s in job['segments']],None,pending,job['duration'],job['output_size'])
-        master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume')
-        pending.replace(work/'final.mp4');job['current_master']=master['version']
-        try:app.export_finished_video(job,work/'final.mp4')
-        except OSError as error:job['export_error']=str(error)
-        job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
-        job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
-    except Exception as error:
-        traceback.print_exc()
-        job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
-    finally:
-        app.CANCEL.discard(job['id']);app.GPU_LOCK.release()
-
+    r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)[ \t]*'
+    r'[｜|:：][ \t]*(\d+(?:\.\d+)?)\s*[-–—~～至]\s*'
+    r'(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|s(?:ec)?\b)[^\n]*$'
 )
 
 
 def _total_from_complete_shot_timeline(story):
     """Infer total only from consecutive authored SHOTs beginning at 0s.
 
-    A single timestamp or an incomplete list is not a total duration.
-    Follow the same SHOT notation already supported by Film's Python planner.
+    An isolated cue or a gap between chapters isn't an implicit full runtime.
+    Keep the same syntax recognized by Film's Python manual-shot planner.
     """
-    shots = [tuple(float(value) for value in match.groups())
+    shots = [(int(match[1]), float(match[2]), float(match[3]))
              for match in _SHOT_DURATION_RANGE.finditer(story)]
     if not shots:
         return None
-    previous = 0.0
-    for expected, (number, start, end) in enumerate(shots, 1):
-        if (number != expected or abs(start - previous) > 0.051
-            or end <= start or end > 300):
+    previous=0.0
+    for expected, (number,start,end) in enumerate(shots,1):
+        if (number != expected or abs(start-previous)>0.051
+            or end<=start or end>300):
             return None
-        previous = end
+        previous=end
     return previous if 6 <= previous <= 300 else None
 
 
 def declared_film_seconds(story):
-    """Recognize authored total duration without mistaking a shot cue for it."""
+    """Detect an authored full runtime, never a standalone action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
-    # Natural director instruction: '生成一支40秒、寫實電影感的短片'.
+    # Natural director brief: '生成一支40秒、超寫實電影質感的短片'.
     declared += [float(m[1]) for m in _NATURAL_FILM_DURATION.finditer(story)]
     if not declared:
-        declared = [float(m) for m in re.findall(
-            r'(?<![\\d.])(\\d+(?:\\.\\d+)?)\\s*'
-            r'(?:秒(?:鐘)?|[sS])\\s*(?:短片|影片|全片)', story)]
+        declared=[float(m) for m in re.findall(
+            r'(?<![\d.])(\d+(?:\.\d+)?)\s*'
+            r'(?:秒(?:鐘)?|[sS])\s*(?:短片|影片|全片)', story)]
     if not declared:
         return _total_from_complete_shot_timeline(story)
     if any(not 6<=value<=300 for value in declared):
