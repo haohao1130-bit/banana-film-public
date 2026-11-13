@@ -131,6 +131,81 @@ class FilmShotHandoffTests(unittest.TestCase):
         self.assertEqual(prompts[indices[0]].count('<d>[Chinese] 這次……一定會帶我去玩水的。</d>'),1)
         self.assertIn('短暫吸氣，聲音開始哽咽。',prompts[indices[0]])
 
+    def test_dense_realistic_shot_moves_whole_dialogue_into_next_clip(self):
+        # The older fb62b2239 plan put all seven spoken lines of SHOT04/05
+        # in one 9.417-second H3 clip; the final syllable vanished in render.
+        shots=[]
+        for shot in range(8):
+            lines=[f'SHOT {shot+1:02d}｜{shot*5:.2f}–{(shot+1)*5:.2f}秒',
+                   f'鏡頭第{shot+1}段繼續原本人物動作。']
+            if shot==3:
+                lines.extend([
+                    '(S1)「你說……那個電腦？」',
+                    '男主角緩慢搖頭。',
+                    '(S2)「那不是普通的電腦。」',
+                    '短暫停頓。',
+                    '(S2)「那是我這兩個禮拜的心血。」'])
+            elif shot==4:
+                lines.extend([
+                    '(S1)「那我呢……？」',
+                    '她停頓，深深吸氣。',
+                    '(S1)「你已經修了兩個禮拜了……」',
+                    '男主角從畫外輕聲搶入：',
+                    '(S2)「小語，妳聽我說……」',
+                    '小語立刻接話，聲音短暫重疊：',
+                    '(S1)「我只是想去玩水啊……」'])
+            else:
+                lines.extend([f'(S1)「第{shot+1}段完整講完。」',
+                              f'(S2)「第{shot+1}段回答完畢。」'])
+            shots.append('\n'.join(lines))
+        source='角色設定\n(S1) = <Picture 1> = 小語。\n(S2) = <Picture 2> = 男主角。\n\n'+'\n\n'.join(shots)
+        clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
+        self.assertLessEqual(len(clips),7)
+        self.assertGreaterEqual(len(clips),5)
+        self.assertAlmostEqual(sum(duration for duration,_ in clips),40.0,delta=1.5)
+        for i,(duration,prompt) in enumerate(clips):
+            self.assertLess(duration,10.0)
+            lines=re.findall(r'\(S\d+\) <d>\[Chinese\] [^<]+</d>',prompt)
+            budget=film_manual._dialogue_budget_seconds('\n'.join(lines))
+            room=duration-film_manual.FILM_DIALOGUE_TAIL_SECONDS
+            room-=film_manual.FILM_CHAIN5_OPENING_SECONDS if i else 0.18
+            self.assertLessEqual(budget,room+0.001,
+                                 f'Clip {i} has more speech than protected time')
+        spoken=[re.findall(r'\(S\d+\) <d>\[Chinese\] [^<]+</d>',prompt)
+                for _,prompt in clips]
+        all_spoken='\n'.join('\n'.join(lines) for lines in spoken)
+        self.assertEqual(all_spoken.count('我只是想去玩水啊……'),1)
+        self.assertEqual(all_spoken.count('你已經修了兩個禮拜了……'),1)
+        self.assertEqual(all_spoken.count('那是我這兩個禮拜的心血。'),1)
+        self.assertFalse(any(
+            '你說……那個電腦？' in prompt and
+            '我只是想去玩水啊……' in prompt
+            for _,prompt in clips),
+            'The overloaded old 9.417s third clip must be redistributed')
+
+    def test_count_is_dynamic_when_six_full_speech_events_will_not_fit_five_clips(self):
+        # Every completed speech act is too long to pair with the next one
+        # inside one 9.417-second clip (after visual/audio safety margins).
+        # Six shorter native H3 clips should be tried instead of a hard error.
+        long_line='我要把現在的問題全部解決完畢，才可以放心地回家休息。'
+        shots=[]
+        for i in range(8):
+            lines=[f'SHOT {i+1:02d}｜{i*5:.2f}–{(i+1)*5:.2f}秒',
+                   '人物沿著街道緩慢向前行走。']
+            if i < 6:
+                lines.append(f'(S1)「第{i+1}段{long_line}」')
+            else:
+                lines.append('兩人相互看著，保持原本的情緒與動作。')
+            shots.append('\n'.join(lines))
+        story='角色設定\n(S1) = <Picture 1> = 主角。\n\n'+'\n\n'.join(shots)
+        clips=film_manual.distribute_manual_prompt([(10,story)],40,10)
+        self.assertGreaterEqual(len(clips),6)
+        self.assertTrue(all(5 <= seconds <= 10 for seconds,_ in clips))
+        self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40.0,delta=1.5)
+        full='\n'.join(prompt for _,prompt in clips)
+        for i in range(6):
+            self.assertEqual(full.count(f'第{i+1}段{long_line}'),1)
+
     def test_40s_dialogue_packing_keeps_full_lines_and_chain5_start_safe(self):
         # Regression: the 2026-11-13 40s film had 8 authored 5s SHOTs
         # but Python assigned five hard 8s windows and broke the dialogue.
