@@ -15,12 +15,24 @@ function updateClipActions(){
   $('clips-all').disabled=clipView.locked||!clipView.rows.size;
   $('clips-clear').disabled=clipView.locked||!count;
   $('clips-retake').disabled=!clipIdle()||!count;
-  $('clips-retake').textContent=count?`將所選 ${count} 段鏡頭重拍重煉`:'將所選片段重拍重煉';
+  const film=clipView.jobData?.request?.production==='film';
+  $('clips-retake').textContent=film?(count?`此菜未熟，送回去重炒（${count} 段）`:'此菜未熟，送回去重炒'):
+    count?`重新炒菜（${count} 段）`:'重新炒菜';
 }
 function showClipVersion(row){
   const take=row.segment.takes.find(t=>t.id===row.select.value&&t.status==='ready');
   if(take&&row.url!==take.preview){row.url=take.preview;row.video.src=take.preview;}
   row.note.textContent=take?`V${take.version||1} · ${take.filename||''} · Seed：${take.seed}`+(take.correction?` · 局部修改：${take.correction}`:''):'';
+  if(clipView.jobData?.request?.production==='film'&&take&&row.editTake!==take.id){
+    const source=take.prompt||(take.id===row.segment.selected_take?row.segment.prompt:'')||'';
+    const storage='banana_film_clip_prompts:'+clipView.job;
+    let drafts={};
+    try{drafts=JSON.parse(localStorage.getItem(storage)||'{}');}catch{}
+    row.sourcePrompt=source;
+    row.correction.value=Object.prototype.hasOwnProperty.call(drafts,row.index+':'+take.id)?
+      drafts[row.index+':'+take.id]:source;
+    row.editTake=take.id;
+  }
   updateClipActions();
 }
 function renderClipPreviews(job){
@@ -39,20 +51,28 @@ function renderClipPreviews(job){
       const select=document.createElement('select');select.setAttribute('aria-label',`第 ${i+1} 段鏡頭的版本`);
       const use=document.createElement('button');use.type='button';use.className='secondary';use.textContent='選用此版';
       const note=document.createElement('p');note.className='muted';version.append(select,use);card.append(label,video,version,note);$('clip-list').append(card);
-      const fixLabel=document.createElement('label');fixLabel.textContent='局部修改建議（選填）';
-      const correction=document.createElement('textarea');correction.rows=3;correction.maxLength=3000;
-      correction.setAttribute('aria-label',`第 ${i+1} 段鏡頭的局部修改建議`);
-      correction.placeholder='例如：表情更憤怒；增加手部操作特寫；保留事件，只改這段拍法。';
-      const help=document.createElement('p');help.className='muted';help.textContent='以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。填寫後勾選此段，9B 只修這段原稿。';
-      try{correction.value=JSON.parse(localStorage.getItem('banana_film_clip_fixes:'+job.id)||'{}')[i]||'';}catch{}
-      correction.oninput=()=>{try{const key='banana_film_clip_fixes:'+job.id;const saved=JSON.parse(localStorage.getItem(key)||'{}');saved[i]=correction.value;localStorage.setItem(key,JSON.stringify(saved));}catch{}};
+      const film=job.request?.production==='film';
+      const fixLabel=document.createElement('label');fixLabel.textContent=film?'本版實際 H3 攝影提示詞（可直接編輯）':'局部修改建議（選填）';
+      const correction=document.createElement('textarea');correction.rows=film?12:3;correction.maxLength=film?30000:3000;
+      correction.setAttribute('aria-label',`第 ${i+1} 段鏡頭的`+(film?'完整攝影提示詞':'局部修改建議'));
+      correction.placeholder=film?'此版本攝影咒載入中；修改完整原稿後勾選重炒。原稿不變則只換 Seed。':'例如：表情更憤怒；增加手部操作特寫；保留事件，只改這段拍法。';
+      const help=document.createElement('p');help.className='muted';help.textContent=film?
+        '直接修改選中版本的完整攝影咒 → H3 拍攝，不經 9B；完全不改則只換 Seed。歷史版本不覆蓋，選用後再確認合成。':
+        '以已選用的待採用版修改；未選則用目前成片版。留空只換 Seed。想改哪裡就在這裡交代，勾選此段後，9B 只修這道。';
+      if(!film){try{correction.value=JSON.parse(localStorage.getItem('banana_film_clip_fixes:'+job.id)||'{}')[i]||'';}catch{}}
+      correction.oninput=()=>{try{
+        const key=film?'banana_film_clip_prompts:'+job.id:'banana_film_clip_fixes:'+job.id;
+        const saved=JSON.parse(localStorage.getItem(key)||'{}');
+        saved[film?(i+':'+(row?.editTake||'original')):i]=correction.value;
+        localStorage.setItem(key,JSON.stringify(saved));
+      }catch{}};
       fixLabel.append(correction);card.append(fixLabel,help);
       row={card,check,title,video,select,use,note,correction,segment,index:i};clipView.rows.set(i,row);
       check.onchange=updateClipActions;select.onchange=()=>showClipVersion(row);
       use.onclick=()=>adoptClip(row.index,row.select.value);
     }
     const desired=segment.pending_take||segment.selected_take;const changed=(row.segment.pending_take||row.segment.selected_take)!==desired;row.segment=segment;
-    row.title.textContent=`第 ${i+1} 顆 · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
+    row.title.textContent=`${i===0?'第一道菜上桌':`第 ${i+1} 段`} · ${segment.start.toFixed(2)}–${(segment.start+segment.seconds).toFixed(2)} 秒｜可預覽、重拍或選版`;
     const ready=segment.takes.filter(t=>t.status==='ready');
     const signature=ready.map(t=>t.id+':'+(t.id===segment.selected_take)+':'+(t.id===desired)).join('|');
     if(row.signature!==signature){
@@ -92,7 +112,21 @@ $('clips-clear').onclick=()=>{if(clipView.locked)return;for(const row of clipVie
 $('clips-retake').onclick=()=>{
   if(!clipIdle())return;
   const indices=[...clipView.rows].filter(([,row])=>row.check.checked).map(([i])=>i);
-  const instructions=Object.fromEntries(indices.map(i=>[String(i),clipView.rows.get(i).correction.value.trim()]).filter(([,text])=>text));
-  if(indices.length)return runClipAction('api/mv/retake',{indices,...(Object.keys(instructions).length?{instructions}:{})});
+  const film=clipView.jobData?.request?.production==='film';
+  if(!film){
+    const instructions=Object.fromEntries(indices.map(i=>[String(i),clipView.rows.get(i).correction.value.trim()]).filter(([,text])=>text));
+    if(indices.length)return runClipAction('api/mv/retake',{indices,...(Object.keys(instructions).length?{instructions}:{})});
+    return;
+  }
+  const bases=Object.fromEntries(indices.map(i=>[String(i),clipView.rows.get(i).select.value]));
+  const prompts={};
+  for(const i of indices){
+    const row=clipView.rows.get(i),value=row.correction.value.trim(),source=(row.sourcePrompt||'').trim();
+    if(value!==source){
+      if(!value){$('clip-review-status').textContent=`第 ${i+1} 段攝影咒不能清空；只換 Seed 請保留原稿。`;return;}
+      prompts[String(i)]=value;
+    }
+  }
+  if(indices.length)return runClipAction('api/mv/retake',{indices,bases,...(Object.keys(prompts).length?{prompts}:{})});
 };
 if(active){busy(true);poll();}

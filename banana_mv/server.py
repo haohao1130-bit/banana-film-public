@@ -301,7 +301,7 @@ def video_info(entry):
 
 def export_finished_video(job,source):
     """Keep the resumable project master and publish an atomic copy to the finished-video folder."""
-    folder=backend.DATA/'videos'
+    folder=Path(os.environ.get('BANANA_FINISHED_VIDEOS') or backend.DATA/'videos')
     folder.mkdir(parents=True,exist_ok=True)
     title=''.join(c for c in str(job.get('title') or 'Banana_MV') if c not in '<>:"/\\|?*' and ord(c)>=32).strip(' .')[:60] or 'Banana_MV'
     suffix=f'_v{job["current_master"]:03d}' if job.get('current_master') else ''
@@ -841,7 +841,7 @@ class Handler(WebHandler):
             if path=='/api/mv/retake':
                 from banana_mv.takes import retake
                 body=self.body_json()
-                return self.send_json(retake(body['id'],body.get('indices'),body.get('instructions')))
+                return self.send_json(retake(body['id'],body.get('indices'),body.get('instructions'),body.get('prompts'),body.get('bases')))
             if path=='/api/mv/condense':
                 from banana_mv.takes import condense
                 body=self.body_json()

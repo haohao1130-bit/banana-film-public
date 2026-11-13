@@ -305,6 +305,11 @@ def build_workflow(image, audio, width, height, model_frames, prompt, seed,
         if not images:del w['5']
         references=([['17',0]] if first_frame else [])+([['5',0]] if images else [])+[[f'ref_{i}',0] for i in range(1,len(images))]
         for i,reference in enumerate(references):w['7']['inputs'][f'ref_images.ref_image_{i}']=reference
+        if first_frame:
+            # Keep Picture numbering and native audio while anchoring frame zero.
+            w['opening_guide'] = node('MiniMaxH3AddGuide', positive=['7',0],
+                                      latent=['7',1], vae=['3',0], image=['17',0], frame_idx=0)
+            w['9']['inputs']['conditioning'] = ['opening_guide',0]
         w['audio_decode']=node('VAEDecodeAudio',samples=['13',0],vae=['4',0])
         w['15']['inputs']['audio']=['audio_decode',0]
         w['16']['inputs']['filename_prefix']='BananaFilm/segment'
