@@ -15,7 +15,10 @@ import math
 import re
 
 from banana_mv.core import FPS
-from banana_mv.film_actor_state import _opening_actor_state, _advance_actor_state, _actor_state_lines
+from banana_mv.film_actor_state import (
+    WARDROBE_KINDS, _opening_actor_state, _advance_actor_state, _actor_state_lines,
+    _current_appearance_anchor, _fixed_reference_with_python_priority,
+)
 from banana_mv.timed_slots import allocate_timed_chapters, parse_timed_source
 
 CLIP = re.compile(
@@ -67,6 +70,26 @@ def _shot_action_units(body):
             units.append(line)
     return units
 
+
+def _opening_wardrobe_indices(lines):
+    """Retain only the source's explicitly authored opening clothing list.
+
+    Film's fixed-setup filter previously discarded this list before Python Slot
+    could initialize its proven garment state. Never infer wardrobe from camera
+    notes, later SHOTs or the reference image.
+    """
+    selected=set()
+    inside=False
+    for i, raw in enumerate(lines):
+        line=raw.strip()
+        if re.match(r'^(?:開場穿著|初始穿著|初始服裝|開場服裝)\s*[：:]', line):
+            selected.add(i)
+            inside=True
+        elif inside and line and any(pattern.search(line) for _,pattern in WARDROBE_KINDS):
+            selected.add(i)
+        else:
+            inside=False
+    return selected
 
 
 def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
@@ -264,8 +287,11 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
     if chapters:
         if any(not 0 <= row['start'] < row['end'] <= total_seconds+1e-8 for row in chapters):
             raise ValueError('章節時間超出全片範圍。')
-        fixed = '\n'.join(line for line in setup.splitlines()
-            if re.match(r'^\s*(?:主角|角色|人物外貌|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line)
+        setup_lines=setup.splitlines()
+        opening_lines=_opening_wardrobe_indices(setup_lines)
+        fixed = '\n'.join(line for index,line in enumerate(setup_lines)
+            if (index in opening_lines or re.match(
+                r'^\s*(?:主角|角色|人物外貌|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
             and not re.search(r'最後才|結局|修復AI|修電腦', line))
         if shots:
             return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count)
@@ -323,8 +349,7 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     assigned = re.compile(r'(?m)^USER-SPECIFIED FILM TIME [^\n]*?'
                           r'inside THIS clip is ([\d.]+)–[\d.]+s\.[^\n]*\n')
     matches = list(assigned.finditer(prompt))
-    opening = _actor_state_lines({kind: item for kind, item in (state or {}).items()
-                                  if item.get('changed')})
+    start_state={kind:item.copy() for kind,item in (state or {}).items()}
     shots = []
     previous_ms = 0
     for i, match in enumerate(matches):
@@ -361,12 +386,34 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     if not shots:
         raise ValueError('這個生成窗只有已發生事項／攝影備註，沒有當段演出。請調整 SHOT 時間或加入明確動作。')
     details = '\n\n'.join(shots)
-    if opening:
-        details = details.replace('[Shot 1] ', '[Shot 1] Starting wardrobe state: '
-                                  + opening + '\nContinue this state. Perform only the current shot actions.\n', 1)
+    state_note = ''
+    fixed_for_clip = fixed
+    if start_state:
+        # Mirror Classic Python Slot: tracked current appearance overrides
+        # stale opening clothes, while untracked traits still use reference
+        # photos. The first-shot note is a FACT, never a new undressing action.
+        incoming=_actor_state_lines(start_state)
+        outgoing=_actor_state_lines(state)
+        state_note=(
+            'CURRENT_ACTOR_STATE (at clip start; authoritative over initial wardrobe):\n'
+            + incoming
+            + '\nEXPECTED_ACTOR_STATE_AFTER_THIS_CLIP (only through assigned actions):\n'
+            + outgoing
+            + '\nPreserve reference identity. The current wardrobe is authoritative; '
+              'never re-dress or replay previously completed wardrobe changes.')
+        fixed_for_clip=_fixed_reference_with_python_priority(fixed, state_note)
+        details=details.replace('[Shot 1] ', '[Shot 1] '
+            + _current_appearance_anchor(start_state)
+            + '\nContinue the assigned actions once from this state.\n', 1)
     refs = sorted(set(re.findall(r'<Picture (\d+)>', fixed + '\n' + details)), key=int)
-    retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
-    return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
+    retention = '\n'.join(
+        f'<Picture {ref}>: preserve referenced identity and stable features; '
+        + ('apply the Python current wardrobe instead of the initial reference outfit.'
+           if start_state else 'preserve the referenced appearance.')
+        for ref in refs)
+    subject=fixed_for_clip or 'Use the actors and scene specified in the shots.'
+    if state_note: subject+='\n'+state_note
+    return ('subject_definitions:\n' + subject
             + '\n\nsummary:\nFilm the assigned shots in order within '
             + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; ' 
             + 'all other Chinese stage directions describe silent actions. Preserve speaker IDs.'
