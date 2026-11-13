@@ -415,7 +415,7 @@ def _split_film_shared_source(source):
     first_story = None
     strip_heading = False
     for i, line in enumerate(lines):
-        if _FILM_STORY_HEADING.fullmatch(line):
+        if _FILM_STORY_HEADING.fullmatch(line) or _FILM_STORY_NUMBERED.match(line):
             first_story = i
             strip_heading = True
             break
@@ -428,7 +428,7 @@ def _split_film_shared_source(source):
     # leading premise or overview which may reveal a later outcome. Start at
     # the first explicitly marked shared/role section in the prelude.
     starts = [i for i, line in enumerate(lines[:first_story])
-              if _FILM_SHARED_HEADING.fullmatch(line)]
+              if _FILM_SHARED_HEADING.fullmatch(line) or _FILM_FIXED_NUMBERED.match(line)]
     if not starts:
         return '', source
     explicit_common = next((i for i in starts if re.match(
@@ -531,11 +531,53 @@ def _compact_film_micro_beats(actions):
     return groups
 
 
+def _native_master_storyboard(source):
+    """Adapt a timed six-field H3 master to the existing shot planner."""
+    source = re.sub(r'\\(?=[<>]|[ \t]*$)', '', source, flags=re.M)
+    fields = list(re.finditer(r'(?m)^(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music):[ \t]*$', source))
+    sections = {m[1]: source[m.end():fields[i+1].start() if i+1<len(fields) else len(source)].strip()
+                for i,m in enumerate(fields)}
+    detail = sections.get('detailed_description', '')
+    shots = list(re.finditer(
+        r'(?m)^\[Shot[ \t]+\d+\][ \t]*\n'
+        r'(?:At[ \t]+)?(\d+:\d+(?:\.\d+)?)(?:[ \t]*[-–—~至][ \t]*(\d+:\d+(?:\.\d+)?)[ \t]*$|(?=,))', detail))
+    if not shots:
+        return source
+    def seconds(clock):
+        minutes, value = clock.split(':')
+        return int(minutes)*60+float(value)
+    prelude = detail[:shots[0].start()].split('\nSEGMENT ',1)[0].strip()
+    # Only stable production instructions belong in every work order.
+    prelude = '\n'.join(line for line in prelude.splitlines()
+                        if not re.search(r'briefly regains|first tear falls', line, re.I))
+    fixed = '\n'.join(filter(None, (sections.get('subject_definitions'),
+                                   sections.get('retention_analysis'), prelude)))
+    for section, label in (('overall_soundscape', '聲音設定'), ('non_diegetic_music', '背景使用')):
+        first = sections.get(section, '').split('. ', 1)[0].strip()
+        if first:
+            fixed += f'\n{label}：{first.rstrip(".")}.'
+    rows = ['共同設定', fixed, '分鏡時間軸']
+    for i, shot in enumerate(shots):
+        end = shots[i+1].start() if i+1<len(shots) else len(detail)
+        body = re.split(r'(?m)^SEGMENT[ \t]+[A-Z]\b', detail[shot.end():end], maxsplit=1)[0].strip()
+        body = re.sub(r'(?m)^\d+:\d+(?:\.\d+)?\s*[-–—~至]\s*\d+:\d+(?:\.\d+)?:?[ \t]*$', '', body)
+        body = body.lstrip(', ')
+        stop = shot[2] or (shots[i+1][1] if i+1<len(shots) else None)
+        if stop is None:
+            spans = re.findall(r'(?m)^\d+:\d+(?:\.\d+)?\s*[-–—~至]\s*(\d+:\d+(?:\.\d+)?):', detail[shot.end():end])
+            if not spans:
+                return source
+            stop = spans[-1]
+        rows.extend((f'SHOT {i+1:02d}｜{seconds(shot[1]):g}–{seconds(stop):g}秒', body))
+    return '\n'.join(rows)
+
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
         return clips
     _, source = clips[0]
+    source = _native_master_storyboard(source)
     shared_setup, story = _split_film_shared_source(source)
     # A SHOT-timed script will also get its shared setup in
     # subject_definitions. For unheaded chapter scripts, never split common
@@ -574,7 +616,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         timed = parse_timed_source(source)
         setup, chapters = timed if timed else ('', [])
     if chapters:
-        if any(not 0 <= row['start'] < row['end'] <= total_seconds+1e-8 for row in chapters):
+        if any(not 0 <= row['start'] < row['end'] for row in chapters):
             longest=max(row['end'] for row in chapters)
             raise ValueError(
                 f'全片指定 {total_seconds:g} 秒，但最後 SHOT 延伸到 {longest:g} 秒；'
