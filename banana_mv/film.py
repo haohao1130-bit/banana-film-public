@@ -764,6 +764,12 @@ def worker(job,cfg,originals,song=None,drive=None):
                     prompt=write_prompt(cfg,job,seg,originals,tail)
                 prompt_file.write_text(prompt,encoding='utf-8')
                 seg.pop('prompt_id',None);seg.pop('refresh_prompt',None)
+            if prefix:
+                from banana_mv.film_manual import protect_chain5_opening
+                guarded = protect_chain5_opening(prompt)
+                if guarded != prompt:
+                    prompt = guarded
+                    prompt_file.write_text(prompt, encoding='utf-8')
             seg.update(prompt=prompt,status='generating');job['status']='running';app.write_state(job)
             first=None
             if tail:
