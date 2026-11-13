@@ -133,6 +133,18 @@ def add_asset(cfg, filename, body, *, image_only=False):
         raise
 
 
+def upload_comfy_image(cfg, name, data, content_type):
+    boundary = uuid.uuid4().hex
+    header = (f'--{boundary}\r\nContent-Disposition: form-data; name="image"; '
+              f'filename="{name}"\r\nContent-Type: {content_type}\r\n\r\n')
+    body = header.encode() + data + f'\r\n--{boundary}--\r\n'.encode()
+    request = urllib.request.Request(cfg['comfy_url'].rstrip('/') + '/upload/image',
+        data=body, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        uploaded = json.load(response)
+    return '/'.join(filter(None, (uploaded.get('subfolder'), uploaded['name'])))
+
+
 def build_rewrite_graph(cfg, system, parts, job_id):
     """Use ComfyUI's native TextGenerate contract with the existing 9B settings."""
     rw = cfg['rewriter']
@@ -149,15 +161,7 @@ def build_rewrite_graph(cfg, system, parts, job_id):
             name = f'banana_rewrite_{job_id}_{index}.jpg'
             image = io.BytesIO()
             pic.convert('RGB').save(image, format='JPEG', quality=92)
-            boundary = uuid.uuid4().hex
-            header = (f'--{boundary}\r\nContent-Disposition: form-data; name="image"; '
-                      f'filename="{name}"\r\nContent-Type: image/jpeg\r\n\r\n')
-            body = header.encode() + image.getvalue() + f'\r\n--{boundary}--\r\n'.encode()
-            request = urllib.request.Request(cfg['comfy_url'].rstrip('/') + '/upload/image',
-                data=body, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
-            with urllib.request.urlopen(request, timeout=30) as response:
-                uploaded = json.load(response)
-            name = '/'.join(filter(None, (uploaded.get('subfolder'), uploaded['name'])))
+            name = upload_comfy_image(cfg, name, image.getvalue(), 'image/jpeg')
             key = f'picture_{index}'
             graph[key] = {'class_type': 'LoadImage', 'inputs': {'image': name}}
             if batch is None:
