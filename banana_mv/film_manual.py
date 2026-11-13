@@ -36,6 +36,51 @@ MASTER_FIELDS = re.compile(
     r'(?m)^(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music):[ \t]*$')
 
 
+INLINE_SEGMENT = re.compile(
+    r'(?im)^[ \t]*SEGMENT[ \t]+(\d+)[ \t]*[｜|:：][ \t]*'
+    r'(\d+:\d{2}(?:\.\d+)?)[ \t]*[-–—~～至][ \t]*(\d+:\d{2}(?:\.\d+)?)[ \t]*$')
+
+
+def _split_inline_segments(source):
+    segments = list(INLINE_SEGMENT.finditer(source))
+    if not segments:
+        return None
+
+    def seconds(clock):
+        minutes, rest = clock.split(':')
+        return int(minutes)*60 + float(rest)
+
+    fixed = re.split(r'(?m)^[ \t]*(?:故事核心|劇情分段)[ \t]*[：:]?[ \t]*$',
+                     source[:segments[0].start()], maxsplit=1)[0].strip()
+    appendix = re.search(r'(?m)^[ \t]*(?:電影導演控制|角色與物件連續性|角色語音控制|背景音樂與音效|全片限制|核心敘事)[ \t]*[：:]?[ \t]*$',
+                         source[segments[-1].end():])
+    end = segments[-1].end()+appendix.start() if appendix else len(source)
+    notes = dict(re.findall(r'(?im)^[ \t]*SEGMENT[ \t]+0*(\d+)[：:]([^\n]+)$', source[end:]))
+    clips = []
+    previous = 0.0
+    for i, segment in enumerate(segments):
+        start, stop = map(seconds, segment.group(2,3))
+        if int(segment[1]) != i+1 or abs(start-previous)>1e-6 or stop<=start:
+            raise ValueError('SEGMENT 時間碼必須從零開始，依序連號並連續。')
+        body = source[segment.end():segments[i+1].start() if i+1<len(segments) else end].strip()
+        if not body:
+            raise ValueError(f'SEGMENT {i+1:02d} 缺少演出內容。')
+        body = re.sub(r'\(S(\d+)\)[ \t]*「([^」]+)」',
+                      lambda match: f'(S{match[1]}) <d>[Chinese] {match[2].strip()}</d>', body)
+        if not re.match(r'^\[Shot 1\]', body):
+            body = '[Shot 1]\n'+body
+        clips.append((stop-start, '\n\n'.join((
+            'subject_definitions:\n'+(fixed or 'Preserve the provided character references.'),
+            f'summary:\nFilm only the assigned events in {stop-start:g} seconds.',
+            'retention_analysis:\nPreserve the fixed characters, voices, appearance and location.',
+            'detailed_description:\n'+body,
+            'overall_soundscape:\nKeep dialogue synchronized. '+notes.get(str(i+1),'').strip(),
+            'non_diegetic_music:\nFollow this segment’s sound cues. Keep dialogue audible.',
+        ))))
+        previous = stop
+    return clips
+
+
 def split_segment_master(source):
     """Compile authored local timelines without repartitioning dialogue."""
     source = source.replace('\r\n', '\n').replace('\r', '\n')
@@ -51,7 +96,7 @@ def split_segment_master(source):
     if not segments:
         if re.search(r'(?im)^\s*SEGMENT[ \t]+\d+[ \t]*\n(?:[ \t]*\n)*[ \t]*GLOBAL TIME', source):
             raise ValueError('已找到 SEGMENT 時間軸，但無法讀取分段。請保留 detailed_description、GLOBAL TIME 與 LOCAL TIME。')
-        return None
+        return _split_inline_segments(source)
     prelude = detail[:segments[0].start()].strip()
     retention = '\n'.join(line for line in sections.get('retention_analysis','').splitlines()
                           if not re.search(r'\bsegment\s+\d+|develops continuously from', line, re.I)).strip()
