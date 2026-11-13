@@ -62,6 +62,7 @@ class FilmManualDirectorTests(unittest.TestCase):
                 film_manual.split_native_h3(text,15)
         req={'max_seconds':36.5,'target_seconds':35,'target_is_exact':True,
              'timeline_tolerance':1.5,'segment_seconds':15,'sound_mode':'ambient'}
+        req.update(max_seconds=13.5,target_seconds=12)
         with self.assertRaisesRegex(ValueError,'說話者'):
             film_manual.make_manual_plan(
                 [(12,h3().replace('No dialogue.','<Subject 1> (S1) <d>[English] Hi.</d>'))],
@@ -103,7 +104,6 @@ class FilmManualDirectorTests(unittest.TestCase):
             for i in range(6)]}
         with self.assertRaisesRegex(ValueError,'超過片長上限'):
             film.validate_plan(json.dumps(too_long),req,0)
-        self.assertIn('不得新增劇情',film.PLANNER if False else '不得新增劇情')
         self.assertNotIn('180.0',str(req['max_seconds']))
 
     def test_retake_manual_mode_requires_complete_h3_and_no_9b(self):
