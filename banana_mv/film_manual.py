@@ -151,7 +151,7 @@ def _dialogue_budget_seconds(action):
     This is a conservative planning estimate, not speech recognition.
     """
     spoken=list(re.finditer(
-        r'\(S\d+\)\s*(?:<d>(?:\[[^\]]+\])?\s*([^<]*)</d>|[「『]([^」』]*)[」』])',
+        r'\(S\d+\)[^\n<「『]*?\s*(?:<d>(?:\[[^\]]+\])?\s*([^<]*)</d>|[「『]([^」』]*)[」』])',
         action))
     if spoken:
         seconds=0.0
@@ -166,7 +166,7 @@ def _dialogue_budget_seconds(action):
                       + 0.06*sum(char in '？?!！' for char in words))
         # Voice and staging overlap; explicit breath/silence does not.
         for line in action.splitlines():
-            if re.search(r'\(S\d+\)\s*(?:<d>|[「『])',line):
+            if re.search(r'\(S\d+\)[^\n<「『]*?\s*(?:<d>|[「『])',line):
                 continue
             if re.search(r'沉默半秒',line):
                 seconds+=0.40
@@ -208,7 +208,7 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
             elapsed += weight
             atoms.append({'chapter': chapter_index, 'text': action, 'weight': weight,
                           'budget': budget,
-                          'speaks': bool(re.search(r'\(S\d+\)\s*(?:<d>|[「『])', action)),
+                          'speaks': bool(re.search(r'\(S\d+\)[^\n<「『]*?(?:<d>|[「『])', action)),
                           'speaker': re.findall(r'\(S\d+\)', action)[-1:] or [],
                           'source_end': chapter['start'] + (chapter['end']-chapter['start'])
                           * elapsed / sum(weights)})
@@ -234,6 +234,19 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
     for atom in atoms:
         cumulative_budget.append(cumulative_budget[-1] + atom['budget'])
         cumulative_speakers.append(cumulative_speakers[-1] + int(atom['speaks']))
+
+    # Keep consecutive lines from the same speaker together, including
+    # intervening reaction beats and camera changes.
+    protected_cuts = set()
+    previous_line = None
+    for index, atom in enumerate(atoms):
+        if not atom['speaks'] or not atom['speaker']:
+            continue
+        if previous_line is not None and atoms[previous_line]['speaker'] == atom['speaker']:
+            # A chapter without dialogue is a separate performance beat.
+            if atom['chapter'] - atoms[previous_line]['chapter'] <= 1:
+                protected_cuts.update(range(previous_line + 1, index + 1))
+        previous_line = index
 
     selected = None
     for slot_count in range(count, last_allowed_count + 1):
@@ -266,7 +279,7 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
                             if abs(atoms[boundary-1]['source_end'] -
                                    new_used / FPS) <= 6.0)
                     for stop in stops:
-                        if stop <= cursor:
+                        if stop <= cursor or stop in protected_cuts:
                             continue
                         speech_present = (
                             cumulative_speakers[stop] >
