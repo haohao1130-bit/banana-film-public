@@ -1,5 +1,7 @@
 """Banana-owned settings, compatible asset storage and local prompt rewriting."""
 import copy
+import io
+import urllib.request
 import json
 import os
 import random
@@ -142,11 +144,20 @@ def build_rewrite_graph(cfg, system, parts, job_id):
     graph = {'encoder': {'class_type': 'CLIPLoader', 'inputs': {
         'clip_name': rw['model'], 'type': 'stable_diffusion', 'device': 'default'}}}
     names, batch = [], None
-    inp = Path(cfg['comfy_input_dir']); inp.mkdir(parents=True, exist_ok=True)
     try:
         for index, (_, pic) in enumerate(part for part in parts if part[0]=='image'):
             name = f'banana_rewrite_{job_id}_{index}.jpg'
-            names.append(name); pic.save(inp/name, quality=92)
+            image = io.BytesIO()
+            pic.convert('RGB').save(image, format='JPEG', quality=92)
+            boundary = uuid.uuid4().hex
+            header = (f'--{boundary}\r\nContent-Disposition: form-data; name="image"; '
+                      f'filename="{name}"\r\nContent-Type: image/jpeg\r\n\r\n')
+            body = header.encode() + image.getvalue() + f'\r\n--{boundary}--\r\n'.encode()
+            request = urllib.request.Request(cfg['comfy_url'].rstrip('/') + '/upload/image',
+                data=body, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
+            with urllib.request.urlopen(request, timeout=30) as response:
+                uploaded = json.load(response)
+            name = '/'.join(filter(None, (uploaded.get('subfolder'), uploaded['name'])))
             key = f'picture_{index}'
             graph[key] = {'class_type': 'LoadImage', 'inputs': {'image': name}}
             if batch is None:
@@ -168,7 +179,7 @@ def build_rewrite_graph(cfg, system, parts, job_id):
         return graph, names
     except Exception:
         for name in names:
-            (inp/name).unlink(missing_ok=True)
+            (Path(cfg['comfy_input_dir'])/name).unlink(missing_ok=True)
         raise
 
 
