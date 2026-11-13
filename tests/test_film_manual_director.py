@@ -54,7 +54,7 @@ class FilmManualDirectorTests(unittest.TestCase):
         self.assertLessEqual(abs(plan['duration']-35),1.5)
 
     def test_manual_native_does_not_invent_segments_or_accept_broken_format(self):
-        self.assertIsNone(film_manual.split_native_h3('完整事件說明，不是 H3 全咒',15))
+        self.assertEqual(film_manual.split_native_h3('阿蕉推開門',15),[(15,'阿蕉推開門')])
         for text in ('=== CLIP 2 (12s) ===\n'+h3(),
                      '=== CLIP ONE (12s) ===\n'+h3(),
                      '=== CLIP 1 (12s) ===\n'+h3()+'\n=== CLIP 3 (11s) ===\n'+h3()):
@@ -132,12 +132,11 @@ class FilmManualDirectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'超過指定'):
             film.validate_planned_duration({'duration':72.33},manual)
 
-    def test_retake_manual_mode_requires_complete_h3_and_no_9b(self):
+    def test_retake_manual_mode_accepts_freeform_without_9b(self):
         req={'production':'film','manual_h3':True,'sound_mode':'auto'}
         job={'request':req}
         seg={'seconds':12}
-        with self.assertRaisesRegex(ValueError,'完整六區塊'):
-            takes.repair_prompt({},job,seg,h3(),'改成遠景',[],None,Path('.'))
+        self.assertEqual(takes.repair_prompt({},job,seg,h3(),'改成遠景',[],None,Path('.')),'改成遠景')
         replaced=takes.repair_prompt({},job,seg,h3(),h3('sends a letter.'),[],None,Path('.'))
         self.assertIn('sends a letter.',replaced)
 
