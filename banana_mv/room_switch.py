@@ -1,5 +1,6 @@
 """Local 5070 handoff between the two installed desktop launchers."""
 import os
+import base64
 from pathlib import Path
 import subprocess
 import threading
@@ -39,20 +40,30 @@ def switch(handler, target, backend, gpu_lock):
             return handler.send_json({'ok': False, 'error': 'ComfyUI 還有任務。'}, 409)
         script = str(path).replace("'", "''")
         args = ' -Port 8193 -NoBrowser' if target == 'film' else ''
-        # The destination launcher refuses to start while the old socket listens.
+        # The desktop launcher must run from its own folder with its own configuration.
         command = (
             "$ErrorActionPreference = 'Stop'; "
-            "$deadline = (Get-Date).AddSeconds(30); "
-            "while (Get-NetTCPConnection -LocalPort 8193 -State Listen "
-            "-ErrorAction SilentlyContinue) { "
+            "$deadline = (Get-Date).AddSeconds(45); "
+            "while ($true) { "
+            "$client = New-Object System.Net.Sockets.TcpClient; "
+            "try { $client.Connect('127.0.0.1',8193); $listening = $true } "
+            "catch { $listening = $false } finally { $client.Dispose() }; "
+            "if (-not $listening) { break }; "
             "if ((Get-Date) -ge $deadline) { throw 'Port 8193 did not close.' }; "
             "Start-Sleep -Milliseconds 250 }; "
             f"& '{script}'{args}"
         )
-        subprocess.Popen(
-            ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-        )
+        encoded = base64.b64encode(command.encode('utf-16-le')).decode('ascii')
+        env = {name: value for name, value in os.environ.items()
+               if not name.upper().startswith(('BANANA_', 'PYTHONPATH', 'PYTHONHOME'))}
+        log = backend.DATA / 'room-switch.log'
+        with log.open('wb') as output:
+            subprocess.Popen(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+                cwd=str(path.parent), env=env, stdin=subprocess.DEVNULL,
+                stdout=output, stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
     except Exception:
         gpu_lock.release()
         return handler.send_json({'ok': False, 'error': '無法確認佇列或啟動另一個服務。'}, 503)
