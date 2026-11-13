@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film_manual.py",
-      "sha256": "ae43b71fa3c82496e019cbfe36859cd710426b352ebdd15660cfde6039b84e17"
+      "sha256": "acd823fe8abe8e587851f3fa5ec9f0f4c06bd74f22d9efee33b0196dbd861286"
     },
     {
       "path": "banana_mv/film_media.py",
@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "b585807e3f517e206f1c3f2cbd6de724141d1632243fdf29d36931e8d1699db9"
+      "sha256": "1a9bdb7808c1bc14d024b5890c560869727bf19596e6c4ea02b44df4b0c3357d"
     },
     {
       "path": "banana_mv/h3_prompt.py",
