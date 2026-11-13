@@ -40,6 +40,8 @@ class Film5070ColabParityTests(unittest.TestCase):
         self.assertIn('app.RUNS = app.backend.DATA / "films"', local_source)
         self.assertIn("films_v2", launcher)
         self.assertIn("film_review.js", canonical)
+        self.assertIn('src="kitchen.js"', canonical)
+        self.assertIn("BananaKitchen", (ROOT / "banana_mv/web/film.js").read_text(encoding="utf-8"))
         self.assertIn("film.js", canonical)
         self.assertIn("projector", canonical)
         self.assertIn('id="script-review"', canonical)
@@ -70,7 +72,8 @@ class Film5070ColabParityTests(unittest.TestCase):
                     '<script defer src="/film-5070-build.js"></script></body>'))
             for path, local_name in (
                     ("/film.js", "film.js"),
-                    ("/film_review.js", "film_review.js")):
+                    ("/film_review.js", "film_review.js"),
+                    ("/kitchen.js", "kitchen.js")):
                 code, content = request(path)
                 self.assertEqual(code, 200)
                 self.assertEqual(
