@@ -80,18 +80,29 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         fixed = '\n'.join(line for line in setup.splitlines()
             if re.match(r'^\s*(?:主角|角色|人物|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白)', line)
             and not re.match(r'^\s*(?:故事|劇情|結局)', line))
-        width = legal_frames(total_seconds/count, ceiling)/FPS
-        windows = [{'start':i*width, 'seconds':width if i+1<count else max(width,total_seconds-i*width)}
-                   for i in range(count)]
+        # Quantize the full timeline once, then distribute legal frame counts.
+        minimum = 124
+        maximum = math.floor(ceiling * FPS)
+        steps = round((total_seconds * FPS - count * minimum) / 17)
+        steps = max(0, min(steps, count * ((maximum - minimum) // 17)))
+        base, extra = divmod(steps, count)
+        lengths = [(minimum + 17 * (base + (i < extra))) / FPS for i in range(count)]
+        scale = total_seconds / sum(lengths)
+        windows = []
+        cursor = 0.0
+        for length in lengths:
+            windows.append({'start':cursor, 'seconds':length * scale})
+            cursor += length * scale
 
         def commission(chapter, phase, phases, previous):
             actions = chapter['actions']
             local = actions[phase*len(actions)//phases:(phase+1)*len(actions)//phases]
             context = 'ALREADY ESTABLISHED; continue without replay: '+previous if previous else ''
-            return '\n'.join(filter(None, [context, *local])), previous
+            return '\n'.join(filter(None, [context, *local])), local[-1] if local else previous
 
         prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
-        return [(width, '\n\n'.join(filter(None, [fixed, prompt]))) for prompt in prompts]
+        return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
+                for length, prompt in zip(lengths, prompts)]
     units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
              if part.strip()]
     if len(units) < count:
