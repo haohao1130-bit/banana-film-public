@@ -7,6 +7,7 @@ from pathlib import Path
 import random
 import re
 import shutil
+import traceback
 import threading
 import time
 import uuid
@@ -492,6 +493,8 @@ _TOTAL_DURATION = re.compile(
 def declared_film_seconds(story):
     """Only explicit TOTAL time, not a numbered shot or action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
+    if not declared:
+        declared = [float(m) for m in re.findall(r'(?<![\d.])(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|[sS])\s*(?:短片|影片|全片)', story)]
     if not declared:return None
     if any(not 6<=value<=300 for value in declared):
         raise ValueError('提示詞全片時間需在 6–300 秒之內。')
@@ -565,6 +568,8 @@ def start(req):
         from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         manual_clips=split_native_h3(story,single_seconds)
+        if preference == 'prompt' and declaration is None and not CLIP.search(story):
+            raise ValueError('手動模式未辨識到全片秒數。請在片長欄指定秒數，或寫「全片35秒」。')
         if exact and not CLIP.search(story):
             req['python_manual_handoff']=True
             manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk))
@@ -790,6 +795,7 @@ def worker(job,cfg,originals,song=None,drive=None):
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
     except Exception as error:
+        traceback.print_exc()
         job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
     finally:
         for path in motion_files:path.unlink(missing_ok=True)
