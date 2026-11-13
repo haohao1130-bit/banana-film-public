@@ -106,6 +106,7 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'write_state'))
                 stack.enter_context(patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)))
                 stack.enter_context(patch.object(app.backend,'load_config',return_value=cfg))
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 queue=stack.enter_context(patch.object(app.backend,'queue_prompt'))
                 writer=stack.enter_context(patch.object(film,'write_prompt'))
                 model=stack.enter_context(patch.object(app.backend,'rewrite_local',return_value=json.dumps(draft())))
@@ -138,7 +139,7 @@ class FilmTests(unittest.TestCase):
             job.update(**plan,status='script_ready',script_revision='original')
             job['script_draft']=film.review_draft(job)
             before=copy.deepcopy(job)
-            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue:
+            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'upload_comfy_image',return_value='photo.png'),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue:
                 with self.assertRaises(ValueError):film.revise_script(job['id'],job['script_draft'],'original','調整開頭')
                 self.assertEqual(job,before);save.assert_not_called();queue.assert_not_called()
                 self.assertFalse(app.GPU_LOCK.locked())
@@ -253,7 +254,7 @@ class FilmTests(unittest.TestCase):
     def test_film_entry_validation_never_requires_a_song(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo,work,req,job,cfg=self.fixture(Path(tmp))
-            bad=[dict(req,max_seconds=181),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,prompt='a'*30001),dict(req,segment_seconds=20)]
+            bad=[dict(req,max_seconds=301),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,prompt='a'*30001),dict(req,segment_seconds=20)]
             for r in bad:
                 with patch.object(app.backend,'load_config',return_value=cfg),self.assertRaises(ValueError):film.start(r)
             with ExitStack() as stack:
