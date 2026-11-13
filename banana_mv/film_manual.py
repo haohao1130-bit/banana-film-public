@@ -54,6 +54,20 @@ def split_native_h3(story, single_seconds):
     return result
 
 
+def _shot_action_units(body):
+    """Partition only authored performance; preserve speaking cue + its line."""
+    units=[]
+    for raw in body.splitlines():
+        line=raw.strip()
+        if not line:
+            continue
+        if units and units[-1].endswith(('：', ':')) and re.match(r'^\(S\d+\)\s*[「『<]', line):
+            units[-1]+='\n'+line
+        else:
+            units.append(line)
+    return units
+
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
@@ -78,8 +92,11 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
                 if re.match(r'^\s*配樂', line):
                     notes.extend(clause for clause in re.split(r'[，。；]', line)
                                  if re.search(rf'\bSHOT\s+0*{int(shot[1])}(?!\d)', clause, re.I))
+            actions=_shot_action_units(body)
+            if not actions:
+                raise ValueError(f'SHOT {int(shot[1]):02d} 沒有可拍攝的演出內容。')
             chapters.append({'start':float(shot[2]), 'end':float(shot[3]),
-                             'actions':[body], 'constraints':notes})
+                             'actions':actions, 'constraints':notes})
         global_audio = re.split(r'(?m)^[ \t]*(?:電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', appendix, maxsplit=1)[0]
         setup += '\n' + '\n'.join(
             line for line in global_audio.splitlines()
@@ -110,14 +127,19 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
 
         def commission(chapter, phase, phases, previous):
             actions = chapter['actions']
-            local = actions[phase*len(actions)//phases:(phase+1)*len(actions)//phases]
-            prior_lines = [line for line in previous.splitlines()
-                           if not re.search(r'[(]S\d+[)]|[「」『』]|台詞|攝影機|鏡頭', line)]
-            context = ('ALREADY ESTABLISHED; continue without replay: '+prior_lines[-1]
-                       if prior_lines else '')
-            return '\n'.join(filter(None, [context, *local])), local[-1] if local else previous
+            # First assign the earlier authored beats, rather than allocating
+            # only an empty camera instruction in the preceding clip.
+            first = math.ceil(phase*len(actions)/phases)
+            last = math.ceil((phase+1)*len(actions)/phases)
+            local = actions[first:last]
+            # Historical Chinese prose in [Shot] may be spoken aloud by H3.
+            # Existing actions/wardrobe are represented by visual references and
+            # structured actor state; never inject ALREADY ESTABLISHED dialogue.
+            return '\n'.join(local), local[-1] if local else previous
 
-        prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
+        prompts = allocate_timed_chapters(
+            chapters, windows, commission, timeline='FILM',
+            skip_empty_commissions=True)
         if shots:
             state = _opening_actor_state(setup, chapters)
             return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds'], state))
@@ -154,19 +176,26 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     for i, match in enumerate(matches):
         stop = matches[i+1].start() if i+1 < len(matches) else len(prompt)
         body = prompt[match.end():stop].strip()
-        if not body or body.startswith('ALREADY ESTABLISHED;') and '\n' not in body:
+        parts=body.split('Constraints for THIS chapter only',1)
+        # Only current-clip performed action may enter H3's [Shot] body.
+        # This also sanitizes previously stored allocator text when regenerated.
+        performance='\n'.join(line for line in parts[0].splitlines()
+            if line.strip() and not line.lstrip().startswith(
+                ('ALREADY ESTABLISHED;', 'ALREADY ESTABLISHED:',
+                 'PYTHON-OWNED SOURCE INTERVAL')))
+        if not performance.strip():
             continue
         if state:
-            actions = body.split('Constraints for THIS chapter only', 1)[0]
-            for line in actions.splitlines():
-                if not re.search(r'^ALREADY ESTABLISHED|\(S\d+\)|[「」『』]', line):
-                    before = {kind: item['status'] for kind, item in state.items()}
-                    _advance_actor_state(state, line)
-                    for kind, item in state.items():
-                        if item['status'] != before[kind]:
-                            item['changed'] = True
-        body = re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
-                      r'\1 <d>[Chinese] \2</d>', body)
+            for line in performance.splitlines():
+                if not re.search(r'^\s*ALREADY ESTABLISHED|\(S\d+\)|[「」『』]', line):
+                    before={kind:item['status'] for kind,item in state.items()}
+                    _advance_actor_state(state,line)
+                    for kind,item in state.items():
+                        if item['status']!=before[kind]:
+                            item['changed']=True
+        body=performance + ('\nConstraints for THIS chapter only'+parts[1] if len(parts)>1 else '')
+        body=re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
+                    r'\1 <d>[Chinese] \2</d>',body)
         prefix = f'[Shot {len(shots)+1}]'
         if shots:
             ms = max(previous_ms+1, round(float(match[1]) * length/source_length * 1000))
@@ -175,7 +204,9 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
             prefix += f' At {minutes:02d}:{seconds:02d}.{millis:03d},'
             previous_ms = ms
         shots.append(prefix + ' ' + body)
-    details = '\n\n'.join(shots) if shots else '[Shot 1] Continue the established scene.'
+    if not shots:
+        raise ValueError('這個生成窗只有已發生事項／攝影備註，沒有當段演出。請調整 SHOT 時間或加入明確動作。')
+    details = '\n\n'.join(shots)
     if opening:
         details = details.replace('[Shot 1] ', '[Shot 1] Starting wardrobe state: '
                                   + opening + '\nContinue this state. Perform only the current shot actions.\n', 1)
@@ -183,7 +214,8 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
     return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
             + '\n\nsummary:\nFilm the assigned shots in order within '
-            + f'{length:.3f} seconds. Preserve the written lines and speaker IDs.'
+            + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; ' 
+            + 'all other Chinese stage directions describe silent actions. Preserve speaker IDs.'
             + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
             + '\n\ndetailed_description:\n' + details
             + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
@@ -241,12 +273,9 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         raise ValueError(f'對齊合法 H3 幀數後是 {duration:.2f} 秒，超出本次上限。請微調各段秒數。')
     if req.get('target_is_exact') and abs(duration-target)>tolerance + 1e-8:
         raise ValueError(f'合法影格對齊後為 {duration:.2f} 秒，超出指定 {target:g}±{tolerance:g} 秒；請調整 CLIP 長度。')
-    previous = ''
     for row in rows:
-        event = row['director_plan']['event']
-        if previous and req.get('python_manual_handoff') and 'PYTHON-OWNED SOURCE INTERVAL' not in event and 'USER-SPECIFIED FILM TIME' not in event:
-            row['continuity_context'] = previous
-        previous = next((line for line in reversed(event.splitlines())
-                         if line.strip() and not re.match(r'^(?:鏡頭|攝影機|運鏡|配樂|音效|#)', line.strip())), previous)
+        # Six-field H3 text ends with the music block; the old "last source
+        # line" fallback incorrectly carried its music template into the next
+        # scene as actor history. Let the current shot and image guide lead.
         row.update(song_seconds=duration,segment_count=len(rows),fixed_reference_settings='')
     return {'title':title[:120],'duration':duration,'segments':rows,'shared_setup':''}
