@@ -489,7 +489,7 @@ def inputs(job,cfg):
 
 
 _TOTAL_DURATION = re.compile(
-    r'(?i)(?:全片|全長|影片長度|短片長度|影片總長|總長|總時長|總時間|片長|總計|total\s+duration|total\s+length)'
+    r'(?i)(?:全片|全長|影片長度|短片長度|影片總長|總長|總時長|總時間|片長|總計|total\s+duration|total\s+length|total\s+runtime|(?:film|video)\s+(?:duration|length|runtime))'
     r'\s*(?:[:：=]|為|是|約)?\s*(\d+(?:\.\d+)?)\s*(?:秒鐘?|s(?:ec(?:onds?)?)?\b)')
 
 
@@ -599,12 +599,14 @@ def start(req):
     map_story(req,story,len(rows))
     manual_plan=None
     if not req['auto_director']:
-        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan
+        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan,legal_frames
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
+        has_clips=bool(CLIP.search(story))
+        if not exact and not has_clips:
+            single_seconds=legal_frames(single_seconds,float(chunk))/FPS
+            req.update(duration_source='manual_single_clip',target_seconds=single_seconds)
         manual_clips=split_native_h3(story,single_seconds)
-        if preference == 'prompt' and declaration is None and not CLIP.search(story):
-            raise ValueError('手動模式未辨識到全片秒數。請在片長欄指定秒數，或寫「全片35秒」。')
-        if exact and not CLIP.search(story):
+        if exact and not has_clips:
             req['python_manual_handoff']=True
             manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk),
                                                        chain5=req['mode']=='chain5')
@@ -612,7 +614,7 @@ def start(req):
             authored=sum(seconds for seconds,_ in manual_clips)
             # Explicit CLIP timing sets the duration in prompt mode.
             # Custom time always wins and conflicting supplied CLIPs must error.
-            if preference=='prompt' and declaration is None:
+            if preference=='prompt' and declaration is None and has_clips:
                 if not 6<=authored<=300:raise ValueError('H3 全咒總長需為 6–300 秒。')
                 req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
                            timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
