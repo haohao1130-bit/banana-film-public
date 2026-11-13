@@ -128,6 +128,66 @@ class FilmShotHandoffTests(unittest.TestCase):
                         guarded.index('<d>[Chinese]'))
         self.assertEqual(film_manual.protect_chain5_opening(guarded),guarded)
 
+    def test_classic_python_slot_wardrobe_survives_real_film_h3_slots(self):
+        # Proven MV Python Slot contract: identity comes from Picture refs,
+        # but a coat removed in an earlier slot must not be reintroduced
+        # just because the reference photo still shows its opening outfit.
+        setup=(
+            '角色設定\n'
+            '(S1) = <Picture 1> = 演員。\n'
+            '(S2) = <Picture 2> = 旁白。\n'
+            '人物五官與開場服裝依照參考圖片。\n'
+            '開場穿著：\n藍色外套\n灰色長褲\n黑色長靴\n\n'
+            '固定場景：紅幕舞台。\n\n'
+        )
+        actions=[
+            '演員穿著完整開場服裝，在紅幕舞台登場。',
+            '演員解開藍色外套，接著脫下藍色外套。',
+            '演員以無外套狀態繼續跳舞。',
+            '演員脫下灰色長褲。',
+            '演員只穿黑色長靴繼續表演。',
+            '演員脫下黑色長靴。',
+            '演員赤腳走向聚光燈。',
+            '演員以目前外觀謝幕。'
+        ]
+        source=setup+'\n\n'.join(
+            f'SHOT {i+1:02d}｜{i*5:.2f}–{(i+1)*5:.2f}秒\n'+action
+            for i,action in enumerate(actions))
+        clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
+        self.assertEqual(len(clips),5)
+        self.assertTrue(all(7<=seconds<=10 for seconds,_ in clips))
+        self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40,delta=1.5)
+        prompts=[prompt for _,prompt in clips]
+        joined='\n'.join(prompts)
+        for action in actions:
+            self.assertEqual(joined.count(action),1,action)
+        for prompt in prompts:
+            self.assertIn('<Picture 1>',prompt)
+            self.assertIn('<Picture 2>',prompt)
+            self.assertIn('Python當前狀態',prompt)
+            self.assertIn('CURRENT_ACTOR_STATE',prompt)
+        removed_coat=next(i for i,prompt in enumerate(prompts)
+                          if '演員解開藍色外套' in prompt)
+        self.assertLess(removed_coat,len(prompts)-1)
+        after_coat=prompts[removed_coat+1]
+        self.assertIn('Torso: Bare;',after_coat)
+        self.assertIn('藍色外套 already removed, stays off.',after_coat)
+        self.assertIn('初始服裝僅作歷史參考',after_coat)
+        self.assertNotIn('開場穿著：\n藍色外套',after_coat)
+        self.assertIn('灰色長褲 worn.',after_coat)
+        self.assertIn('黑色長靴 worn.',after_coat)
+        last=prompts[-1]
+        self.assertIn('Feet: Barefoot;',last)
+        self.assertIn('Torso: Bare;',last)
+        self.assertIn('Bottom: Bare;',last)
+        self.assertEqual(last.count('演員脫下黑色長靴。'),0)
+
+    def test_classic_actor_state_is_inert_when_no_wardrobe_changes_are_authored(self):
+        clips=self.generated()
+        self.assertTrue(all('CURRENT_ACTOR_STATE' not in prompt
+                            and 'Python當前狀態' not in prompt
+                            for _,prompt in clips))
+
     def test_30s_shot_notes_never_form_unperformed_h3_shot(self):
         clips=self.generated()
         self.assertEqual(len(clips), 4)
