@@ -18,12 +18,12 @@
   (header.querySelector('.edition') || header).append(label);
   const restart = document.createElement('button');
   restart.type = 'button';
-  restart.textContent = '重啟丹爐';
+  restart.textContent = '重啟廚房';
   restart.hidden = true;
   label.after(restart);
   let restarting = false;
   restart.addEventListener('click', async () => {
-    if (!window.confirm('重啟本機短片丹爐？')) return;
+    if (!window.confirm('重啟本機短片廚房？')) return;
     restarting = true;
     restart.disabled = true;
     restart.textContent = '重啟中…';
@@ -34,7 +34,7 @@
       if (!response.ok) throw Error(response.status === 409 ? '作品處理中' : 'HTTP ' + response.status);
     } catch (error) {
       restarting = false;
-      restart.textContent = '重啟丹爐';
+      restart.textContent = '重啟廚房';
       window.alert('重啟失敗：' + error.message);
       void refreshVersion();
     }
