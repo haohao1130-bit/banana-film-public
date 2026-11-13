@@ -8,7 +8,7 @@ import re
 import unittest
 from unittest.mock import patch
 
-from banana_mv import film_continuity, film_manual, film_media, timed_slots
+from banana_mv import film, film_continuity, film_manual, film_media, timed_slots
 
 
 def story():
@@ -89,6 +89,26 @@ class FilmShotHandoffTests(unittest.TestCase):
     def generated(self):
         # The original reproduction produced 4 legal clips for a 30s commission.
         return film_manual.distribute_manual_prompt([(10, story())], 30, 10)
+
+    def test_prompt_duration_parses_natural_brief_and_full_shot_timeline(self):
+        # Film 5070 manual mode must not say "cannot detect seconds" for
+        # an ordinary 40-second director instruction or a full SHOT schedule.
+        self.assertEqual(film.declared_film_seconds(
+            '生成一支40秒、超寫實電影質感、原生台灣華語的雙人劇情短片。'),40)
+        self.assertEqual(film.declared_film_seconds(
+            '請製作一部 40 秒的電影。全片40秒。'),40)
+        self.assertEqual(film.declared_film_seconds(
+            '全片 40 秒。第 5 秒切鏡，男主角沉默半秒。'),40)
+        self.assertEqual(film.declared_film_seconds(
+            '\n'.join(f'SHOT {i+1:02d}｜{i*5:.2f}–{(i+1)*5:.2f}秒'
+                      for i in range(8))),40)
+        # Isolated action timestamps and incomplete/gapped SHOT scripts are
+        # NOT a declaration of total runtime.
+        self.assertIsNone(film.declared_film_seconds('第 40 秒切至街道。'))
+        self.assertIsNone(film.declared_film_seconds(
+            'SHOT 01｜0.00–5.00秒\nSHOT 02｜10.00–15.00秒'))
+        with self.assertRaisesRegex(ValueError,'不同的全片秒數'):
+            film.declared_film_seconds('全片 35 秒。製作一支 40 秒影片。')
 
     def test_interrupted_spoken_thought_survives_the_shot_02_boundary(self):
         # Repro for 5070 fb62b2239: two <d> utterances from the SAME SHOT
