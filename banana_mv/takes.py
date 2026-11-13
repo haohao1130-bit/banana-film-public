@@ -334,7 +334,11 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             if job['request']['mode']=='chain' and i>0:
                 previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'));frame=output('opening.png')
                 app.last_frame(take_source(job,i-1,previous),frame)
-                first=f'banana_retake_{take["id"]}.png';temporary.append(inp/first);shutil.copyfile(frame,inp/first)
+                filename=f'banana_retake_{take["id"]}.png'
+                if native:
+                    first=app.backend.upload_comfy_image(cfg,filename,frame.read_bytes(),'image/png')
+                else:
+                    first=filename;temporary.append(inp/first);shutil.copyfile(frame,inp/first)
                 take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
             if take.get('prompt_override'):
                 take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
