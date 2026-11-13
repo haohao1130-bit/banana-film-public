@@ -777,7 +777,12 @@ def worker(job,cfg,originals,song=None,drive=None):
                     raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
                 seg['motion_context']=receipt
             if i and job['request']['mode']=='chain':
-                tail=work/f'{i:02d}_opening.png';app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
+                tail=work/f'{i:02d}_opening.png'
+                app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
+                opening_sha256=hashlib.sha256(tail.read_bytes()).hexdigest()
+                if seg.get('opening_sha256')!=opening_sha256:
+                    seg.pop('prompt_id',None)
+                seg['opening_sha256']=opening_sha256
             from banana_mv.takes import existing_file
             prompt_file=existing_file(job,i,seg.get('selected_take','original'),'prompt.txt')
             if prompt_file.exists() and not seg.get('refresh_prompt'):prompt=prompt_file.read_text(encoding='utf-8')
