@@ -90,6 +90,47 @@ class FilmShotHandoffTests(unittest.TestCase):
         # The original reproduction produced 4 legal clips for a 30s commission.
         return film_manual.distribute_manual_prompt([(10, story())], 30, 10)
 
+    def test_interrupted_spoken_thought_survives_the_shot_02_boundary(self):
+        # Repro for 5070 fb62b2239: two <d> utterances from the SAME SHOT
+        # were split into separate generated clips at a silent inhale.
+        from banana_mv.film_manual import _join_unfinished_dialogue
+        actions=[
+            '她努力擠出微笑，卻失敗了。',
+            '(S1)「可是……你答應過我……」',
+            '短暫吸氣，聲音開始哽咽。',
+            '(S1)「這次……一定會帶我去玩水的。」',
+            '男主角回答：',
+            '(S2)「我知道……」'
+        ]
+        units=_join_unfinished_dialogue(actions)
+        assert len(units)==4
+        self.assertIn('短暫吸氣，聲音開始哽咽。',units[1])
+        self.assertIn('可是……你答應過我……',units[1])
+        self.assertIn('這次……一定會帶我去玩水的。',units[1])
+        # Preserve two exact dialogue tags and the breath; don't merge their
+        # spoken content into one rewritten sentence or move the male reply.
+        self.assertNotIn('我知道……',units[1])
+        scenes=[]
+        for i in range(8):
+            start=i*5
+            beats=(actions if i==1 else [
+                f'演員在第{i+1}顆鏡頭完成一個自然反應。',
+                f'(S2)「第{i+1}段說完再轉場。」',
+                f'鏡頭保持原始動作連續。'])
+            scenes.append(f'SHOT {i+1:02d}｜{start:.2f}–{start+5:.2f}秒\n'+'\n'.join(beats))
+        source='角色設定\n(S1) = <Picture 1> = 女主角。\n(S2) = <Picture 2> = 男主角。\n\n'+'\n\n'.join(scenes)
+        clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
+        self.assertEqual(len(clips),5)
+        self.assertTrue(all(7<=seconds<=10 for seconds,_ in clips))
+        self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40,delta=1.5)
+        prompts=[prompt for _,prompt in clips]
+        indices=[i for i,prompt in enumerate(prompts)
+                 if '可是……你答應過我……' in prompt or '這次……一定會帶我去玩水的。' in prompt]
+        self.assertEqual(len(indices),1,indices)
+        self.assertEqual(prompts[indices[0]].count('<d>[Chinese] 可是……你答應過我……</d>'),1)
+        self.assertEqual(prompts[indices[0]].count('<d>[Chinese] 這次……一定會帶我去玩水的。</d>'),1)
+        self.assertIn('短暫吸氣，聲音開始哽咽。',prompts[indices[0]])
+
     def test_40s_dialogue_packing_keeps_full_lines_and_chain5_start_safe(self):
         # Regression: the 2026-11-13 40s film had 8 authored 5s SHOTs
         # but Python assigned five hard 8s windows and broke the dialogue.
