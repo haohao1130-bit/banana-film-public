@@ -73,3 +73,49 @@
   void refreshVersion();
   setInterval(() => { void refreshVersion(); }, 3000);
 })();
+
+(function () {
+ const button = Array.from(document.querySelectorAll('header button')).find(b => b.textContent === '切換至煉丹室（MV）');
+ if (!button) return;
+ let switching = false;
+ async function refresh() {
+   if (switching) return;
+   try {
+     const response = await fetch('/api/5070/switch', {cache:'no-store'});
+     const state = await response.json();
+     button.hidden = false;
+     button.disabled = !state.available || state.busy;
+     button.title = state.busy ? '作品處理中' : state.available ? '' : '找不到另一套 5070 啟動器';
+   } catch (_) { button.disabled = true; }
+ }
+ button.onclick = async () => {
+   if (switching || !window.confirm(button.textContent + '？')) return;
+   switching = true;
+   button.disabled = true;
+   const label = button.textContent;
+   try {
+     const response = await fetch('/api/5070/switch', {method:'POST', headers:{'X-Banana-Control':'5070-room-switch'}});
+     if (!response.ok) throw Error((await response.json()).error || response.status);
+     button.textContent = '正在切換…';
+     const deadline = Date.now() + 180000;
+     while (Date.now() < deadline) {
+       await new Promise(resolve => setTimeout(resolve, 2000));
+       try {
+         const result = await fetch('/api/health', {cache:'no-store'});
+         if (result.ok && (await result.json()).service === 'banana-mv') {
+           window.location.replace('/');
+           return;
+         }
+       } catch (_) {}
+     }
+     throw Error('切換逾時，請查看桌面啟動器。');
+   } catch (error) { window.alert(error.message); }
+   finally {
+     switching = false;
+     button.textContent = label;
+     void refresh();
+   }
+ };
+ void refresh();
+ setInterval(refresh, 3000);
+})();
