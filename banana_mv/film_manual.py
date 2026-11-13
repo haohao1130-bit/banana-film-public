@@ -68,6 +68,142 @@ def _shot_action_units(body):
     return units
 
 
+
+def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count):
+    """Fit complete authored action/dialogue units to native H3 frame windows.
+
+    A generation clip is not an authored SHOT: editorial SHOTs may cross clip
+    boundaries, but spoken sentences and their speaker cues never do. The source
+    times guide pacing instead of imposing hard cut points inside a line.
+    """
+    atoms = []
+    for chapter_index, chapter in enumerate(chapters):
+        actions = _shot_action_units("\n".join(chapter['actions']))
+        if not actions:
+            continue
+        weights = []
+        for action in actions:
+            dialogue = re.findall(r'\(S\d+\)\s*(?:<d>[^<]+</d>|[「『][^」』]+[」』])', action)
+            chars = sum(len(re.sub(r'\s+', '', line)) for line in dialogue)
+            weights.append(max(0.4, 0.36 + chars * 0.16) if dialogue else 0.42)
+        elapsed = 0.0
+        for action, weight in zip(actions, weights):
+            elapsed += weight
+            atoms.append({'chapter': chapter_index, 'text': action, 'weight': weight,
+                          'speaker': re.findall(r'\(S\d+\)', action)[-1:] or [],
+                          'source_end': chapter['start'] + (chapter['end']-chapter['start'])
+                          * elapsed / sum(weights)})
+    if len(atoms) < count:
+        raise ValueError('原始 SHOT 無足夠的完整事件切點；請減少分段數或延長片長上限。')
+
+    maximum = 5 + 17 * ((math.floor(ceiling * FPS) - 5) // 17)
+    # 7 seconds is a preference for a 10s clip cap, not a license to drop
+    # material. Short projects can retain the model's lower legal duration.
+    minimum = 175 if ceiling >= 10 and count * 175 <= round(total_seconds * FPS) else 124
+    choices = list(range(minimum, maximum + 1, 17))
+    if not choices:
+        raise ValueError('沒有符合片長上限的 H3 合法影格。')
+
+    # Jointly choose frame-grid durations AND boundaries between complete
+    # performed units. Prefer authored SHOT boundaries, but never split a line.
+    states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
+    for clip_no in range(1, count + 1):
+        following = {}
+        for (used, cursor), (cost, path) in states.items():
+            for frames in choices:
+                new_used = used + frames
+                if new_used > (total_seconds + 1.5) * FPS:
+                    continue
+                last_clip = clip_no == count
+                stops = [len(atoms)] if last_clip else range(cursor + 1, len(atoms) - (count - clip_no) + 1)
+                for stop in stops:
+                    if stop <= cursor:
+                        continue
+                    if last_clip:
+                        delta = (new_used / FPS) - total_seconds
+                        extra = delta * delta * 35.0
+                    else:
+                        before, after = atoms[stop-1], atoms[stop]
+                        delta = (new_used / FPS) - before['source_end']
+                        # Source shot boundaries are desirable, not mandatory.
+                        middle_shot = before['chapter'] == after['chapter']
+                        same_voice = bool(before['speaker'] and before['speaker'] == after['speaker'])
+                        extra = delta * delta * 1.3 + (0.45 if middle_shot else 0.0)
+                        if same_voice and middle_shot:
+                            extra += 0.65
+                    key = (new_used, stop)
+                    value = cost + extra
+                    if key not in following or value < following[key][0]:
+                        following[key] = (value, path + [(frames, stop)])
+        if not following:
+            raise ValueError('完整台詞無法放入合法的 H3 時長；請調整分段上限或劇本時間。')
+        states = following
+
+    target = round(total_seconds * FPS)
+    _, (score, selected) = min(
+        states.items(), key=lambda row: (
+            abs(row[0][0] - target) * 100 + row[1][0],
+            abs(row[0][0] - target)))
+    if abs(sum(frames for frames, _ in selected) - target) > 1.5 * FPS:
+        raise ValueError('H3 合法影格無法在指定片長內容納完整劇本。')
+
+    state = _opening_actor_state(fixed, chapters)
+    delivered = []
+    cursor = 0
+    for frames, stop in selected:
+        length = frames / FPS
+        allocated = atoms[cursor:stop]
+        total_weight = sum(atom['weight'] for atom in allocated)
+        fragments = []
+        used_weight = 0.0
+        position = 0
+        while position < len(allocated):
+            chapter_index = allocated[position]['chapter']
+            end = position + 1
+            while end < len(allocated) and allocated[end]['chapter'] == chapter_index:
+                end += 1
+            group = allocated[position:end]
+            chapter = chapters[chapter_index]
+            begin_seconds = used_weight / total_weight * length
+            used_weight += sum(atom['weight'] for atom in group)
+            end_seconds = used_weight / total_weight * length
+            performance = '\n'.join(atom['text'] for atom in group)
+            constraints = chapter.get('constraints') or []
+            fragments.append(
+                f'USER-SPECIFIED FILM TIME — this chapter is assigned to '
+                f'{chapter["start"]:.3f}–{chapter["end"]:.3f}s source time; '
+                f'its active time inside THIS clip is {begin_seconds:.3f}–{end_seconds:.3f}s. '
+                'Follow its action order; do not film future chapters early.\n'
+                + performance
+                + ('\nConstraints for THIS chapter only (not extra events):\n'
+                   + '\n'.join('- ' + note for note in constraints) if constraints else ''))
+            position = end
+        prompt = '\n\n'.join(fragments)
+        delivered.append((length, compile_storyboard_slot(fixed, prompt, length, length, state)))
+        cursor = stop
+    if cursor != len(atoms):
+        raise ValueError('有劇情事件未分配到攝影段落。')
+    return delivered
+
+
+def protect_chain5_opening(prompt):
+    """Reserve a visual-only lead-in before the five discarded context frames.
+
+    Prompt steering is best-effort for a joint A/V model; it cannot guarantee
+    speech-free audio by itself. Keep the instruction within the first shot.
+    """
+    marker = 'CHAIN5_VISUAL_ONLY_LEAD_IN'
+    if marker in prompt:
+        return prompt
+    shot = re.search(r'\[Shot 1\](?!\s*At\b)', prompt)
+    if not shot:
+        return prompt
+    lead = (' CHAIN5_VISUAL_ONLY_LEAD_IN: For the first 0.35 seconds, silently '
+            'continue the preceding motion, gaze and expression; no new dialogue, '
+            'no vocal onset and no new sound cue. Only after this visual-only '
+            'lead-in does the first spoken line and its synced mouth motion begin.\n')
+    return prompt[:shot.end()] + lead + prompt[shot.end():]
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
@@ -111,6 +247,8 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         fixed = '\n'.join(line for line in setup.splitlines()
             if re.match(r'^\s*(?:主角|角色|人物外貌|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line)
             and not re.search(r'最後才|結局|修復AI|修電腦', line))
+        if shots:
+            return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count)
         # Quantize the full timeline once, then distribute legal frame counts.
         minimum = 124
         maximum = math.floor(ceiling * FPS)
@@ -140,10 +278,6 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         prompts = allocate_timed_chapters(
             chapters, windows, commission, timeline='FILM',
             skip_empty_commissions=True)
-        if shots:
-            state = _opening_actor_state(setup, chapters)
-            return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds'], state))
-                    for length, prompt, window in zip(lengths, prompts, windows)]
         return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
                 for length, prompt in zip(lengths, prompts)]
     if total_seconds <= ceiling:
