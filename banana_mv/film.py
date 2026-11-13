@@ -480,8 +480,11 @@ def inputs(job,cfg):
     originals=[app.backend.safe_child(app.job_dir(job['id']),p) for p in job['sources']['images']]
     if not all(p.is_file() for p in originals):raise ValueError('角色參考素材遺失。')
     if len(originals)!=len(job['images_comfy']):raise ValueError('專案圖片數量不符。')
-    inp=Path(cfg['comfy_input_dir']);inp.mkdir(parents=True,exist_ok=True)
-    for source,name in zip(originals,job['images_comfy']):shutil.copyfile(source,app.backend.safe_child(inp,name))
+    job['images_comfy'] = [
+        app.backend.upload_comfy_image(cfg, f'banana_film_{job["id"]}_{i}{source.suffix}',
+                                      source.read_bytes(), 'application/octet-stream')
+        for i, source in enumerate(originals)
+    ]
     return originals,None,None
 
 
@@ -765,7 +768,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             seg.update(prompt=prompt,status='generating');job['status']='running';app.write_state(job)
             first=None
             if tail:
-                first=f'banana_film_{job["id"]}_{i}.png';shutil.copyfile(tail,Path(cfg['comfy_input_dir'])/first)
+                first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
             graph=app.build_workflow(job['images_comfy'],None,*job['size'],seg['model_frames'],prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
