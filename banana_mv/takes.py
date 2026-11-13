@@ -296,13 +296,12 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
                 temporary.append(inp/name);app.audio_window(drive,inp/name,seg['start'],seg['model_frames']/app.FPS)
             first=None;context_names=[];prefix=0
             if native:
-                from banana_mv.film_continuity import motion_prefix,prepare_motion_tail,add_motion_guide
+                from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
                 prefix=motion_prefix(job,seg)
             if prefix:
                 previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'))
                 source=take_source(job,i-1,previous)
-                context_names,receipt=prepare_motion_tail(source,work/'motion_context',inp,f'banana_motion_{job["id"]}_{take["id"]}')
-                temporary.extend(inp/name for name in context_names)
+                context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{take["id"]}')
                 take['motion_context']=receipt
                 take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
             if job['request']['mode']=='chain' and i>0:
