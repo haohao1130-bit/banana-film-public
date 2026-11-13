@@ -500,21 +500,11 @@ _NATURAL_FILM_DURATION = re.compile(
     r'(?:秒(?:鐘)?|s(?:ec(?:onds?)?)?\b)'
 )
 
-_SHOT_DURATION_RANGE = re.compile(
-    r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)[ \t]*'
-    r'[｜|:：][ \t]*(\d+(?:\.\d+)?)\s*[-–—~～至]\s*'
-    r'(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|s(?:ec)?\b)[^\n]*$'
-)
-
-
 def _total_from_complete_shot_timeline(story):
-    """Infer total only from consecutive authored SHOTs beginning at 0s.
-
-    An isolated cue or a gap between chapters isn't an implicit full runtime.
-    Keep the same syntax recognized by Film's Python manual-shot planner.
-    """
+    """Use the same SHOT parser as the manual work-order compiler."""
+    from banana_mv.film_manual import _FILM_SHOT_HEADER, _native_master_storyboard
     shots = [(int(match[1]), float(match[2]), float(match[3]))
-             for match in _SHOT_DURATION_RANGE.finditer(story)]
+             for match in _FILM_SHOT_HEADER.finditer(_native_master_storyboard(story))]
     if not shots:
         return None
     previous=0.0
@@ -529,6 +519,11 @@ def _total_from_complete_shot_timeline(story):
 def declared_film_seconds(story):
     """Detect an authored full runtime, never a standalone action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
+    declared += [float(m) for m in re.findall(
+        r'(?im)^\s*total runtime\s*:\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)\b', story)]
+    if not declared:
+        declared = [float(m) for m in re.findall(
+            r'(?im)^\s*(\d+(?:\.\d+)?)\s*[- ]?\s*(?:seconds?|s\b|秒)\s*(?=cinematic|film|short|電影|短片|影片|$)', story)]
     # Natural director brief: '生成一支40秒、超寫實電影質感的短片'.
     declared += [float(m[1]) for m in _NATURAL_FILM_DURATION.finditer(story)]
     if not declared:
@@ -549,16 +544,14 @@ def start(req):
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
     selected=req.get('max_seconds',300)
-    declaration=declared_film_seconds(story)
     preference=req.get('duration_preference','selector' if 'max_seconds' in req else 'prompt')
     if preference not in ('prompt','selector','custom'):
         raise ValueError('未知的全片秒數選擇方式。')
+    declaration=declared_film_seconds(story) if preference=='prompt' else None
     if preference=='prompt' and declaration is not None:
         maximum=declaration;duration_source='prompt'
     else:
         maximum=300 if preference=='prompt' else selected;duration_source='custom' if preference=='custom' else 'prompt_ceiling' if preference=='prompt' else 'selector'
-    if declaration is not None and preference in ('selector','custom') and abs(maximum-declaration)>1.5:
-        raise ValueError(f'選定 {maximum:g} 秒與提示詞的全片 {declaration:g} 秒不一致；請統一。')
     chunk=req.get('segment_seconds','auto')
     dynamic=chunk=='auto'
     if dynamic:chunk=15
