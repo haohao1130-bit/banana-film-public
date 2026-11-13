@@ -150,6 +150,17 @@ def corrections(indices,instructions):
 def repair_prompt(cfg,job,seg,prompt,note,originals,tail,dest,prefix=""):
     """One bounded edit of the chosen clip prompt; never sees the full story."""
     if job['request'].get('production')=='film':
+        if job['request'].get('manual_h3'):
+            # Absolute manual authority: a retake correction is a complete H3
+            # replacement, never a hidden call to the 9B screenplay model.
+            from banana_mv.film import normalize_prompt,validate_film_format
+            from banana_mv.direction_contract import validate_h3_sections
+            if not note.lstrip().startswith('subject_definitions:'):
+                raise ValueError('手動全咒補拍不呼叫 9B。請在局部修改欄貼上該段完整六區塊 H3 提示詞；只換 Seed 可留空。')
+            corrected=normalize_prompt(note,len(originals)+int(bool(tail)))
+            validate_h3_sections(corrected)
+            validate_film_format(corrected,seg['seconds'],job['request']['sound_mode'])
+            return corrected
         from banana_mv.film import write_prompt
         return write_prompt(cfg,job,seg,originals,tail,correction=note,base=prompt,dest=dest,artifact_prefix=prefix)
     from banana_mv.shoot_plan import NATIVE_ENHANCER_SYSTEM,REFERENCE_PERFORMANCE,_pictures,_text
