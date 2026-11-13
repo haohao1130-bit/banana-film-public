@@ -1,8 +1,14 @@
 # BANANA FILM 5070 STUDIO | RTX 5070 F-drive edition
 
 **Public experiment branch:** film-v2-rtx5070-fdrive
-**Source architecture:** public Python-Owned Film V2 from film-v2-python-owned-public-20261112.
+**Default Studio UI and features:** exact public Colab `Banana_Film_Studio.ipynb` web app, inheriting `banana_mv.film_server` and using the original `banana_mv/web/film.html`, `film.js`, and `film_review.js`. The Python-Owned V2 modules and existing V2 projects remain intact but are no longer the default landing page.
 **Isolation:** Does NOT change public main, older film, existing MV or the GPU model files.
+
+## Full Colab UI parity (verified)
+
+The Colab launcher `Banana_Film_Studio.ipynb` uses `banana_mv.film_server.Handler`. The RTX5070 entry `film_v2.local_classic_server.Handler` inherits exactly that handler and serves the canonical `banana_mv/web/film.html`, `film.js`, and `film_review.js` without replacing or rewriting controls. Only the 5070 Git version badge is added at runtime. This is deliberate engine parity, not a restyled Python-Owned V2 UI.
+
+Public Colab main and the 5070 experiment branch currently contain identical blob SHA values for the original Film Studio UI, JS, classic server and Film production engine. Tests additionally request the actual HTTP endpoints to confirm exact content.
 
 ## Storage layout on F:
 
@@ -14,7 +20,8 @@ Default root is F:\BANANA_FILM_5070_STUDIO.
 | F:\BANANA_FILM_5070_STUDIO\App | Branch-specific Git checkout; fast-forward updates only |
 | F:\BANANA_FILM_5070_STUDIO\Media\library | Original uploaded images (canonical archive) |
 | F:\BANANA_FILM_5070_STUDIO\Media\videos | Exported full MP4 videos |
-| F:\BANANA_FILM_5070_STUDIO\Media\films_v2 | Screenplays, current state, sources, native AV segment files, retakes, immutable masters |
+| F:\BANANA_FILM_5070_STUDIO\Media\films | Full Colab-compatible Film Studio projects, screenplays, retakes, masters |
+| F:\BANANA_FILM_5070_STUDIO\Media\films_v2 | Preserved earlier experimental Python-Owned V2 projects (not deleted or merged) |
 | F:\BANANA_FILM_5070_STUDIO\Media\logs | Backend and, when started by launcher, ComfyUI logs |
 | F:\BANANA_FILM_5070_STUDIO\Media\comfy_input | Comfy input cache when this launcher starts ComfyUI |
 | F:\BANANA_FILM_5070_STUDIO\Media\comfy_output | Comfy output when this launcher starts ComfyUI |
@@ -28,7 +35,7 @@ This edition follows the existing **BANANAMV 5070 V4** desktop installer:
 
 1. Extract `BANANA_FILM_5070_STUDIO_V4_DESKTOP_INSTALLER_F_DRIVE.zip`.
 2. Double-click `Install_Desktop_Shortcut.cmd` **once**. It installs two tiny launcher scripts in `F:\BANANA_FILM_5070_STUDIO\Launcher` and creates the desktop shortcut `BANANA FILM 5070 STUDIO`. Nothing is installed under `AppData\Local\BananaMV5070`.
-3. Double-click the **desktop shortcut** whenever you want to use Film V2. It fetches updates from this exact GitHub branch (fast-forward only), opens the freshly updated launcher and starts the application at `http://127.0.0.1:8195`. The website header displays the running Git commit, not a hard-coded fake version.
+3. Double-click the **desktop shortcut** whenever you want to use the full Colab-style Film Studio. It fetches updates from this exact GitHub branch (fast-forward only), opens the freshly updated launcher and starts the application at `http://127.0.0.1:8195`. The website header displays the running Git commit, not a hard-coded fake version.
 4. CUDA 12.9 in `Documents\ComfyUI\.venv\Scripts\python.exe` is **not a blocker for the Film web backend**. Like MV V4, ComfyUI itself is the CUDA-model process. When it already listens at `127.0.0.1:8000`, Film V2 reuses that process. When not running, Film V2 prefers the dedicated `%LOCALAPPDATA%\Banana9B-cu130\Scripts\python.exe` for the ComfyUI process.
 5. **All original H3/9B models and CUDA/Torch libraries remain unchanged.** The launcher installs no weights or Python dependencies. Close any unfinished GPU task before shutting down a shared ComfyUI.
 
@@ -39,7 +46,7 @@ The ZIP's `Install_Shortcut.ps1` is the actual installer, in the same form as MV
 1. Download the BANANA_FILM_5070_STUDIO_F_DRIVE_LAUNCHER.zip package and **extract it**.
 2. Double-click Start_BANANA_FILM_5070.cmd.
 3. It checks the F: drive and Git, clones or fast-forward-updates this exact PUBLIC experimental branch under F:\BANANA_FILM_5070_STUDIO\App and creates the persistent desktop shortcut "BANANA FILM 5070 STUDIO".
-4. The application checks existing CUDA13 Torch, Pillow/numpy, ffmpeg/ffprobe and H3/9B ComfyUI nodes; it does not reinstall models or Torch.
+4. The application checks the backend Python libraries, ffmpeg/ffprobe and required H3/9B ComfyUI nodes; it checks CUDA13 only when it must start ComfyUI itself. No Torch/model installations are performed.
 5. The browser opens http://127.0.0.1:8195 . The UI shows the absolute F: file path after an MP4 is exported.
 
 Alternative manual checkout in PowerShell:
@@ -53,8 +60,8 @@ The launcher does not reset, clean or overwrite a Git checkout containing tracke
 
 - **Every double-click checks GitHub:** the launcher clones on the first run and uses `git pull --ff-only origin film-v2-rtx5070-fdrive` afterward. The installed F-drive bootstrap automatically hands off to the **freshly checked-out bootstrap** on every run, so launcher code and frontend update together.
 - **No forced resets:** if GitHub cannot be reached or tracked files have local modifications, the launcher warns and continues with the locally installed revision. It never `reset --hard`, `clean` or silently switches branches.
-- **Real build in frontend:** the upper-right header displays `5070 STUDIO · <Git commit>` from a no-cache `/api/health` request. The server also reports `version.branch`, `version.commit`, and `instance` fixed at server startup. This is the **running process**, not a guessed release label.
-- **Safe application reload:** if code updated but the Film backend is still running an older Git commit, the launcher checks `busy` and verifies port 8195, the F-drive data root, and the backend PID/process command before restarting **only** `film_v2.server`. The shared ComfyUI (typically port 8000), RTX5070 MV and other services are untouched.
+- **Real build in frontend:** the upper-right header displays `5070 STUDIO · <Git commit>` from a no-cache `/api/health` request. The local-only script adds a compact Git commit label without changing any original Colab form or production action. The server reports `version.branch`, `version.commit`, and `instance` fixed at server startup. This is the **running process**, not a guessed release label.
+- **Safe application reload:** if code updated but the Film backend is still running an older Git commit, the launcher checks `busy` and verifies port 8195, the F-drive data root, and the backend PID/process command before restarting **only** the Film-only `film_v2.local_classic_server`. It also recognizes the older `film_v2.server` instance for safe one-time migration. The shared ComfyUI (typically port 8000), RTX5070 MV and other services are untouched.
 - **Existing install migration:** an old Film backend that predates the `busy` health field cannot be safely restarted automatically; close **only that old 8195 Film backend once** and double-click again. All later launches use the new auto-update/restart contract.
 - **Safety when rendering:** if GPU rendering is active, the launcher leaves the process untouched, reports the pending update and asks you to launch again after the job finishes. All F-drive projects remain intact.
 - **Server receipt:** `Media/logs/server_process.json` records the Film-only backend PID and runtime instance; never treat it as a ComfyUI PID.
@@ -84,15 +91,15 @@ Custom ComfyUrl and NoAutoComfy switches are also supported. Always set ComfyInp
 
 ## Recommended tests (RTX5070 12GB)
 
-- **Full-function default:** 30-second film ceiling, 15-second clip ceiling, 480p, Chain5; no arbitrary 6-second limit is enabled. The full 15/30/60/90/120/180-second film choices remain available, up to a hard 180 seconds.
-- **Clip choices:** 6, 10 or 15 seconds are all optional. The native H3 film planner assigns compatible frames and event slots, not a hard 6-second project.
-- **All modes and quality options remain available:** Chain5 / single-tail-frame / independent, 480p / 720p, ambient / native dialogue, all aspect ratios, screenplay review/edit, single-clip retakes, version selection, resume and assembly.
+- **Exact Colab defaults:** 60-second target, automatic 10–15-second storyline-based clip segmentation, Chain5, and the original Colab quality selection. All original controls remain available; no forced 6-second mode.
+- **Clip choices:** automatic dynamic segmentation or fixed ceilings of 6, 10 or 15 seconds. Film length choices are 15, 30, 60, 120 or 180 seconds, matching `banana_mv/web/film.html`.
+- **All canonical Colab functions are active:** nine picture references, genre and film direction, Chain5 / single-tail-frame / independent, 480p / 720p, native sound/dialogue, aspect ratios, screenplay review/edit/revision history, stop/resume, shot playback, selective retakes, take adoption, versioned masters and final assembly.
 - For a low-memory smoke test **only if desired**, choose a 15-second film with 6-second clip ceiling and independent mode. This is not the default or a required workflow.
 - 720p and 10/15-second shots may exhaust 12 GB VRAM, depending on offloading and current memory pressure; do not run MV and Film V2 on the GPU simultaneously.
 - Retakes, preview, explicit take adoption, immutable final versions and resume retain their project files on F:.
 
 ## Audit boundaries
 
-Port 8195 is reserved for this local application; MV 8193 and Film V2 Colab 8194 are unchanged. The API health response includes both runtime variant "rtx5070-fdrive" and resolved data_root; the launcher refuses a mismatched server. No model weights are copied or downloaded (only a small official camera prompt guide may be fetched if not already available).
+Port 8195 is reserved for this local Colab-compatible Film Studio; MV 8193 and experimental Film V2 Colab 8194 are unchanged. The API health response includes both runtime variant "rtx5070-fdrive" and resolved data_root; the launcher refuses a mismatched server. No model weights are copied or downloaded (only a small official camera prompt guide may be fetched if not already available).
 
 Existing Python/V2 offline tests apply; Windows Powershell, live 5070 CUDA13 GPU generation and actual sound quality still require verification on the user machine. Do not merge to main before real-world tests.
