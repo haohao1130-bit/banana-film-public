@@ -52,10 +52,18 @@ def _split_inline_segments(source):
 
     fixed = re.split(r'(?m)^[ \t]*(?:故事核心|劇情分段)[ \t]*[：:]?[ \t]*$',
                      source[:segments[0].start()], maxsplit=1)[0].strip()
-    appendix = re.search(r'(?m)^[ \t]*(?:電影導演控制|角色與物件連續性|角色語音控制|背景音樂與音效|全片限制|核心敘事)[ \t]*[：:]?[ \t]*$',
-                         source[segments[-1].end():])
-    end = segments[-1].end()+appendix.start() if appendix else len(source)
-    notes = dict(re.findall(r'(?im)^[ \t]*SEGMENT[ \t]+0*(\d+)[：:]([^\n]+)$', source[end:]))
+    appendix = list(re.finditer(
+        r'(?m)^[ \t]*【?(電影導演控制|電影攝影控制|角色動作與物理控制|角色表演控制|角色與物件連續性|角色語音控制|聲音與語音控制|背景音樂與音效|跨段連續性控制|生成優先級|全片限制|核心敘事)】?[ \t]*[：:]?[ \t]*$',
+        source[segments[-1].end():]))
+    tail = source[segments[-1].end():]
+    end = segments[-1].end()+appendix[0].start() if appendix else len(source)
+    controls = {match[1]: tail[match.end():appendix[i+1].start() if i+1<len(appendix) else len(tail)].strip()
+                for i,match in enumerate(appendix)}
+    voice = controls.get('聲音與語音控制', controls.get('角色語音控制', ''))
+    music = controls.get('背景音樂與音效', '')
+    cue_pattern = r'(?im)^[ \t]*SEGMENT[ \t]+0*(\d+)[：:]([^\n]+)$'
+    notes = dict(re.findall(cue_pattern, music))
+    music = re.sub(cue_pattern, '', music).strip()
     clips = []
     previous = 0.0
     for i, segment in enumerate(segments):
@@ -74,8 +82,8 @@ def _split_inline_segments(source):
             f'summary:\nFilm only the assigned events in {stop-start:g} seconds.',
             'retention_analysis:\nPreserve the fixed characters, voices, appearance and location.',
             'detailed_description:\n'+body,
-            'overall_soundscape:\nKeep dialogue synchronized. '+notes.get(str(i+1),'').strip(),
-            'non_diegetic_music:\nFollow this segment’s sound cues. Keep dialogue audible.',
+            'overall_soundscape:\nKeep dialogue synchronized.\n'+voice,
+            'non_diegetic_music:\n'+'\n'.join(filter(None, (music, notes.get(str(i+1),'').strip()))) or 'non_diegetic_music:\nFollow local sound cues.'
         ))))
         previous = stop
     return clips
