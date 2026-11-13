@@ -116,7 +116,14 @@ def describe(job):
         seg.setdefault('selected_take','original')
         seg['pending_take']=job.get('pending_takes',{}).get(str(i),seg['selected_take'])
         for take in seg['takes']:
-            if take['status']=='ready':take.update(version=take_version(job,i,take['id']), filename=take_file(job,i,take['id'],'part.mp4').name, preview=clip_url(job,i,take['id']))
+            if take['status']=='ready':
+                take.update(version=take_version(job,i,take['id']), filename=take_file(job,i,take['id'],'part.mp4').name, preview=clip_url(job,i,take['id']))
+                if job['request'].get('production')=='film':
+                    filming = existing_file(job,i,take['id'],'prompt.txt')
+                    if filming.is_file():
+                        take['prompt'] = filming.read_text(encoding='utf-8')
+                    elif take['id']==seg.get('selected_take','original'):
+                        take['prompt'] = seg.get('prompt','')
     return result
 
 
@@ -186,7 +193,7 @@ def repair_prompt(cfg,job,seg,prompt,note,originals,tail,dest,prefix=""):
         require_native=job['request'].get('h3_validation_version')==1)
 
 
-def retake(job_id,indices,instructions=None):
+def retake(job_id,indices,instructions=None,prompts=None,bases=None):
     if not isinstance(indices,list) or not indices:raise ValueError('請勾選至少一顆需要回爐的丹藥。')
     if not app.GPU_LOCK.acquire(blocking=False):raise ValueError('已有 MV 工作執行中，請先等它完成。')
     try:
@@ -194,7 +201,25 @@ def retake(job_id,indices,instructions=None):
         for i in indices:segment(job,i)
         indices=sorted(set(indices))
         is_manual=bool(job['request'].get('manual_h3'))
+        native=job['request'].get('production')=='film'
         notes=corrections(indices,instructions,30000 if is_manual else 3000)
+        if prompts is not None and not native:
+            raise ValueError('完整攝影咒覆寫僅供短片製作使用。')
+        direct=corrections(indices,prompts,30000) if native else {}
+        if any(i in notes for i in direct):
+            raise ValueError('同一段不能同時使用 AI 修改意見與完整攝影咒覆寫。')
+        if bases is not None and (not native or not isinstance(bases,dict)
+                                  or any(k not in {str(i) for i in indices} or not isinstance(v,str)
+                                         for k,v in bases.items())):
+            raise ValueError('攝影底稿版本僅能指定已勾選的短片片段。')
+        base_choices={int(i):t for i,t in (bases or {}).items()}
+        if native and direct:
+            from banana_mv.film import normalize_prompt,validate_film_format
+            for i,filming in direct.items():
+                segment_data=segment(job,i)
+                offset=int(job['request'].get('mode')=='chain' and i>0)
+                normalized=normalize_prompt(filming,len(job.get('images_comfy',[]))+offset)
+                direct[i]=validate_film_format(normalized,segment_data['seconds'],job['request']['sound_mode'])
         if notes and not is_manual:
             if not Path(cfg.get('guides',{}).get('ref','')).is_file():
                 raise ValueError('局部修改需要本地 9B 與原生指南，請先完成 Colab 模型下載。')
@@ -206,6 +231,7 @@ def retake(job_id,indices,instructions=None):
             saved=app.job_dir(job_id)/f'{i:02d}_prompt.txt'
             if not (seg.get('prompt') or saved.is_file()):raise ValueError('缺少原段落提示詞，無法保留劇本重拍。')
             if job['request']['mode'] in ('chain','chain5') and i>0:take_source(job,i-1)
+            if i in base_choices:take_source(job,i,base_choices[i])
         originals,song,drive=app.project_inputs(job,cfg)
         app.restore_render_settings(job)
         first=segment(job,indices[0])
@@ -221,9 +247,10 @@ def retake(job_id,indices,instructions=None):
                            if (m:=re.search(r'_v(\d+)\.',p.name))]
             version=max(disk_versions+[t.get('version',n) for n,t in enumerate(seg['takes'],1)])+1
             take={'id':uuid.uuid4().hex[:12],'version':version,'seed':seed,'created':time.time(),'status':'waiting'}
-            take['base_take']=job.get('pending_takes',{}).get(str(i),seg.get('selected_take','original'))
+            take['base_take']=base_choices.get(i,job.get('pending_takes',{}).get(str(i),seg.get('selected_take','original')))
             take_source(job,i,take['base_take'])
             if i in notes:take['correction']=notes[i]
+            if i in direct:take['prompt_override']=direct[i]
             seg['takes'].append(take);batch.append((i,take))
         job.update(status='retaking',resumed=time.time(),retake={'indices':indices,'status':'running','completed':0,
                    'takes':{str(i):t['id'] for i,t in batch}})
@@ -309,10 +336,16 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
                 app.last_frame(take_source(job,i-1,previous),frame)
                 first=f'banana_retake_{take["id"]}.png';temporary.append(inp/first);shutil.copyfile(frame,inp/first)
                 take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
-            if take.get('correction'):
+            if take.get('prompt_override'):
+                take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
+                prompt=take['prompt_override']
+            elif take.get('correction'):
                 take['status']='rewriting';app.write_state(job)
                 take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
                 prompt=repair_prompt(cfg,job,seg,prompt,take['correction'],originals,frame if first else None,dest,prefix=f'{i:02d}_v{take["version"]}_')
+            if native and prefix:
+                from banana_mv.film_manual import protect_chain5_opening
+                prompt=protect_chain5_opening(prompt)
             (output('prompt.txt')).write_text(prompt,encoding='utf-8')
             take['status']='generating';app.write_state(job)
             graph=app.build_workflow(job['images_comfy'],None if native else name,*job['size'],seg['model_frames'],prompt,take['seed'],first,
