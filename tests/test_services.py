@@ -50,20 +50,28 @@ class ServicesTests(unittest.TestCase):
             cfg=services.load_config();cfg['comfy_input_dir']=tmp
             pics=[Image.new('RGB',(64,64),c) for c in ('red','blue')]
             parts=[('text','<Picture 1>'),('image',pics[0]),('text','<Picture 2>'),('image',pics[1])]
-            captured=[]
+            captured=[];uploaded=[]
             def queue(config,graph):captured.append(graph);return 'prompt'
-            with patch.object(services,'queue_prompt',side_effect=queue),\
+            def upload(config,name,data,mime):
+                self.assertEqual(mime,'image/jpeg')
+                self.assertTrue(data.startswith(bytes.fromhex('ffd8')))
+                uploaded.append(name)
+                return name
+            with patch.object(services,'upload_comfy_image',side_effect=upload),\
+                 patch.object(services,'queue_prompt',side_effect=queue),\
                  patch.object(services,'wait_prompt',return_value={'outputs':{'result':{'text':['hello']}}}),\
                  patch.object(services,'comfy',return_value={}) as api:
                 self.assertEqual(services.rewrite_local(cfg,'guide',parts,'test'),'hello')
                 api.assert_called_once_with(cfg,'/free',{'unload_models':True,'free_memory':True})
+            self.assertEqual(len(uploaded),2)
             graph=captured[0]
             self.assertEqual(graph['generate']['inputs']['image'],['batch_1',0])
             self.assertEqual(graph['batch_1']['inputs']['image1'],['picture_0',0])
             self.assertEqual(graph['generate']['inputs']['prompt'].count('<|image_pad|>'),2)
             self.assertEqual(graph['generate']['inputs']['max_length'],8192)
             self.assertEqual(list(Path(tmp).glob('*.jpg')),[])
-            with patch.object(services,'queue_prompt',side_effect=RuntimeError('rejected')):
+            with patch.object(services,'upload_comfy_image',side_effect=upload),\
+                 patch.object(services,'queue_prompt',side_effect=RuntimeError('rejected')):
                 with self.assertRaisesRegex(RuntimeError,'rejected'):
                     services.rewrite_local(cfg,'guide',parts,'failed')
             self.assertEqual(list(Path(tmp).glob('*.jpg')),[])
