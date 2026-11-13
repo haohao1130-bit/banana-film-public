@@ -596,6 +596,14 @@ def start(req):
     rows=[app.backend.asset(aid) for aid in ids]
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
+    if not isinstance(req.get('face_refine', False), bool):
+        raise ValueError('遠景救臉設定必須為布林值。')
+    if req.get('face_refine'):
+        from banana_mv.face_refine import template
+        reference = req.get('face_refine_reference')
+        if type(reference) is not int or not 1 <= reference <= len(rows):
+            raise ValueError('請指定一張已上傳的臉部參考圖。')
+        template(app, cfg)
     map_story(req,story,len(rows))
     manual_plan=None
     if not req['auto_director']:
@@ -844,6 +852,13 @@ def worker(job,cfg,originals,song=None,drive=None):
         pending.replace(work/'final.mp4');job['current_master']=master['version']
         try:app.export_finished_video(job,work/'final.mp4')
         except OSError as error:job['export_error']=str(error)
+        if job['request'].get('face_refine') and job['id'] not in app.CANCEL:
+            from banana_mv import face_refine
+            try:
+                source = face_refine.template(app, cfg)
+                face_refine.candidates(app, cfg, job, [app.adopted_part(job,s) for s in job['segments']], originals, source)
+            except Exception as error:
+                job['face_refine_error'] = str(error)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
     except Exception as error:

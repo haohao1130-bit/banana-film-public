@@ -145,7 +145,8 @@ def main():
     print(
         f"BANANA FILM / COLAB-PARITY on http://127.0.0.1:{app.backend.PORT}",
         flush=True)
-    ThreadingHTTPServer(("127.0.0.1", app.backend.PORT), Handler).serve_forever()
+    with ThreadingHTTPServer(("127.0.0.1", app.backend.PORT), Handler) as server:
+        server.serve_forever()
 
 
 if __name__ == "__main__":

@@ -39,8 +39,16 @@ def switch(handler, target, backend, gpu_lock):
             return handler.send_json({'ok': False, 'error': 'ComfyUI 還有任務。'}, 409)
         script = str(path).replace("'", "''")
         args = ' -Port 8193 -NoBrowser' if target == 'film' else ''
-        command = (f'Wait-Process -Id {os.getpid()} -Timeout 30 -ErrorAction Stop; '
-                   f"& '{script}'{args}")
+        # The destination launcher refuses to start while the old socket listens.
+        command = (
+            "$ErrorActionPreference = 'Stop'; "
+            "$deadline = (Get-Date).AddSeconds(30); "
+            "while (Get-NetTCPConnection -LocalPort 8193 -State Listen "
+            "-ErrorAction SilentlyContinue) { "
+            "if ((Get-Date) -ge $deadline) { throw 'Port 8193 did not close.' }; "
+            "Start-Sleep -Milliseconds 250 }; "
+            f"& '{script}'{args}"
+        )
         subprocess.Popen(
             ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
             creationflags=subprocess.CREATE_NEW_CONSOLE,
