@@ -119,7 +119,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
 
         prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
         if shots:
-            state = _opening_actor_state(setup, [])
+            state = _opening_actor_state(setup, chapters)
             return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds'], state))
                     for length, prompt, window in zip(lengths, prompts, windows)]
         return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
@@ -147,7 +147,8 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     assigned = re.compile(r'(?m)^USER-SPECIFIED FILM TIME [^\n]*?'
                           r'inside THIS clip is ([\d.]+)–[\d.]+s\.[^\n]*\n')
     matches = list(assigned.finditer(prompt))
-    opening = _actor_state_lines(state) if state else ''
+    opening = _actor_state_lines({kind: item for kind, item in (state or {}).items()
+                                  if item.get('changed')})
     shots = []
     previous_ms = 0
     for i, match in enumerate(matches):
@@ -159,7 +160,11 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
             actions = body.split('Constraints for THIS chapter only', 1)[0]
             for line in actions.splitlines():
                 if not re.search(r'^ALREADY ESTABLISHED|\(S\d+\)|[「」『』]', line):
+                    before = {kind: item['status'] for kind, item in state.items()}
                     _advance_actor_state(state, line)
+                    for kind, item in state.items():
+                        if item['status'] != before[kind]:
+                            item['changed'] = True
         body = re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
                       r'\1 <d>[Chinese] \2</d>', body)
         prefix = f'[Shot {len(shots)+1}]'
