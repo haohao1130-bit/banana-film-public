@@ -689,7 +689,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
             skip_empty_commissions=True)
         return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
                 for length, prompt in zip(lengths, prompts)]
-    if total_seconds <= ceiling:
+    if total_seconds <= largest and not shared_setup:
         return clips
     units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
              if part.strip()]
