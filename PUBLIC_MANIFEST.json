@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "365e7ec58ebeefd3072641b7bc861a174b24fb8c5176c2a00a6920678d618bc0"
+      "sha256": "a2319bc5b487d6342e26effec91c9aae9f475fece030ff1f6c4bbe77c81807c1"
     },
     {
       "path": "banana_mv/film_continuity.py",
@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film_manual.py",
-      "sha256": "84049077859d3761aa571cb634826770e1effcfe9ff4522768f94b429008c5ed"
+      "sha256": "6788d8e43eb6914604390414cd154706c1d19cc7db66212834bab6f2bd743c26"
     },
     {
       "path": "banana_mv/film_media.py",
@@ -120,7 +120,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "47c1ff7227ae15b0abec464ccd048443a3a9c30395689141ac33817e862d9715"
+      "sha256": "a47a159ca7b1273b514792e611796c47e24066886975373cfce314a4132c82c8"
     },
     {
       "path": "banana_mv/web/clip_review.js",
@@ -128,7 +128,7 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "90255abd3a67372ab0260c85e80daa8b0de617e17efe8ed95d1692c433f640cb"
+      "sha256": "4cafc960116807e1adcf64403b69973d1bc8c51811e8d6bd062860cc80f984a4"
     },
     {
       "path": "banana_mv/web/film.js",
@@ -136,7 +136,7 @@
     },
     {
       "path": "banana_mv/web/film_review.js",
-      "sha256": "24343669a9d60761c1b2f88e72270bf4383b0a754b38b113d5a212b3eaf7b46b"
+      "sha256": "78cae7cb381f33d035a0daae91c50c616bb4a7e92485a8e0eb72c773507b2c50"
     },
     {
       "path": "banana_mv/web/index.html",
@@ -244,7 +244,7 @@
     },
     {
       "path": "tests/test_film_manual_director.py",
-      "sha256": "df2129fa3c4c2c1c2c5e34d19de0cdea0789898983b6dd3a5c13f2ecf793be1f"
+      "sha256": "24cba9c9855e1f939b876c6f46b92681ad32bc3eb2cb98b739d9dc0eaadd8720"
     },
     {
       "path": "tests/test_film_motion_context.py",
