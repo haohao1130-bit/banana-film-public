@@ -29,7 +29,7 @@ CLIP_LIKE = re.compile(r'(?im)^[ \t]*===\s*CLIP\b')
 
 
 MASTER_SEGMENT = re.compile(
-    r'(?im)^SEGMENT[ \t]+(\d+)[ \t]*\n[ \t]*GLOBAL TIME[^\n]*\n'
+    r'(?im)^[ \t]*SEGMENT[ \t]+(\d+)[ \t]*\n(?:[ \t]*\n)*[ \t]*GLOBAL TIME[^\n]*\n(?:[ \t]*\n)*'
     r'[ \t]*LOCAL TIME[ \t]+00:00(?:\.000)?[ \t]*[-–—][ \t]*(\d+):(\d+(?:\.\d+)?)[ \t]*$')
 MASTER_FIELDS = re.compile(
     r'(?m)^(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music):[ \t]*$')
@@ -37,6 +37,8 @@ MASTER_FIELDS = re.compile(
 
 def split_segment_master(source):
     """Compile authored local timelines without repartitioning dialogue."""
+    source = source.replace('\r\n', '\n').replace('\r', '\n')
+    source = re.sub(r'\\[ \t]*$', '', source, flags=re.M)
     fields = list(MASTER_FIELDS.finditer(source))
     sections = {field[1]: source[field.end():fields[i+1].start() if i+1<len(fields)
                                 else len(source)].strip()
@@ -44,6 +46,8 @@ def split_segment_master(source):
     detail = sections.get('detailed_description','')
     segments = list(MASTER_SEGMENT.finditer(detail))
     if not segments:
+        if re.search(r'(?im)^\s*SEGMENT[ \t]+\d+[ \t]*\n(?:[ \t]*\n)*[ \t]*GLOBAL TIME', source):
+            raise ValueError('已找到 SEGMENT 時間軸，但無法讀取分段。請保留 detailed_description、GLOBAL TIME 與 LOCAL TIME。')
         return None
     prelude = detail[:segments[0].start()].strip()
     retention = '\n'.join(line for line in sections.get('retention_analysis','').splitlines()
