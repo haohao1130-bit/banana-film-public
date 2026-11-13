@@ -15,6 +15,7 @@ import math
 import re
 
 from banana_mv.core import FPS
+from banana_mv.film_actor_state import _opening_actor_state, _advance_actor_state, _actor_state_lines
 from banana_mv.timed_slots import allocate_timed_chapters, parse_timed_source
 
 CLIP = re.compile(
@@ -118,7 +119,8 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
 
         prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
         if shots:
-            return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds']))
+            state = _opening_actor_state(setup, [])
+            return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds'], state))
                     for length, prompt, window in zip(lengths, prompts, windows)]
         return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
                 for length, prompt in zip(lengths, prompts)]
@@ -140,11 +142,12 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
             for i in range(count)]
 
 
-def compile_storyboard_slot(fixed, prompt, length, source_length):
+def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
     """Turn the MV allocator's local assignments into native Ref2VA fields."""
     assigned = re.compile(r'(?m)^USER-SPECIFIED FILM TIME [^\n]*?'
                           r'inside THIS clip is ([\d.]+)–[\d.]+s\.[^\n]*\n')
     matches = list(assigned.finditer(prompt))
+    opening = _actor_state_lines(state) if state else ''
     shots = []
     previous_ms = 0
     for i, match in enumerate(matches):
@@ -152,6 +155,11 @@ def compile_storyboard_slot(fixed, prompt, length, source_length):
         body = prompt[match.end():stop].strip()
         if not body or body.startswith('ALREADY ESTABLISHED;') and '\n' not in body:
             continue
+        if state:
+            actions = body.split('Constraints for THIS chapter only', 1)[0]
+            for line in actions.splitlines():
+                if not re.search(r'^ALREADY ESTABLISHED|\(S\d+\)|[「」『』]', line):
+                    _advance_actor_state(state, line)
         body = re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
                       r'\1 <d>[Chinese] \2</d>', body)
         prefix = f'[Shot {len(shots)+1}]'
@@ -163,6 +171,9 @@ def compile_storyboard_slot(fixed, prompt, length, source_length):
             previous_ms = ms
         shots.append(prefix + ' ' + body)
     details = '\n\n'.join(shots) if shots else '[Shot 1] Continue the established scene.'
+    if opening:
+        details = details.replace('[Shot 1] ', '[Shot 1] Starting wardrobe state: '
+                                  + opening + '\nContinue this state. Perform only the current shot actions.\n', 1)
     refs = sorted(set(re.findall(r'<Picture (\d+)>', fixed + '\n' + details)), key=int)
     retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
     return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
