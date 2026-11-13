@@ -12,6 +12,7 @@ non_diegetic_music: ...
 Free-form text without CLIP markers uses one generation window.
 """
 import math
+from html import unescape
 import re
 
 from banana_mv.core import FPS
@@ -39,6 +40,8 @@ def split_segment_master(source):
     """Compile authored local timelines without repartitioning dialogue."""
     source = source.replace('\r\n', '\n').replace('\r', '\n')
     source = re.sub(r'\\[ \t]*$', '', source, flags=re.M)
+    source = unescape(source).replace(r'\_', '_')
+    source = re.sub(r'(?im)^([ \t]*SEGMENT[ \t]+\d+)[ \t]+(GLOBAL TIME[^\n]*?)[ \t]+(LOCAL TIME\b)', r'\1\n\2\n\3', source)
     fields = list(MASTER_FIELDS.finditer(source))
     sections = {field[1]: source[field.end():fields[i+1].start() if i+1<len(fields)
                                 else len(source)].strip()
@@ -59,6 +62,8 @@ def split_segment_master(source):
         seconds = int(segment[2])*60 + float(segment[3])
         stop = segments[i+1].start() if i+1<len(segments) else len(detail)
         body = detail[segment.end():stop].strip()
+        body = re.sub(r'(?m)^([^\n]*?\(S\d+\)[^\n]*?:[ \t]*)(\[Chinese\][ \t]+[^\n]+)$',
+                      r'\1<d>\2</d>', body)
         if '[Shot 1]' not in body:
             raise ValueError(f'SEGMENT {i+1:02d} 缺少 [Shot 1]。')
         clips.append((seconds, '\n\n'.join((
