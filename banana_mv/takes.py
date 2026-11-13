@@ -135,14 +135,14 @@ def require_idle(job,cfg,check_queue=True):
             raise ValueError('ComfyUI 還有工作，請等佇列清空再回爐。')
 
 
-def corrections(indices,instructions):
+def corrections(indices,instructions,limit=3000):
     if instructions is None:return {}
     if not isinstance(instructions,dict):raise ValueError('局部修改建議需按段落提供。')
     result={}
     for key,text in instructions.items():
         if key not in {str(i) for i in indices} or not isinstance(text,str):
             raise ValueError('局部修改建議只能指定已勾選的段落，內容需為文字。')
-        if len(text)>3000:raise ValueError('每段局部修改建議最多 3000 字。')
+        if len(text)>limit:raise ValueError(f'每段局部修改最多 {limit} 字。')
         if text.strip():result[int(key)]=text.strip()
     return result
 
@@ -197,8 +197,9 @@ def retake(job_id,indices,instructions=None):
         job=app.read_state(job_id);cfg=copy.deepcopy(app.backend.load_config());require_idle(job,cfg)
         for i in indices:segment(job,i)
         indices=sorted(set(indices))
-        notes=corrections(indices,instructions)
-        if notes:
+        is_manual=bool(job['request'].get('manual_h3'))
+        notes=corrections(indices,instructions,30000 if is_manual else 3000)
+        if notes and not is_manual:
             if not Path(cfg.get('guides',{}).get('ref','')).is_file():
                 raise ValueError('局部修改需要本地 9B 與原生指南，請先完成 Colab 模型下載。')
             app.preflight(cfg,{'encoder':{'class_type':'CLIPLoader','inputs':{'clip_name':cfg['rewriter']['model']}},
