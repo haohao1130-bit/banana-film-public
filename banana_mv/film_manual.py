@@ -15,14 +15,11 @@ import math
 import re
 
 from banana_mv.core import FPS
+from banana_mv.timed_slots import allocate_timed_chapters, parse_timed_source
 
 CLIP = re.compile(
     r'(?im)^[ \t]*===\s*CLIP\s+([1-9]\d*)\s*'
     r'\(\s*(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?\s*\)\s*===\s*$'
-)
-TIMED_HEADING = re.compile(
-    r'(?m)^#{1,6}\s+[^\n]*?(\d{1,2}:\d{2}(?:\.\d+)?)\s*[-–—~～至]\s*'
-    r'(\d{1,2}:\d{2}(?:\.\d+)?)[^\n]*$'
 )
 CLIP_LIKE = re.compile(r'(?im)^[ \t]*===\s*CLIP\b')
 
@@ -63,31 +60,38 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
     _, source = clips[0]
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
-    headings = list(TIMED_HEADING.finditer(source))
-    if headings:
-        def seconds(clock):
-            minutes, rest = clock.split(':')
-            return int(minutes) * 60 + float(rest)
+    # Adapt Film's SHOT syntax to MV's chapter allocator. Keep each shot intact.
+    shots = list(re.finditer(
+        r'(?im)^[ \t]*SHOT[ \t]+\d+[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)'
+        r'\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*s[^\n]*$', source))
+    if shots:
+        setup = source[:shots[0].start()]
+        chapters = []
+        for index, shot in enumerate(shots):
+            stop = shots[index+1].start() if index+1 < len(shots) else len(source)
+            chapters.append({'start':float(shot[1]), 'end':float(shot[2]),
+                             'actions':[source[shot.end():stop].strip()], 'constraints':[]})
+    else:
+        timed = parse_timed_source(source)
+        setup, chapters = timed if timed else ('', [])
+    if chapters:
+        if any(not 0 <= row['start'] < row['end'] <= total_seconds+1e-8 for row in chapters):
+            raise ValueError('章節時間超出全片範圍。')
+        fixed = '\n'.join(line for line in setup.splitlines()
+            if re.match(r'^\s*(?:主角|角色|人物|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白)', line)
+            and not re.match(r'^\s*(?:故事|劇情|結局)', line))
+        width = legal_frames(total_seconds/count, ceiling)/FPS
+        windows = [{'start':i*width, 'seconds':width if i+1<count else max(width,total_seconds-i*width)}
+                   for i in range(count)]
 
-        width = total_seconds / count
-        assigned = [[] for _ in range(count)]
-        for i, heading in enumerate(headings):
-            begin, end = map(seconds, heading.groups())
-            stop = headings[i + 1].start() if i + 1 < len(headings) else len(source)
-            if not 0 <= begin < end <= total_seconds + 1e-8:
-                raise ValueError('章節時間超出全片範圍。')
-            actions = source[heading.end():stop].strip().splitlines()
-            actions = [action for action in actions if action.strip()]
-            slots = [slot for slot in range(count)
-                     if min(end, (slot + 1) * width) > max(begin, slot * width)]
-            for phase, slot in enumerate(slots):
-                first = phase * len(actions) // len(slots)
-                last = (phase + 1) * len(actions) // len(slots)
-                assigned[slot].extend(actions[first:last])
-        setup = source[:headings[0].start()].strip()
-        return [(width, '\n'.join(filter(None, [setup, *actions])) or
-                 'Continue the established scene and ongoing action.')
-                for actions in assigned]
+        def commission(chapter, phase, phases, previous):
+            actions = chapter['actions']
+            local = actions[phase*len(actions)//phases:(phase+1)*len(actions)//phases]
+            context = 'ALREADY ESTABLISHED; continue without replay: '+previous if previous else ''
+            return '\n'.join(filter(None, [context, *local])), previous
+
+        prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
+        return [(width, '\n\n'.join(filter(None, [fixed, prompt]))) for prompt in prompts]
     units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
              if part.strip()]
     if len(units) < count:
@@ -150,7 +154,7 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     previous = ''
     for row in rows:
         event = row['director_plan']['event']
-        if previous and req.get('python_manual_handoff'):
+        if previous and req.get('python_manual_handoff') and 'PYTHON-OWNED SOURCE INTERVAL' not in event and 'USER-SPECIFIED FILM TIME' not in event:
             row['continuity_context'] = previous
         previous = next((line for line in reversed(event.splitlines())
                          if line.strip() and not re.match(r'^(?:鏡頭|攝影機|運鏡|配樂|音效|#)', line.strip())), previous)
