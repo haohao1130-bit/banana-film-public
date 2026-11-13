@@ -90,6 +90,44 @@ class FilmShotHandoffTests(unittest.TestCase):
         # The original reproduction produced 4 legal clips for a 30s commission.
         return film_manual.distribute_manual_prompt([(10, story())], 30, 10)
 
+    def test_40s_dialogue_packing_keeps_full_lines_and_chain5_start_safe(self):
+        # Regression: the 2026-11-13 40s film had 8 authored 5s SHOTs
+        # but Python assigned five hard 8s windows and broke the dialogue.
+        shots=[]
+        for i in range(8):
+            start=i*5
+            lines=[f'SHOT {i+1:02d}｜{start:.2f}–{start+5:.2f}秒',
+                   f'角色表演與鏡頭轉換第{i+1}段。']
+            if i==6:
+                lines += ['(S1)「所以……」','短暫停頓。',
+                          '(S1)「到底還要修多久？」',
+                          '(S2)「我只剩最後一個 BUG。」']
+            else:
+                lines += [f'角色(S1)輕聲說：',f'(S1)「第{i+1}段完整台詞，請把它說完。」',
+                          f'角色(S2)沉重回答：',f'(S2)「第{i+1}段我已經回答。」']
+            shots.append('\\n'.join(lines))
+        story='角色設定\\n小語與男主角在雨後街道對話。\\n\\n'+'\\n\\n'.join(shots)
+        clips=film_manual.distribute_manual_prompt([(10,story)],40,10)
+        self.assertEqual(len(clips),5)
+        self.assertEqual(round(sum(seconds*24 for seconds,_ in clips)),960)
+        self.assertTrue(all(7 <= seconds <= 10 for seconds,_ in clips))
+        self.assertTrue(all(round(seconds*24)%17==5 for seconds,_ in clips))
+        joined='\\n'.join(prompt for _,prompt in clips)
+        for i in range(8):
+            self.assertEqual(joined.count(f'第{i+1}段完整台詞，請把它說完。'),0 if i==6 else 1)
+        self.assertEqual(joined.count('所以……'),1)
+        self.assertEqual(joined.count('到底還要修多久？'),1)
+        self.assertTrue(any('所以……' in prompt and '到底還要修多久？' in prompt
+                            for _,prompt in clips))
+        for _,prompt in clips:
+            self.assertIn('detailed_description:',prompt)
+            self.assertNotIn('PYTHON-OWNED SOURCE INTERVAL',prompt)
+        guarded=film_manual.protect_chain5_opening(clips[1][1])
+        self.assertEqual(guarded.count('CHAIN5_VISUAL_ONLY_LEAD_IN'),1)
+        self.assertLess(guarded.index('CHAIN5_VISUAL_ONLY_LEAD_IN'),
+                        guarded.index('<d>[Chinese]'))
+        self.assertEqual(film_manual.protect_chain5_opening(guarded),guarded)
+
     def test_30s_shot_notes_never_form_unperformed_h3_shot(self):
         clips=self.generated()
         self.assertEqual(len(clips), 4)
