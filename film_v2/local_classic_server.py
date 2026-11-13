@@ -16,7 +16,7 @@ import uuid
 from http.server import ThreadingHTTPServer
 
 os.environ.setdefault("BANANA_DATA", r"F:\BANANA_FILM_5070_STUDIO\Media")
-os.environ.setdefault("BANANA_PORT", "8195")
+os.environ.setdefault("BANANA_PORT", "8193")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app
@@ -55,6 +55,9 @@ class Handler(colab.Handler):
     """Colab production routes remain inherited verbatim."""
 
     def do_POST(self):
+        if self.path == '/api/5070/switch':
+            from banana_mv.room_switch import switch
+            return switch(self, 'mv', app.backend, app.GPU_LOCK)
         if self.path != "/api/film/restart":
             return super().do_POST()
         origin = self.headers.get("Origin")
@@ -81,6 +84,10 @@ class Handler(colab.Handler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def do_GET(self):
+        if self.path == '/api/5070/switch':
+            from banana_mv.room_switch import launcher
+            return self.send_json({'available': bool(launcher('mv', app.backend.PORT)),
+                                   'busy': app.GPU_LOCK.locked()})
         path = urllib.parse.urlparse(self.path).path
         if path in ("/", "/film", "/mv"):
             # The only HTML change is loading the local-only Git version badge.
