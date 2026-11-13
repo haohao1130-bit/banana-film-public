@@ -441,6 +441,10 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     task['clip_opening']={'position':'first' if seg['index']==0 else 'continuation',
         'instruction':('Begin the commissioned film opening.' if seg['index']==0 else
                        'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
+    if seg['index'] > 0 and req.get('python_auto_handoff'):
+        previous = job['segments'][seg['index'] - 1]['director_plan']['event'].splitlines()[-1]
+        task['already_established'] = re.sub(r'<Picture (\d+)>',
+            lambda m:f'<Picture {int(m[1])+offset}>',previous)
     task['clip_boundary']={'position':'final' if final else 'intermediate',
         'instruction':('Complete only the commissioned film ending.' if final else
                        'Continue the current scene through this production boundary. Do not invent a stop, closing beat or music ending. '
@@ -535,6 +539,7 @@ def start(req):
     req.setdefault('auto_director',True);req.setdefault('script_review',True)
     if not isinstance(req['auto_director'],bool) or not isinstance(req['script_review'],bool):
         raise ValueError('自動導演與劇本確認必須為勾選值。')
+    req['python_auto_handoff']=req['auto_director']
     req['duration_policy']='flexible' if req['auto_director'] else 'ceiling'
     genres=req.get('genres',[])
     if not isinstance(genres,list) or any(not isinstance(g,str) or g not in GENRES for g in genres):
@@ -561,6 +566,7 @@ def start(req):
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         manual_clips=split_native_h3(story,single_seconds)
         if exact and not CLIP.search(story):
+            req['python_manual_handoff']=True
             manual_clips=distribute_manual_prompt(manual_clips,float(maximum),float(chunk))
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
@@ -739,6 +745,9 @@ def worker(job,cfg,originals,song=None,drive=None):
                 job['status']='running';seg['status']='rewriting';app.write_state(job)
                 if job['request'].get('manual_h3'):
                     prompt=seg['manual_h3_prompt']
+                    if seg.get('continuity_context'):
+                        prompt=('Already established before this clip; continue from its result without replaying it: '
+                                + seg['continuity_context'] + '\n\n' + prompt)
                     if tail:
                         prompt=re.sub(r'<Picture (\d+)>',
                                       lambda m:f'<Picture {int(m[1])+1}>',prompt)
