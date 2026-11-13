@@ -381,18 +381,86 @@ def protect_chain5_opening(prompt):
             'lead-in does the first spoken line and its synced mouth motion begin.\n')
     return prompt[:shot.end()] + lead + prompt[shot.end():]
 
+
+# Classic Python Slot handoff model: reference/world settings are immutable
+# shared_setup, whereas plot actions are assigned ONCE to isolated clip orders.
+# Do not mistake the first global paragraph for the opening filmed event.
+_FILM_SHARED_HEADING = re.compile(
+    r'^\s*(?:#{1,6}\s*)?(?:【)?(?:共同設定|共通設定|共用設定|全局設定|'
+    r'全域設定|固定設定|全片固定設定|角色設定|人物設定|角色綁定|'
+    r'世界觀|場景設定|全局電影設定|電影設定)(?:】)?\s*[：:]?\s*$')
+_FILM_STORY_HEADING = re.compile(
+    r'^\s*(?:#{1,6}\s*)?(?:【)?(?:故事內容|故事劇情|劇情內容|'
+    r'劇本內容|故事大綱|劇情大綱|故事分段|劇情分段|'
+    r'分鏡時間軸|分鏡腳本|分鏡內容|拍攝段落|'
+    r'段落安排|演出內容|故事開始|正片內容)(?:】)?\s*[：:]?\s*$')
+_FILM_EVENT_HEADING = re.compile(
+    r'^\s*(?:#{1,6}\s*)?(?:第[一二三四五六七八九十百零〇\d]+[幕段場鏡]'
+    r'(?:\s*[｜|:：\-—].*)?|(?:ACT|SCENE|SHOT)\s*\d+'
+    r'(?:\s*[｜|:：\-—].*)?)\s*$',
+    re.I)
+_FILM_FIXED_BLOCK_START = 'FIXED_REFERENCE_SETTINGS (shared across ALL clips; not a filmed event):'
+_FILM_LOCAL_BLOCK_START = 'CURRENT_CLIP_COMMISSION (only these events are performed now):'
+
+
+def _split_film_shared_source(source):
+    """Return unchanged fixed setup and ordered story, like Classic split_source.
+
+    Require an actual narrative heading or chapter before separating source.
+    Without that boundary, leave the input untouched; never guess that the
+    opening narrative is a fixed rule or that a future event is global.
+    """
+    lines = source.replace('\r\n', '\n').splitlines()
+    first_story = None
+    strip_heading = False
+    for i, line in enumerate(lines):
+        if _FILM_STORY_HEADING.fullmatch(line):
+            first_story = i
+            strip_heading = True
+            break
+        if _FILM_EVENT_HEADING.fullmatch(line):
+            first_story = i
+            break
+    if first_story is None or first_story == 0:
+        return '', source
+    shared_lines = lines[:first_story]
+    # Global setting declarations must be explicit. This protects unheaded
+    # plots from accidentally becoming a spoiler-bearing shared setup.
+    if not any(_FILM_SHARED_HEADING.fullmatch(line) for line in shared_lines):
+        return '', source
+    common = '\n'.join(shared_lines).strip()
+    narrative = '\n'.join(lines[first_story + int(strip_heading):]).strip()
+    return (common, narrative) if narrative else ('', source)
+
+
+def _split_film_handoff(prompt):
+    """Read the fixed setting block from a separately commissioned clip."""
+    if not prompt.startswith(_FILM_FIXED_BLOCK_START + '\n'):
+        return '', prompt
+    pivot='\n\n' + _FILM_LOCAL_BLOCK_START + '\n'
+    fixed, sep, local=prompt[len(_FILM_FIXED_BLOCK_START)+1:].partition(pivot)
+    return (fixed.strip(), local) if sep else ('',prompt)
+
+
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
     if len(clips) != 1:
         return clips
     _, source = clips[0]
+    shared_setup, story = _split_film_shared_source(source)
+    # A SHOT-timed script will also get its shared setup in
+    # subject_definitions. For unheaded chapter scripts, never split common
+    # identities, speaker mappings or the fixed world into the first clip.
+    if shared_setup:
+        source = story
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
     shots = list(re.finditer(
         r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)'
         r'\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|s(?:ec)?\b)[^\n]*$', source))
     if shots:
-        setup = source[:shots[0].start()]
+        setup = (shared_setup + '\n' + source[:shots[0].start()]
+                 if shared_setup else source[:shots[0].start()])
         end = re.search(r'(?m)^\s*(?:聲音與表演控制|電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', source[shots[-1].end():])
         body_end = shots[-1].end() + end.start() if end else len(source)
         appendix = source[body_end:]
@@ -423,10 +491,20 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
             raise ValueError('章節時間超出全片範圍。')
         setup_lines=setup.splitlines()
         opening_lines=_opening_wardrobe_indices(setup_lines)
-        fixed = '\n'.join(line for index,line in enumerate(setup_lines)
+        fixed = (shared_setup if shared_setup else '\n'.join(
+            line for index,line in enumerate(setup_lines)
             if (index in opening_lines or re.match(
                 r'^\s*(?:主角|角色|人物(?:外貌|五官|身分|身份)|服裝(?:隨|依)|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line))
-            and not re.search(r'最後才|結局|修復AI|修電腦', line))
+            and not re.search(r'最後才|結局|修復AI|修電腦', line)))
+        # Global audio and continuity rules after the last SHOT remain
+        # shared, but source-plot notes are never copied into every clip.
+        if shared_setup:
+            suffix = '\n'.join(
+                line for line in setup_lines
+                if line.strip().startswith(
+                    ('全片使用', '對白必須', '允許自然', '背景使用', '全片無對白')))
+            if suffix:
+                fixed += '\n' + suffix
         if shots:
             return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count)
         # Quantize the full timeline once, then distribute legal frame counts.
@@ -474,8 +552,16 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
     if len(units) < count:
         raise ValueError(f'全片 {total_seconds:g} 秒需分成 {count} 段。請用換行分開各段事件，或標出 CLIP 邊界。')
     cuts = [round(i * len(units) / count) for i in range(count + 1)]
-    return [(total_seconds / count, '\n'.join(units[cuts[i]:cuts[i+1]]))
-            for i in range(count)]
+    result=[]
+    for i in range(count):
+        local='\n'.join(units[cuts[i]:cuts[i+1]])
+        if shared_setup:
+            # Exactly the same fixed rules in every local shoot order;
+            # local events only once, never a full-story preview.
+            local=(_FILM_FIXED_BLOCK_START + '\n' + shared_setup
+                   + '\n\n' + _FILM_LOCAL_BLOCK_START + '\n' + local)
+        result.append((total_seconds / count, local))
+    return result
 
 
 def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
