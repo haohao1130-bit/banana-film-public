@@ -19,8 +19,7 @@ class Film5070ColabParityTests(unittest.TestCase):
     def test_original_colab_handler_is_used_for_every_production_action(self):
         self.assertTrue(issubclass(local.Handler, colab.Handler))
         self.assertIs(local.Handler.do_POST, colab.Handler.do_POST)
-        source = "
-".join(
+        source = "\\n".join(
             (ROOT / item).read_text(encoding="utf-8")
             for item in ("banana_mv/web/film.js", "banana_mv/web/film_review.js")
         )
