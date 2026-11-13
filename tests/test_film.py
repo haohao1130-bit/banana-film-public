@@ -260,6 +260,7 @@ class FilmTests(unittest.TestCase):
             with ExitStack() as stack:
                 stack.enter_context(patch.object(app.backend,'load_config',return_value=cfg))
                 stack.enter_context(patch.object(app.backend,'asset',return_value={'kind':'image','file':photo.name,'comfy_name':'photo.png'}))
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 stack.enter_context(patch.object(app.backend,'LIBRARY',photo.parent))
                 stack.enter_context(patch.object(app,'RUNS',photo.parent))
                 stack.enter_context(patch.object(app,'preflight'))
