@@ -7,7 +7,7 @@ param(
  [string]$ComfySource='',
  [string]$ComfyInputDir='',
  [string]$PythonPath='',
- [int]$Port=8195,
+ [int]$Port=8193,
  [switch]$NoAutoComfy,
  [switch]$NoBrowser,
  [switch]$FromCheckout
@@ -119,6 +119,7 @@ if(Test-Path -LiteralPath $settingsPath -PathType Leaf){
  foreach($name in @('ComfyUrl','ComfyBase','ComfySource','ComfyInputDir','PythonPath','Port')){
   if(-not $PSBoundParameters.ContainsKey($name)){
    $value=$saved.$name
+   if($name -eq 'Port' -and $value -eq 8195){continue}
    if($null -ne $value -and [string]$value -ne ''){ Set-Variable -Name $name -Value $value }
   }
  }
