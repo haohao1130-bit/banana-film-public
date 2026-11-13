@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "030f8c8c5118057c5463c193484a1ae180ebdb3c1ac9f52a7b6a3e435a268719"
+      "sha256": "7df2663bf1c4d24d41af6e7143f9026e51d1dc61723bbc035354e09487f01370"
     },
     {
       "path": "banana_mv/film_continuity.py",
@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film_manual.py",
-      "sha256": "4f1001f310d5a2f9caac2b128ce7b6c8e69ec2d8ed8ef17d4fa535a8faf6e479"
+      "sha256": "d02f3df163138490849963a12b66b987ff936e94083f6752384866ad571ea5d6"
     },
     {
       "path": "banana_mv/film_media.py",
