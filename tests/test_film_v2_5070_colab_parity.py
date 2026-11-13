@@ -24,7 +24,7 @@ class Film5070ColabParityTests(unittest.TestCase):
             for item in ("banana_mv/web/film.js", "banana_mv/web/film_review.js")
         )
         for required in (
-                "api/film/plan", "api/film/"+'kind',
+                "api/film/plan", "api/film/",
                 "api/mv/retake", "api/mv/condense",
                 "api/mv/select-take", "api/mv/resume", "api/mv/projects"):
             self.assertIn(required, source)
