@@ -599,13 +599,16 @@ def start(req):
     map_story(req,story,len(rows))
     manual_plan=None
     if not req['auto_director']:
-        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan,legal_frames
+        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan,legal_frames,split_segment_master
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
-        has_clips=bool(CLIP.search(story))
+        authored_segments=split_segment_master(story)
+        has_clips=bool(authored_segments or CLIP.search(story))
+        if authored_segments:
+            req['authored_segment_master']=True
         if not exact and not has_clips:
             single_seconds=legal_frames(single_seconds,float(chunk))/FPS
             req.update(duration_source='manual_single_clip',target_seconds=single_seconds)
-        manual_clips=split_native_h3(story,single_seconds)
+        manual_clips=authored_segments or split_native_h3(story,single_seconds)
         if not has_clips:
             req['python_manual_handoff']=True
             manual_clips=distribute_manual_prompt(manual_clips,float(req['target_seconds']),float(chunk),
