@@ -14,7 +14,8 @@
     'border-radius:9px', 'padding:4px 9px', 'max-width:100%',
     'overflow-wrap:anywhere', 'margin:6px 0'
   ].join(';');
-  header.append(label);
+  // Keep the original Colab masthead layout; place only the commit stamp in its edition label.
+  (header.querySelector('.edition') || header).append(label);
   let instance = null;
   async function refreshVersion() {
     try {
