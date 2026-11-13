@@ -39,6 +39,7 @@ jobs:
       - name: Colab identical Film interface + local Git badge JS syntax
         run: |
           node --check banana_mv/web/film.js
+          node --check banana_mv/web/kitchen.js
           node --check banana_mv/web/film_review.js
           node --check film_v2/web/build_5070.js
           node --check film_v2/web/app.js
