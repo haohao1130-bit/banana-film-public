@@ -20,6 +20,10 @@ CLIP = re.compile(
     r'(?im)^[ \t]*===\s*CLIP\s+([1-9]\d*)\s*'
     r'\(\s*(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?\s*\)\s*===\s*$'
 )
+TIMED_HEADING = re.compile(
+    r'(?m)^#{1,6}\s+[^\n]*?(\d{1,2}:\d{2}(?:\.\d+)?)\s*[-–—~～至]\s*'
+    r'(\d{1,2}:\d{2}(?:\.\d+)?)[^\n]*$'
+)
 CLIP_LIKE = re.compile(r'(?im)^[ \t]*===\s*CLIP\b')
 
 
@@ -59,6 +63,31 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
     _, source = clips[0]
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
+    headings = list(TIMED_HEADING.finditer(source))
+    if headings:
+        def seconds(clock):
+            minutes, rest = clock.split(':')
+            return int(minutes) * 60 + float(rest)
+
+        width = total_seconds / count
+        assigned = [[] for _ in range(count)]
+        for i, heading in enumerate(headings):
+            begin, end = map(seconds, heading.groups())
+            stop = headings[i + 1].start() if i + 1 < len(headings) else len(source)
+            if not 0 <= begin < end <= total_seconds + 1e-8:
+                raise ValueError('章節時間超出全片範圍。')
+            actions = source[heading.end():stop].strip().splitlines()
+            actions = [action for action in actions if action.strip()]
+            slots = [slot for slot in range(count)
+                     if min(end, (slot + 1) * width) > max(begin, slot * width)]
+            for phase, slot in enumerate(slots):
+                first = phase * len(actions) // len(slots)
+                last = (phase + 1) * len(actions) // len(slots)
+                assigned[slot].extend(actions[first:last])
+        setup = source[:headings[0].start()].strip()
+        return [(width, '\n'.join(filter(None, [setup, *actions])) or
+                 'Continue the established scene and ongoing action.')
+                for actions in assigned]
     units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
              if part.strip()]
     if len(units) < count:
@@ -118,6 +147,12 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
         raise ValueError(f'對齊合法 H3 幀數後是 {duration:.2f} 秒，超出本次上限。請微調各段秒數。')
     if req.get('target_is_exact') and abs(duration-target)>tolerance + 1e-8:
         raise ValueError(f'合法影格對齊後為 {duration:.2f} 秒，超出指定 {target:g}±{tolerance:g} 秒；請調整 CLIP 長度。')
+    previous = ''
     for row in rows:
+        event = row['director_plan']['event']
+        if previous and req.get('python_manual_handoff'):
+            row['continuity_context'] = previous
+        previous = next((line for line in reversed(event.splitlines())
+                         if line.strip() and not re.match(r'^(?:鏡頭|攝影機|運鏡|配樂|音效|#)', line.strip())), previous)
         row.update(song_seconds=duration,segment_count=len(rows),fixed_reference_settings='')
     return {'title':title[:120],'duration':duration,'segments':rows,'shared_setup':''}
