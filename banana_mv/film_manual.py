@@ -204,7 +204,9 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
             prefix += f' At {minutes:02d}:{seconds:02d}.{millis:03d},'
             previous_ms = ms
         shots.append(prefix + ' ' + body)
-    details = '\n\n'.join(shots) if shots else '[Shot 1] Continue the established scene.'
+    if not shots:
+        raise ValueError('這個生成窗只有已發生事項／攝影備註，沒有當段演出。請調整 SHOT 時間或加入明確動作。')
+    details = '\n\n'.join(shots)
     if opening:
         details = details.replace('[Shot 1] ', '[Shot 1] Starting wardrobe state: '
                                   + opening + '\nContinue this state. Perform only the current shot actions.\n', 1)
