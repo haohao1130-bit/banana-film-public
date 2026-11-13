@@ -45,7 +45,8 @@ pronouns in place of a named character; do not guess an absent picture binding.
 If the user's wording is ambiguous, preserve explicit requirements and make each
 actor/action assignment unambiguous without inventing events.
 Read the user's story and references, develop a compelling complete film within the
-supplied duration contract. With duration_policy='target' (legacy) or 'flexible', treat target_seconds
+supplied duration contract. A max_seconds value is only a ceiling. Preserve any authored
+scene timings and stop when the story ends. With duration_policy='target' (legacy) or 'flexible', treat target_seconds
 as a soft preference, NEVER a minimum. Preserve identities, required lines and
 outcome; do not exceed max_seconds. Allocate believable performance time before dividing into clips.
 Do not merely inflate seconds, repeat events, add unrelated incidents or hold an
@@ -334,6 +335,8 @@ def duration_contract(req):
     """Legacy saved jobs keep their old contract; new jobs carry the selected cap."""
     if req.get('duration_contract_version') != 3:
         return {}
+    if req.get('duration_source') == 'prompt_ceiling':
+        return {'duration_source': 'prompt_ceiling', 'target_is_exact': False}
     return {'requested_seconds': req['target_seconds'],
             'duration_source': req.get('duration_source','selector'),
             'target_is_exact': bool(req.get('target_is_exact',False))}
@@ -370,7 +373,7 @@ def plan_film(cfg,job,originals):
         source['reference_slots']={f'@圖片{k}':f'<Picture {v}>' for k,v in slot_map(req).items()}
     fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if path.exists():
-        saved=json.loads(path.read_text())
+        saved=json.loads(path.read_text(encoding='utf-8'))
         if saved.get('input_sha256')!=fingerprint:raise ValueError('故事與已保存大綱不一致，請建立新作品。')
         verified=validate_plan(json.dumps({'title':saved['title'],'shared_setup':saved.get('shared_setup',''),'segments':[
             {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']}
@@ -480,8 +483,8 @@ def declared_film_seconds(story):
     """Only explicit TOTAL time, not a numbered shot or action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
     if not declared:return None
-    if any(not 6<=value<=180 for value in declared):
-        raise ValueError('提示詞全片時間需在 6–180 秒之內。')
+    if any(not 6<=value<=300 for value in declared):
+        raise ValueError('提示詞全片時間需在 6–300 秒之內。')
     if max(declared)-min(declared)>0.01:
         raise ValueError('提示詞有不同的全片秒數，請先統一。')
     return declared[0]
@@ -491,7 +494,7 @@ def start(req):
     cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
-    selected=req.get('max_seconds',60)
+    selected=req.get('max_seconds',300)
     declaration=declared_film_seconds(story)
     preference=req.get('duration_preference','selector' if 'max_seconds' in req else 'prompt')
     if preference not in ('prompt','selector','custom'):
@@ -499,21 +502,21 @@ def start(req):
     if preference=='prompt' and declaration is not None:
         maximum=declaration;duration_source='prompt'
     else:
-        maximum=selected;duration_source='custom' if preference=='custom' else 'selector'
+        maximum=300 if preference=='prompt' else selected;duration_source='custom' if preference=='custom' else 'prompt_ceiling' if preference=='prompt' else 'selector'
     if declaration is not None and preference in ('selector','custom') and abs(maximum-declaration)>1.5:
         raise ValueError(f'選定 {maximum:g} 秒與提示詞的全片 {declaration:g} 秒不一致；請統一。')
     chunk=req.get('segment_seconds','auto')
     dynamic=chunk=='auto'
     if dynamic:chunk=15
-    if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=180:
-        raise ValueError('片長上限為 6–180 秒。')
+    if isinstance(maximum,bool) or not isinstance(maximum,(int,float)) or not math.isfinite(maximum) or not 6<=maximum<=300:
+        raise ValueError('片長上限為 6–300 秒。')
     if isinstance(chunk,bool) or not isinstance(chunk,(int,float)) or chunk not in (6,10,15):raise ValueError('分段上限請選 6、10 或 15 秒。')
     exact=declaration is not None or preference=='custom'
     tolerance=1.5 if exact else 0.0
     req.update(production='film',fixed_reference_version=1,h3_validation_version=1,
                duration_contract_version=3,duration_source=duration_source,target_is_exact=exact,
                timeline_tolerance=tolerance,target_seconds=float(maximum),
-               max_seconds=min(180.0,float(maximum)+tolerance),segment_seconds=float(chunk),
+               max_seconds=min(300.0,float(maximum)+tolerance),segment_seconds=float(chunk),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
@@ -551,13 +554,15 @@ def start(req):
         from banana_mv.film_manual import split_native_h3,make_manual_plan
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         manual_clips=split_native_h3(story,single_seconds)
+        if manual_clips is None:
+            raise ValueError('純手動模式需要 H3 官方六區塊全咒。一般故事文字請開啟自動導演。')
         if manual_clips is not None:
             authored=sum(seconds for seconds,_ in manual_clips)
-            # Explicit CLIP timing is stronger than an untouched 60s menu default.
+            # Explicit CLIP timing sets the duration in prompt mode.
             # Custom time always wins and conflicting supplied CLIPs must error.
             if preference=='prompt' and declaration is None:
-                if not 6<=authored<=180:raise ValueError('H3 全咒總長需為 6–180 秒。')
-                req.update(target_seconds=authored,max_seconds=min(180.,authored+1.5),
+                if not 6<=authored<=300:raise ValueError('H3 全咒總長需為 6–300 秒。')
+                req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
                            timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
             req['manual_h3']=True
             manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
@@ -631,7 +636,7 @@ def save_script(job_id,draft,revision,render=False):
         job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],
                    script_revision=uuid.uuid4().hex,script_approved=render,resumed=time.time())
         job['script_draft']=review_draft(job)
-        previous=json.loads((app.job_dir(job_id)/'director_plan.json').read_text())
+        previous=json.loads((app.job_dir(job_id)/'director_plan.json').read_text(encoding='utf-8'))
         atomic_json(app.job_dir(job_id)/'director_plan.json',dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
         if render:
             originals,_,_=inputs(job,cfg);job['status']='running';app.CANCEL.discard(job_id)
@@ -685,7 +690,7 @@ def revise_script(job_id,draft,revision,instruction):
         history.append({'revision':revision,'script':draft,'note':instruction,'created':time.time()})
         job.update(title=plan['title'],segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'],script_revision=uuid.uuid4().hex)
         job['script_draft']=review_draft(job)
-        path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text())
+        path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text(encoding='utf-8'))
         atomic_json(path,dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
         app.write_state(job);return job
     finally:app.GPU_LOCK.release()
