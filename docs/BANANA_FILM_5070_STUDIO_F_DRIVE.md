@@ -8,7 +8,7 @@
 
 The Colab launcher `Banana_Film_Studio.ipynb` uses `banana_mv.film_server.Handler`. The RTX5070 entry `film_v2.local_classic_server.Handler` inherits exactly that handler and serves the canonical `banana_mv/web/film.html`, `film.js`, and `film_review.js` without replacing or rewriting controls. Only the 5070 Git version badge is added at runtime. This is deliberate engine parity, not a restyled Python-Owned V2 UI.
 
-Public Colab main and the 5070 experiment branch currently contain identical blob SHA values for the original Film Studio UI, JS, classic server and Film production engine. Tests additionally request the actual HTTP endpoints to confirm exact content.
+This 5070 experimental branch continues to use the same classic Film Studio UI and inherited production routes, but now intentionally carries isolated dialogue-safe manual shot packing, Chain5 dialogue lead-in and per-version native H3 prompt retakes. Colab main and the successful public release are not updated by these experimental fixes. The local UI and Film engine are therefore no longer byte-identical to Colab main.
 
 ## Storage layout on F:
 
