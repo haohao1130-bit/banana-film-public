@@ -55,22 +55,35 @@ def split_native_h3(story, single_seconds):
 
 def distribute_manual_prompt(clips, total_seconds, ceiling):
     """Split an unmarked long prompt at its existing paragraph or sentence boundaries."""
-    if len(clips) != 1 or total_seconds <= ceiling:
+    if len(clips) != 1:
         return clips
     _, source = clips[0]
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
-    # Adapt Film's SHOT syntax to MV's chapter allocator. Keep each shot intact.
     shots = list(re.finditer(
-        r'(?im)^[ \t]*SHOT[ \t]+\d+[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)'
-        r'\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*s[^\n]*$', source))
+        r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)'
+        r'\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*(?:秒(?:鐘)?|s(?:ec)?\b)[^\n]*$', source))
     if shots:
         setup = source[:shots[0].start()]
+        end = re.search(r'(?m)^\s*(?:聲音與表演控制|電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', source[shots[-1].end():])
+        body_end = shots[-1].end() + end.start() if end else len(source)
+        appendix = source[body_end:]
         chapters = []
         for index, shot in enumerate(shots):
-            stop = shots[index+1].start() if index+1 < len(shots) else len(source)
-            chapters.append({'start':float(shot[1]), 'end':float(shot[2]),
-                             'actions':[source[shot.end():stop].strip()], 'constraints':[]})
+            stop = shots[index+1].start() if index+1 < len(shots) else body_end
+            body = source[shot.end():stop].strip()
+            notes = re.findall(rf'(?im)^[ \t]*SHOT[ \t]+0*{int(shot[1])}[：:]([^\n]+)$', appendix)
+            for line in appendix.splitlines():
+                if re.match(r'^\s*配樂', line):
+                    notes.extend(clause for clause in re.split(r'[，。；]', line)
+                                 if re.search(rf'\bSHOT\s+0*{int(shot[1])}(?!\d)', clause, re.I))
+            chapters.append({'start':float(shot[2]), 'end':float(shot[3]),
+                             'actions':[body], 'constraints':notes})
+        global_audio = re.split(r'(?m)^[ \t]*(?:電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', appendix, maxsplit=1)[0]
+        setup += '\n' + '\n'.join(
+            line for line in global_audio.splitlines()
+            if re.match(r'^\s*(?:全片使用|[(]S[12][)]|對白必須|允許自然|背景使用|不加入|不擅自)', line)
+            and not re.search(r'\bSHOT\s+\d+', line, re.I))
     else:
         timed = parse_timed_source(source)
         setup, chapters = timed if timed else ('', [])
@@ -78,8 +91,8 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         if any(not 0 <= row['start'] < row['end'] <= total_seconds+1e-8 for row in chapters):
             raise ValueError('章節時間超出全片範圍。')
         fixed = '\n'.join(line for line in setup.splitlines()
-            if re.match(r'^\s*(?:主角|角色|人物|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白)', line)
-            and not re.match(r'^\s*(?:故事|劇情|結局)', line))
+            if re.match(r'^\s*(?:主角|角色|人物外貌|固定場景|影片風格|影像風格|場景|主要道具|聲音設定|以.+(?:背景音樂|環境音效)|全片無對白|無旁白|\\?<Picture\s+\d+>|[(]S[12][)]|16:9|冷調|遵守180|全片使用|對白必須|允許自然|背景使用|不加入|不擅自)', line)
+            and not re.search(r'最後才|結局|修復AI|修電腦', line))
         # Quantize the full timeline once, then distribute legal frame counts.
         minimum = 124
         maximum = math.floor(ceiling * FPS)
@@ -97,19 +110,69 @@ def distribute_manual_prompt(clips, total_seconds, ceiling):
         def commission(chapter, phase, phases, previous):
             actions = chapter['actions']
             local = actions[phase*len(actions)//phases:(phase+1)*len(actions)//phases]
-            context = 'ALREADY ESTABLISHED; continue without replay: '+previous if previous else ''
+            prior_lines = [line for line in previous.splitlines()
+                           if not re.search(r'[(]S\d+[)]|[「」『』]|台詞|攝影機|鏡頭', line)]
+            context = ('ALREADY ESTABLISHED; continue without replay: '+prior_lines[-1]
+                       if prior_lines else '')
             return '\n'.join(filter(None, [context, *local])), local[-1] if local else previous
 
         prompts = allocate_timed_chapters(chapters, windows, commission, timeline='FILM')
+        if shots:
+            return [(length, compile_storyboard_slot(fixed, prompt, length, window['seconds']))
+                    for length, prompt, window in zip(lengths, prompts, windows)]
         return [(length, '\n\n'.join(filter(None, [fixed, prompt])))
                 for length, prompt in zip(lengths, prompts)]
+    if total_seconds <= ceiling:
+        return clips
     units = [part.strip() for part in re.split(r'\n+|(?<=[。！？!?；;])\s*|(?<=\.)[ \t]+', source)
              if part.strip()]
+    grouped = []
+    for unit in units:
+        if grouped and grouped[-1].endswith(('：', ':')) and re.match(r'^\(S\d+\)', unit):
+            grouped[-1] += '\n' + unit
+        else:
+            grouped.append(unit)
+    units = grouped
     if len(units) < count:
         raise ValueError(f'全片 {total_seconds:g} 秒需分成 {count} 段。請用換行分開各段事件，或標出 CLIP 邊界。')
     cuts = [round(i * len(units) / count) for i in range(count + 1)]
     return [(total_seconds / count, '\n'.join(units[cuts[i]:cuts[i+1]]))
             for i in range(count)]
+
+
+def compile_storyboard_slot(fixed, prompt, length, source_length):
+    """Turn the MV allocator's local assignments into native Ref2VA fields."""
+    assigned = re.compile(r'(?m)^USER-SPECIFIED FILM TIME [^\n]*?'
+                          r'inside THIS clip is ([\d.]+)–[\d.]+s\.[^\n]*\n')
+    matches = list(assigned.finditer(prompt))
+    shots = []
+    previous_ms = 0
+    for i, match in enumerate(matches):
+        stop = matches[i+1].start() if i+1 < len(matches) else len(prompt)
+        body = prompt[match.end():stop].strip()
+        if not body or body.startswith('ALREADY ESTABLISHED;') and '\n' not in body:
+            continue
+        body = re.sub(r'(\(S\d+\))[ \t]*「([^」]+)」',
+                      r'\1 <d>[Chinese] \2</d>', body)
+        prefix = f'[Shot {len(shots)+1}]'
+        if shots:
+            ms = max(previous_ms+1, round(float(match[1]) * length/source_length * 1000))
+            minutes, remaining = divmod(ms, 60000)
+            seconds, millis = divmod(remaining, 1000)
+            prefix += f' At {minutes:02d}:{seconds:02d}.{millis:03d},'
+            previous_ms = ms
+        shots.append(prefix + ' ' + body)
+    details = '\n\n'.join(shots) if shots else '[Shot 1] Continue the established scene.'
+    refs = sorted(set(re.findall(r'<Picture (\d+)>', fixed + '\n' + details)), key=int)
+    retention = '\n'.join(f'<Picture {ref}>: preserve referenced identity and appearance.' for ref in refs)
+    return ('subject_definitions:\n' + (fixed or 'Use the actors and scene specified in the shots.')
+            + '\n\nsummary:\nFilm the assigned shots in order within '
+            + f'{length:.3f} seconds. Preserve the written lines and speaker IDs.'
+            + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
+            + '\n\ndetailed_description:\n' + details
+            + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
+            + '\n\nnon_diegetic_music:\nFollow the authored music cues for these shots.')
+
 
 
 def legal_frames(seconds, ceiling):
