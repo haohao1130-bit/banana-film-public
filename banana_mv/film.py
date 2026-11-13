@@ -486,7 +486,7 @@ def inputs(job,cfg):
 
 
 _TOTAL_DURATION = re.compile(
-    r'(?i)(?:全片|全長|影片總長|總長|總時長|總時間|片長|總計|total\s+duration|total\s+length)'
+    r'(?i)(?:全片|全長|影片長度|短片長度|影片總長|總長|總時長|總時間|片長|總計|total\s+duration|total\s+length)'
     r'\s*(?:[:：=]|為|是|約)?\s*(\d+(?:\.\d+)?)\s*(?:秒鐘?|s(?:ec(?:onds?)?)?\b)')
 
 
