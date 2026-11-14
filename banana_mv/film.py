@@ -596,6 +596,8 @@ def start(req):
     rows=[app.backend.asset(aid) for aid in ids]
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
+    if not isinstance(req.get('upscale_1080p', False), bool):
+        raise ValueError('1080P 放大設定必須是布林值。')
     if not isinstance(req.get('face_refine', False), bool):
         raise ValueError('遠景救臉設定必須為布林值。')
     if req.get('face_refine'):
@@ -859,6 +861,9 @@ def worker(job,cfg,originals,song=None,drive=None):
                 face_refine.render_version(app, cfg, job, parts, originals)
             except Exception as error:
                 job['face_refine_error'] = str(error)
+        if job['request'].get('upscale_1080p'):
+            from banana_mv import nv_upscale
+            nv_upscale.render_version(app, cfg, job)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
     except Exception as error:

@@ -61,6 +61,12 @@ function renderFinalPreviews(job, relative = false) {
  $('final-previews').hidden = !master;
  show('video', 'download', master);
  show('refined-video', 'refined-download', refined?.download);
+ const upscale = (job.final_versions || []).findLast(version =>
+  version.reason === 'upscale_1080p' && version.source_master === job.current_master);
+ $('upscale-preview').hidden = !(upscale || job.request?.upscale_1080p);
+ show('upscale-video', 'upscale-download', upscale?.download);
+ $('upscale-status').textContent = job.status === 'upscaling_1080p' ? '正在使用 NVIDIA RTX 放大…' :
+  upscale?.export_error || upscale?.output_video || job.upscale_error || (upscale ? '' : '等待成片。');
  const output = $('refined-output');
  output.textContent = refined?.output_video ? '修臉版成品：' + refined.output_video : refined?.export_error || '';
  output.hidden = !output.textContent;
@@ -86,7 +92,7 @@ function renderFinalPreviews(job, relative = false) {
 function renderJob(j){
  currentJob=j;globalThis.BananaKitchen?.render(j);$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
  busy(working);$('resume-project').hidden=!['error','cancelled','interrupted'].includes(j.status);
- $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
+ $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',upscaling_1080p:'剪接室｜正在使用 NVIDIA RTX 放大',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
  if(j.status==='refining_faces')$('activity').textContent=faceRefineActivity(j);
  if(j.status==='running'&&j.current){const s=segments[j.current-1];$('activity').textContent=`第 ${j.current} 段｜${s?.status==='rewriting'?'攝影導演寫稿':'H3 原生影音生成中'}`;}
  $('progress').max=segments.length||1;$('progress').value=done;$('progress-label').textContent=segments.length?`${j.status==='refining_faces'?'母片 ':''}${done} / ${segments.length} 段完成 · 全片 ${j.duration.toFixed(2)} 秒`:'依故事決定實際長度';
@@ -94,7 +100,7 @@ function renderJob(j){
  const continuityLabels={independent:'各段獨立',chain:'單張末幀參考',chain5:'末五幀動作接續'};$('project-summary').textContent=`${j.title||j.id} · ${j.id} · 接續：${continuityLabels[j.request?.mode]||j.request?.mode||'未記錄'}`;$('job-seed').textContent='Seed：'+j.seed;
  renderFinalPreviews(j, true);
  $('output-location').textContent=[j.final_video?'目前完整作品：'+j.final_video:'',j.output_video?'母片成品：'+j.output_video:'',j.export_error||''].filter(Boolean).join('\n');
- $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download=`banana-film-v${v.version}.mp4`;a.textContent=(v.reason==='face_refine'?'修臉版 · ':'')+`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
+ $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download=`banana-film-v${v.version}.mp4`;a.textContent=(v.reason==='face_refine'?'修臉版 · ':v.reason==='upscale_1080p'?'1080P · ':'')+`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
  $('plan-panel').hidden=!segments.length;const plan=JSON.stringify(segments.map(s=>s.director_plan));if($('scene-list').dataset.signature!==plan){$('scene-list').replaceChildren();for(const s of segments){const d=document.createElement('details');d.className='scene';const title=document.createElement('summary');title.textContent=`${s.index+1} / ${s.start.toFixed(2)}–${(s.start+s.seconds).toFixed(2)} 秒`;const text=document.createElement('pre');text.textContent=s.director_plan?.event||'';d.append(title,text);$('scene-list').append(d);}$('scene-list').dataset.signature=plan;}
  const written=segments.filter(s=>s.prompt);$('prompt-panel').hidden=!written.length;const prior=$('prompt-segment').value;$('prompt-segment').replaceChildren();for(const s of written){const o=document.createElement('option');o.value=s.index;o.textContent='第 '+(s.index+1)+' 段';$('prompt-segment').append(o);}if(written.some(s=>String(s.index)===prior))$('prompt-segment').value=prior;renderPrompt();renderClipPreviews(j);
 }
@@ -107,7 +113,7 @@ $('stop').onclick=async()=>{if(!active||stopRequested===active)return;stopReques
 $('form').onsubmit=async event=>{event.preventDefault();const direct=event.submitter?.id==='direct-render';try{if(storyLength($('prompt').value)>STORY_LIMIT)throw Error('故事最多 30000 字，請刪減後再送出。');const modeAtSubmit=$('mode').value;const limit=modeAtSubmit==='chain'?8:9;if(selected.filter(Boolean).length>limit)throw Error(`最多 ${limit} 張參考圖。`);busy(true);clearTimeout(timer);$('activity').textContent='場記備料｜正在上傳參考圖片';$('status').textContent='正在建立新作品…';const slots=[];for(const file of selected)slots.push(file?(await upload(file)).id:null);const widths={'720p':{'16:9':1280,'9:16':720,'4:5':720,'1:1':720},'480p':{'16:9':854,'9:16':480,'4:5':480,'1:1':480}};const chosenDuration=$('max-seconds').value;
 const customDuration=chosenDuration==='custom'?Number($('custom-seconds').value):null;
 if(chosenDuration==='custom'&&(!Number.isFinite(customDuration)||customDuration<6||customDuration>300))throw Error('自訂全片秒數需介於 6–300 秒。');
-const body={face_refine:$('face_refine').checked,face_refine_reference:Number($('face_refine_reference').value),script_review:!direct,project_name:$('project-name').value,prompt:$('prompt').value,image_slots:slots,
+const body={face_refine:$('face_refine').checked,upscale_1080p:$('upscale_1080p').checked,face_refine_reference:Number($('face_refine_reference').value),script_review:!direct,project_name:$('project-name').value,prompt:$('prompt').value,image_slots:slots,
 auto_director:$('auto-director').checked,genres:$('auto-director').checked?genreKeys.filter(k=>$('genre-'+k).checked):[],
 duration_preference:chosenDuration==='prompt'?'prompt':chosenDuration==='custom'?'custom':'selector',
 max_seconds:chosenDuration==='prompt'?300:chosenDuration==='custom'?customDuration:Number(chosenDuration),segment_seconds:$('segment').value==='auto'?'auto':Number($('segment').value),visual_style:$('visual-style').value,sound_mode:$('sound-mode').value,mode:modeAtSubmit,aspect:$('aspect').value,width:widths[$('resolution').value][$('aspect').value],intensity:$('intensity').value,seed:$('seed').value,kitchen_attention:$('kitchen').checked,sparse_attention:$('sparse').checked,motion_lora:$('motion').checked,rewrite_retries:2};const job=await api(direct?'api/film/start':'api/film/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});active=job.id;localStorage.setItem('banana_film_job',active);renderJob(job);if(job.request?.mode!==modeAtSubmit)throw Error(`已建立作品 ${job.id}，但接續模式不一致：送出 ${modeAtSubmit}，後端回傳 ${job.request?.mode||'未提供'}。請勿直接開拍，先檢查設定。`);await poll();}catch(error){busy(false);$('status').textContent=error.message;}};

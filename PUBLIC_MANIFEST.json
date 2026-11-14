@@ -8,7 +8,7 @@
     },
     {
       "path": ".github/workflows/film_handoff_regression.yml",
-      "sha256": "9d5f987d24cedcb0872fa9405d124d73f433070e8ce1c25d39451c5b9c4dc754"
+      "sha256": "74c7412dbdd9a5d8669ec4d45bbed5bfb121073eca9c9bc71e4e24d2e3a0223c"
     },
     {
       "path": ".gitignore",
@@ -17,6 +17,18 @@
     {
       "path": "Banana_Film_Studio.ipynb",
       "sha256": "b3db8dd9f889973f11e551283c2160d6cf6fc74dc5f895ec660783d2bfcb9ace"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "81b469177daaa64e3d2bb70b2a38b117b099615f3907c00a3b887f8badcec5e2"
+    },
+    {
+      "path": "README.md",
+      "sha256": "8e30c64ee6487e4e7139b9c5fe5cd1fa23c36705a68c6470556bfc84647976f2"
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "sha256": "8819d950ed8fcf1af48114b9c237c90c1ea4473d69829690669c126ae0f0538b"
     },
     {
       "path": "banana_mv/__init__.py",
@@ -32,7 +44,7 @@
     },
     {
       "path": "banana_mv/core.py",
-      "sha256": "7e19eefc8cc514937ae89124bd74aac785b55b8b6098688793e58ecb3ed2b23f"
+      "sha256": "229ad252700fcc5f4968b000d3eea53215b66d8b3ae4cc52c9ac56b61db0393d"
     },
     {
       "path": "banana_mv/direction_contract.py",
@@ -43,8 +55,16 @@
       "sha256": "a25439523e35f1df847542e7f584d3b67fb4fa73c308bc4c915579ed4341b8ba"
     },
     {
+      "path": "banana_mv/face_refine.py",
+      "sha256": "cf535f68cae9f86fd2fc5bc9d89c32821925374250d06219359410aaec172b6f"
+    },
+    {
+      "path": "banana_mv/film.py",
+      "sha256": "55a3eabdff52b206805ba156d3f0ecbfb36ad589c629349be3d1fb12908d3ec9"
+    },
+    {
       "path": "banana_mv/film_actor_state.py",
-      "sha256": "a7c64fd671c508879dcc1103bcef4c9392e357ca15a4a290fa0e7b973a0ab251"
+      "sha256": "3fd22268e06a1f684934c721e39ff09af57a750c49d2d3ceb933aa6966220c60"
     },
     {
       "path": "banana_mv/film_continuity.py",
@@ -61,10 +81,6 @@
     {
       "path": "banana_mv/film_server.py",
       "sha256": "a35521ec6525f7764498b41f91904bdcbf26aff0797632192985a143683b354e"
-    },
-    {
-      "path": "banana_mv/film.py",
-      "sha256": "58acab468f3f7c084e40e8354a124b35b7c54a09cb8804904704cb136ca99193"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -87,6 +103,10 @@
       "sha256": "0d05faf4e933cb32434df225a5c95a29025a2559c6986ab442ca43153758e907"
     },
     {
+      "path": "banana_mv/nv_upscale.py",
+      "sha256": "855743b2185b6cfd066913dcfc274c5d9de381423c63b128c0f89bce34cfdceb"
+    },
+    {
       "path": "banana_mv/prompt_quality.py",
       "sha256": "3d411ab784a1a0f0c83579fa43360613eca2fb231685c5a1297db7c9eb5e59ae"
     },
@@ -96,7 +116,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "e193a337d76e9881f3fa6851bd0d79fb3b05abcdf004635852d364c6a6f96310"
+      "sha256": "2c2daedf1807655be259ca3bfbef059aa75357830244e9cd4a9e6134a0bc0d20"
     },
     {
       "path": "banana_mv/services.py",
@@ -116,7 +136,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "5ada54a846893e05db7b4ae1fdde32bab81fa33a43a71369856c3015f6a898af"
+      "sha256": "0ed726fdd3dc91687c752bb549ba083a69d94ebb6f82b1edd518ade416db80e8"
     },
     {
       "path": "banana_mv/timed_slots.py",
@@ -127,16 +147,16 @@
       "sha256": "9dda163265edd2168d1b880e5c74d87230d75b4149819cd0c6b5a284db90bde7"
     },
     {
-      "path": "banana_mv/web/film_review.js",
-      "sha256": "a09c991b4d96d44ef46f985c458d9ddd5b42f419eb4aba14b3aeaf9397027a92"
-    },
-    {
       "path": "banana_mv/web/film.html",
-      "sha256": "f685369cc58c8aad157021dc35615fb2aefd26f777cbf8b73a6a2f13f47f7c6e"
+      "sha256": "86a42945e8436aff615fe884cd5e389e28708d1dd98f5f9db5ddb5939663fad3"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "93f819d6d80e38f4700733709c66e104abed107b5323a2b15e883eedfc461b99"
+      "sha256": "bab6155ddbf36472a81306d7031cd34229f7b99bb4c639d91648eb6b7e6d779d"
+    },
+    {
+      "path": "banana_mv/web/film_review.js",
+      "sha256": "a09c991b4d96d44ef46f985c458d9ddd5b42f419eb4aba14b3aeaf9397027a92"
     },
     {
       "path": "banana_mv/web/index.html",
@@ -144,7 +164,7 @@
     },
     {
       "path": "banana_mv/web/kitchen.js",
-      "sha256": "e6df9a35d2693fefaf16582f5f899faa16f395b08568f5b10470a3ce9bc49fb6"
+      "sha256": "702537e1a35d58144f1cd9e05327e0f877b75b1675a851bc6ef988f641542dc8"
     },
     {
       "path": "docs/clip_review.md",
@@ -153,6 +173,10 @@
     {
       "path": "docs/film_studio.md",
       "sha256": "e0702643254c18446ebf36b6260eeaba22a3ebe8e284af85411f575c78ab150e"
+    },
+    {
+      "path": "docs/vnext-audit.md",
+      "sha256": "d2618436a644512c51fef7774e5544cf8473b1fadd2037b7050a19fc7bb2ca1e"
     },
     {
       "path": "docs/vnext_evidence/baseline.txt",
@@ -173,18 +197,6 @@
     {
       "path": "docs/vnext_evidence/results.json",
       "sha256": "52fc1ecc65a556c67b6830bc79dc3d1d7501ae15a8972e43325967248bb8ffc6"
-    },
-    {
-      "path": "docs/vnext-audit.md",
-      "sha256": "d2618436a644512c51fef7774e5544cf8473b1fadd2037b7050a19fc7bb2ca1e"
-    },
-    {
-      "path": "LICENSE",
-      "sha256": "81b469177daaa64e3d2bb70b2a38b117b099615f3907c00a3b887f8badcec5e2"
-    },
-    {
-      "path": "README.md",
-      "sha256": "8e30c64ee6487e4e7139b9c5fe5cd1fa23c36705a68c6470556bfc84647976f2"
     },
     {
       "path": "tests/check_film_browser.cjs",
@@ -243,6 +255,10 @@
       "sha256": "0eb7beb8b8fa51b958eb2bea95a379565f79c8a670f54a0a93a6f412f636cdcc"
     },
     {
+      "path": "tests/test_film.py",
+      "sha256": "4c6acb6329050ebd6553e3b537f8fd719e262a9bd16a69cfbf8f9bbcc7333e54"
+    },
+    {
       "path": "tests/test_film_dynamic.py",
       "sha256": "1ee5dd489d8f406dd02bf9edf7a0a9da840305dfa4617531d623a86efa76fb51"
     },
@@ -260,11 +276,7 @@
     },
     {
       "path": "tests/test_film_shot_handoff.py",
-      "sha256": "dc5fadf8f2a6e22b5afc759c770df8fca858b7217f9e06903aa02650da9667a9"
-    },
-    {
-      "path": "tests/test_film.py",
-      "sha256": "4c6acb6329050ebd6553e3b537f8fd719e262a9bd16a69cfbf8f9bbcc7333e54"
+      "sha256": "45cb7772d99a4dd3415651eedd9fd176ac5265a5a6647f7574e057aa5f4d2422"
     },
     {
       "path": "tests/test_h3_prompt.py",
@@ -311,12 +323,12 @@
       "sha256": "8596f12f42d0de2138d0eed5abb8903fbd64b5cbe5f854050fcf41e77e2f6a68"
     },
     {
-      "path": "tests/test_scene_state_init.py",
-      "sha256": "729e203e7bb7a8933adcfbeab60c5187feeb9cc90f7ecf1bf051e56d2b7bb381"
-    },
-    {
       "path": "tests/test_scene_state.py",
       "sha256": "1826266476c0a2065b0dd01a318b3be94aa1f4d7bc4f81109112a5fbd19d9013"
+    },
+    {
+      "path": "tests/test_scene_state_init.py",
+      "sha256": "729e203e7bb7a8933adcfbeab60c5187feeb9cc90f7ecf1bf051e56d2b7bb381"
     },
     {
       "path": "tests/test_server.py",
@@ -343,10 +355,6 @@
       "sha256": "fba9de5de623abe19e8405f14682dd98088e0acf2c4b6c20218d93f43f122ddc"
     },
     {
-      "path": "THIRD_PARTY.md",
-      "sha256": "8819d950ed8fcf1af48114b9c237c90c1ea4473d69829690669c126ae0f0538b"
-    },
-    {
       "path": "tools/build_film_notebook.py",
       "sha256": "6fb84cda5156ecc6296d95d8e9ad6691a24891a2849180c449a7940d375fad6c"
     },
@@ -369,10 +377,6 @@
     {
       "path": "workflows/independent_api.json",
       "sha256": "4005c780dacdab8e76211d5adcc60a81146f9448da1868f5098702fa6266e95a"
-    },
-    {
-      "path": "banana_mv/face_refine.py",
-      "sha256": "cf535f68cae9f86fd2fc5bc9d89c32821925374250d06219359410aaec172b6f"
     }
   ]
 }
