@@ -31,6 +31,13 @@ async function upload(file){return api('api/upload',{method:'POST',headers:{'X-F
 function renderPrompt(){const index=Number($('prompt-segment').value);$('rewritten-prompt').value=currentJob?.segments?.[index]?.prompt||'';}
 $('prompt-segment').onchange=renderPrompt;
 $('copy-prompt').onclick=async()=>{try{await navigator.clipboard.writeText($('rewritten-prompt').value);$('copy-feedback').textContent='已複製';}catch{$('rewritten-prompt').select();$('copy-feedback').textContent='請長按選取文字複製。';}};
+function faceRefineActivity(job) {
+ const progress = job.face_refine_progress;
+ if (progress?.stage === 'clip') return `正在修臉第 ${progress.index + 1}／${progress.total} 段…`;
+ if (progress?.stage === 'assembling') return '正在合成並另存修臉版…';
+ return '正在準備修臉…';
+}
+
 function renderFinalPreviews(job, relative = false) {
  const current = (job.final_versions || []).find(version => version.version === job.current_master);
  const refined = (job.final_versions || []).findLast(version =>
@@ -58,14 +65,19 @@ function renderFinalPreviews(job, relative = false) {
  output.textContent = refined?.output_video ? '修臉版成品：' + refined.output_video : refined?.export_error || '';
  output.hidden = !output.textContent;
  const status = $('refined-status');
- const segmentCount = job.segments?.length || 0;
- status.hidden = Boolean(refined && refined.refined_clips === segmentCount);
- if (refined) {
-  status.textContent = `${refined.refined_clips}／${segmentCount} 段完成修臉，其餘沿用母片。`;
- } else if (job.face_refine_error) {
-  status.textContent = '修臉版未輸出：' + job.face_refine_error;
- } else if (job.status === 'refining_faces') {
-  status.textContent = '正在生成修臉版…';
+ const segments = job.segments || [];
+ const failed = segments.flatMap((segment, index) => segment.face_refine_error
+  ? [`第 ${index + 1} 段：${segment.face_refine_error.split('\n')[0].slice(0, 220)}`] : []);
+ const refining = job.status === 'refining_faces';
+ status.hidden = !refining && Boolean(refined && refined.refined_clips === segments.length);
+ if (refining) {
+  status.textContent = faceRefineActivity(job);
+ } else if (refined) {
+  status.textContent = [`${refined.refined_clips}／${segments.length} 段完成修臉，其餘沿用母片。`, ...failed].join(' ');
+ } else if (job.face_refine_error || failed.length) {
+  status.textContent = ['修臉版未輸出。', job.face_refine_error, ...failed].filter(Boolean).join(' ');
+ } else if (job.request?.face_refine === false) {
+  status.textContent = '本次未啟用修臉。';
  } else {
   status.textContent = '這版母片尚無完整修臉版。';
  }
@@ -75,9 +87,10 @@ function renderJob(j){
  currentJob=j;globalThis.BananaKitchen?.render(j);$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
  busy(working);$('resume-project').hidden=!['error','cancelled','interrupted'].includes(j.status);
  $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
+ if(j.status==='refining_faces')$('activity').textContent=faceRefineActivity(j);
  if(j.status==='running'&&j.current){const s=segments[j.current-1];$('activity').textContent=`第 ${j.current} 段｜${s?.status==='rewriting'?'攝影導演寫稿':'H3 原生影音生成中'}`;}
- $('progress').max=segments.length||1;$('progress').value=done;$('progress-label').textContent=segments.length?`${done} / ${segments.length} 段完成 · 全片 ${j.duration.toFixed(2)} 秒`:'依故事決定實際長度';
- $('status').textContent=j.error?`${j.error_stage||''}：${j.error}`:j.status==='done'?'作品已合成。可以放映，或挑選片段補拍。':j.status==='script_ready'?'劇本已完成，可細修；尚未送入 H3。':j.status==='planning_story'?`全片上限 ${j.request?.max_seconds||0} 秒；${j.request?.duration_policy==='target'?'自動導演依目標展開故事。':'依提供內容安排自然長度。'}`:'原始資料與完成片段會保留，請勿重複提交。';
+ $('progress').max=segments.length||1;$('progress').value=done;$('progress-label').textContent=segments.length?`${j.status==='refining_faces'?'母片 ':''}${done} / ${segments.length} 段完成 · 全片 ${j.duration.toFixed(2)} 秒`:'依故事決定實際長度';
+ $('status').textContent=j.error?`${j.error_stage||''}：${j.error}`:j.status==='refining_faces'?'母片已完成，可以先播放或下載。':j.status==='done'?'作品已合成。可以放映，或挑選片段補拍。':j.status==='script_ready'?'劇本已完成，可細修；尚未送入 H3。':j.status==='planning_story'?`全片上限 ${j.request?.max_seconds||0} 秒；${j.request?.duration_policy==='target'?'自動導演依目標展開故事。':'依提供內容安排自然長度。'}`:'原始資料與完成片段會保留，請勿重複提交。';
  const continuityLabels={independent:'各段獨立',chain:'單張末幀參考',chain5:'末五幀動作接續'};$('project-summary').textContent=`${j.title||j.id} · ${j.id} · 接續：${continuityLabels[j.request?.mode]||j.request?.mode||'未記錄'}`;$('job-seed').textContent='Seed：'+j.seed;
  renderFinalPreviews(j, true);
  $('output-location').textContent=[j.final_video?'目前完整作品：'+j.final_video:'',j.output_video?'母片成品：'+j.output_video:'',j.export_error||''].filter(Boolean).join('\n');
