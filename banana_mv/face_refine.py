@@ -97,14 +97,16 @@ def candidates(app, cfg, job, parts, originals, source):
         app.write_state(job)
         take_id = uuid.uuid4().hex[:12]
         prefix = f"banana_face_{job['id']}_{index:02d}_{take_id}"
-        clip_file = inputs / (prefix + '.mp4')
-        face_file = inputs / (prefix + face.suffix)
+        clip_file = work / (prefix + '.source.mp4')
+        face_file = None
         try:
             shutil.copyfile(part, clip_file)
-            shutil.copyfile(face, face_file)
+            uploaded_face = app.backend.upload_comfy_image(
+                cfg, prefix + face.suffix, face.read_bytes(), 'application/octet-stream')
+            face_file = app.backend.safe_child(inputs, uploaded_face)
             graph = json.loads(source.replace(
-                '"__BANANA_VIDEO__"', json.dumps(str(clip_file))).replace(
-                '"__BANANA_FACE__"', json.dumps(face_file.name)).replace(
+                '"__BANANA_VIDEO__"', json.dumps(str(clip_file.resolve()))).replace(
+                '"__BANANA_FACE__"', json.dumps(uploaded_face)).replace(
                 '"__BANANA_OUTPUT__"', json.dumps(prefix)))
             entry = app.wait_generation(cfg, app.backend.queue_prompt(cfg, graph), job)
             temp = work / (prefix + '.mp4')
@@ -147,7 +149,8 @@ def candidates(app, cfg, job, parts, originals, source):
             seg['face_refine_error'] = str(error)
         finally:
             clip_file.unlink(missing_ok=True)
-            face_file.unlink(missing_ok=True)
+            if face_file is not None:
+                face_file.unlink(missing_ok=True)
         app.write_state(job)
     return refined
 
