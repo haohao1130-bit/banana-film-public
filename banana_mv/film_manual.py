@@ -337,19 +337,6 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, c
         cumulative_budget.append(cumulative_budget[-1] + atom['budget'])
         cumulative_speakers.append(cumulative_speakers[-1] + int(atom['speaks']))
 
-    # Keep consecutive lines from the same speaker together, including
-    # intervening reaction beats and camera changes.
-    protected_cuts = set()
-    previous_line = None
-    for index, atom in enumerate(atoms):
-        if not atom['speaks'] or not atom['speaker']:
-            continue
-        if previous_line is not None and atoms[previous_line]['speaker'] == atom['speaker']:
-            # A chapter without dialogue is a separate performance beat.
-            if atom['chapter'] - atoms[previous_line]['chapter'] <= 1:
-                protected_cuts.update(range(previous_line + 1, index + 1))
-        previous_line = index
-
     selected = None
     for slot_count in range(count, last_allowed_count + 1):
         # Prefer 7–10 seconds, but allow native 5.167–6.583-second shots
@@ -383,7 +370,7 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, c
                             if abs(atoms[boundary-1]['source_end'] -
                                    new_used / FPS) <= 6.0)
                     for stop in stops:
-                        if stop <= cursor or stop in protected_cuts:
+                        if stop <= cursor:
                             continue
                         speech_present = (
                             cumulative_speakers[stop] >
@@ -733,11 +720,13 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
         timed = parse_timed_source(source)
         setup, chapters = timed if timed else ('', [])
     if chapters:
-        if any(not 0 <= row['start'] < row['end'] for row in chapters):
-            longest=max(row['end'] for row in chapters)
+        longest = max(row['end'] for row in chapters)
+        if shots and longest > total_seconds + 1e-8:
             raise ValueError(
                 f'全片指定 {total_seconds:g} 秒，但最後 SHOT 延伸到 {longest:g} 秒；'
                 '請先統一全片長度與 SHOT 時間軸。Python 不會截斷最後台詞。')
+        if any(not 0 <= row['start'] < row['end'] for row in chapters):
+            raise ValueError('鏡頭時間軸的結束時間必須大於起始時間。')
         setup_lines=setup.splitlines()
         opening_lines=_opening_wardrobe_indices(setup_lines)
         # SHOT stories use complete authored fixed blocks, not a whitelist
