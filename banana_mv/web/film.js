@@ -63,13 +63,35 @@ function renderFinalPreviews(job, relative = false) {
  show('refined-video', 'refined-download', refined?.download);
  const upscale = (job.final_versions || []).findLast(version =>
   version.reason === 'upscale_1080p' && version.source_master === job.current_master);
- $('upscale-preview').hidden = !(upscale || job.request?.upscale_1080p);
+ const upgrade = $('upscale-again');
+ const upgradeSource = refined?.download ? refined : current;
+ const finished = job.status === 'done' || (job.status === 'interrupted' && job.upscale_manual);
+ upgrade.hidden = !(master && finished && (!upscale || upscale.source_version !== upgradeSource?.version));
+ upgrade.disabled = false;
+ upgrade.textContent = '將這顆丹藥回爐升級（' + (upgradeSource === refined && refined ? '修臉版' : '母片') + ' → 1080P）';
+ upgrade.onclick = async () => {
+  upgrade.disabled = true;
+  try {
+   await api('api/mv/upscale', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:job.id, version:upgradeSource?.version})});
+   if (active === job.id) {
+    clearTimeout(timer);
+    await poll();
+   }
+  } catch (error) {
+   if (active === job.id) {
+    upgrade.disabled = false;
+    $('upscale-status').textContent = error.message;
+   }
+  }
+ };
+ $('upscale-preview').hidden = !(upscale || job.request?.upscale_1080p || job.upscale_manual || job.upscale_error || !upgrade.hidden);
  show('upscale-video', 'upscale-download', upscale?.download);
  const playUpscale = $('upscale-play');
  playUpscale.hidden = !upscale?.download;
  playUpscale.onclick = () => { const video = $('upscale-video'); video.focus(); video.play().catch(() => {}); };
  $('upscale-status').textContent = job.status === 'upscaling_1080p' ? '蕉大師發功中・NV 升頻至 1080P…' :
-  job.upscale_error || (upscale ? ['蕉大師收功・1080P 已出爐', upscale.export_error || upscale.output_video].filter(Boolean).join(' · ') : '等待成片。');
+  job.upscale_error || (upscale ? ['蕉大師收功・1080P 已出爐', upscale.export_error || upscale.output_video].filter(Boolean).join(' · ') : (finished ? '使用 NVIDIA RTX VSR 放大已完成的影片。' : '等待成片。'));
  const output = $('refined-output');
  output.textContent = refined?.output_video ? '修臉版成品：' + refined.output_video : refined?.export_error || '';
  output.hidden = !output.textContent;
