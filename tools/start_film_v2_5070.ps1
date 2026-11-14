@@ -26,7 +26,10 @@ if(-not $ComfySource){$ComfySource=Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\Co
 # ComfyUI venv; GPU inference belongs to ComfyUI at port 8000.
 $probe=Join-Path $project 'tools\check_film_cuda13.py'
 if(-not (Test-Path -LiteralPath $probe -PathType Leaf)){throw "Missing environment probe: $probe"}
-$cuPython=Join-Path $env:LOCALAPPDATA 'Banana9B-cu130\Scripts\python.exe'
+$cuPython='F:\AI\Banana9B-cu130\Scripts\python.exe'
+if(-not (Test-Path -LiteralPath $cuPython -PathType Leaf)){
+ $cuPython=Join-Path $env:LOCALAPPDATA 'Banana9B-cu130\Scripts\python.exe'
+}
 $venvPython=Join-Path $ComfyBase '.venv\Scripts\python.exe'
 $backendCandidates=@($PythonPath,$venvPython,$cuPython) | Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Leaf)}
 $python=$null
