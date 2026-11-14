@@ -148,11 +148,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "ed9f08d8374239ba493f578bfb114dfb1ab9959c456d2a0ebd33470d2241de8c"
+      "sha256": "82cbb677585c4e1338939e3f402c63b7c903faeb0a0fc0ced50b1ad2fe85cbeb"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "4155adbbf2d99e37b3df602ccfa8a8645aa5e512cc63e7fc0846ce1ac688c341"
+      "sha256": "0c6288d26f46b62d3e8f96189008fd20a0ca76deec6c069be88c73df4bca0f56"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -164,7 +164,7 @@
     },
     {
       "path": "banana_mv/web/kitchen.js",
-      "sha256": "702537e1a35d58144f1cd9e05327e0f877b75b1675a851bc6ef988f641542dc8"
+      "sha256": "41657e8e7b0c32b8f128a72fc88061fd0bfce19836b4733da0546bb6b05aabb9"
     },
     {
       "path": "docs/clip_review.md",

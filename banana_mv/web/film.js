@@ -65,8 +65,11 @@ function renderFinalPreviews(job, relative = false) {
   version.reason === 'upscale_1080p' && version.source_master === job.current_master);
  $('upscale-preview').hidden = !(upscale || job.request?.upscale_1080p);
  show('upscale-video', 'upscale-download', upscale?.download);
- $('upscale-status').textContent = job.status === 'upscaling_1080p' ? '正在使用 NVIDIA RTX 放大…' :
-  upscale?.export_error || upscale?.output_video || job.upscale_error || (upscale ? '' : '等待成片。');
+ const playUpscale = $('upscale-play');
+ playUpscale.hidden = !upscale?.download;
+ playUpscale.onclick = () => { const video = $('upscale-video'); video.focus(); video.play().catch(() => {}); };
+ $('upscale-status').textContent = job.status === 'upscaling_1080p' ? '蕉大師發功中・NV 升頻至 1080P…' :
+  job.upscale_error || (upscale ? ['蕉大師收功・1080P 已出爐', upscale.export_error || upscale.output_video].filter(Boolean).join(' · ') : '等待成片。');
  const output = $('refined-output');
  output.textContent = refined?.output_video ? '修臉版成品：' + refined.output_video : refined?.export_error || '';
  output.hidden = !output.textContent;
@@ -92,7 +95,7 @@ function renderFinalPreviews(job, relative = false) {
 function renderJob(j){
  currentJob=j;globalThis.BananaKitchen?.render(j);$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
  busy(working);$('resume-project').hidden=!['error','cancelled','interrupted'].includes(j.status);
- $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',upscaling_1080p:'剪接室｜正在使用 NVIDIA RTX 放大',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
+ $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',upscaling_1080p:'蕉大師發功中・NV 升頻至 1080P',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
  if(j.status==='refining_faces')$('activity').textContent=faceRefineActivity(j);
  if(j.status==='running'&&j.current){const s=segments[j.current-1];$('activity').textContent=`第 ${j.current} 段｜${s?.status==='rewriting'?'攝影導演寫稿':'H3 原生影音生成中'}`;}
  $('progress').max=segments.length||1;$('progress').value=done;$('progress-label').textContent=segments.length?`${j.status==='refining_faces'?'母片 ':''}${done} / ${segments.length} 段完成 · 全片 ${j.duration.toFixed(2)} 秒`:'依故事決定實際長度';
