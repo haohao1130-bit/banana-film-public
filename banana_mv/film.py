@@ -502,8 +502,8 @@ _NATURAL_FILM_DURATION = re.compile(
 
 def _total_from_complete_shot_timeline(story):
     """Use the same SHOT parser as the manual work-order compiler."""
-    from banana_mv.film_manual import _FILM_SHOT_HEADER, _native_master_storyboard
-    shots = [(int(match[1]), float(match[2]), float(match[3]))
+    from banana_mv.film_manual import _FILM_SHOT_HEADER, _native_master_storyboard, parse_shot_time
+    shots = [(int(match[1]), parse_shot_time(match[2]), parse_shot_time(match[3]))
              for match in _FILM_SHOT_HEADER.finditer(_native_master_storyboard(story))]
     if not shots:
         return None
