@@ -33,7 +33,7 @@ $('prompt-segment').onchange=renderPrompt;
 $('copy-prompt').onclick=async()=>{try{await navigator.clipboard.writeText($('rewritten-prompt').value);$('copy-feedback').textContent='已複製';}catch{$('rewritten-prompt').select();$('copy-feedback').textContent='請長按選取文字複製。';}};
 function faceRefineActivity(job) {
  const progress = job.face_refine_progress;
- if (progress?.stage === 'clip') return `正在修臉第 ${progress.index + 1}／${progress.total} 段…`;
+ if (progress?.stage === 'clip') return `正在修臉第 ${progress.index + 1}／${progress.total} 段${progress.reference ? ` · @圖片${progress.reference}` : ''}…`;
  if (progress?.stage === 'assembling') return '正在合成並另存修臉版…';
  return '正在準備修臉…';
 }
@@ -75,11 +75,11 @@ function renderFinalPreviews(job, relative = false) {
  const failed = segments.flatMap((segment, index) => segment.face_refine_error
   ? [`第 ${index + 1} 段：${segment.face_refine_error.split('\n')[0].slice(0, 220)}`] : []);
  const refining = job.status === 'refining_faces';
- status.hidden = !refining && Boolean(refined && refined.refined_clips === segments.length);
+ status.hidden = !refining && !failed.length && Boolean(refined && refined.refined_clips === segments.length);
  if (refining) {
   status.textContent = faceRefineActivity(job);
  } else if (refined) {
-  status.textContent = [`${refined.refined_clips}／${segments.length} 段完成修臉，其餘沿用母片。`, ...failed].join(' ');
+  status.textContent = [`${refined.refined_clips}／${segments.length} 段有修臉輸出。`, ...failed].join(' ');
  } else if (job.face_refine_error || failed.length) {
   status.textContent = ['修臉版未輸出。', job.face_refine_error, ...failed].filter(Boolean).join(' ');
  } else if (job.request?.face_refine === false) {
@@ -113,7 +113,7 @@ $('stop').onclick=async()=>{if(!active||stopRequested===active)return;stopReques
 $('form').onsubmit=async event=>{event.preventDefault();const direct=event.submitter?.id==='direct-render';try{if(storyLength($('prompt').value)>STORY_LIMIT)throw Error('故事最多 30000 字，請刪減後再送出。');const modeAtSubmit=$('mode').value;const limit=modeAtSubmit==='chain'?8:9;if(selected.filter(Boolean).length>limit)throw Error(`最多 ${limit} 張參考圖。`);busy(true);clearTimeout(timer);$('activity').textContent='場記備料｜正在上傳參考圖片';$('status').textContent='正在建立新作品…';const slots=[];for(const file of selected)slots.push(file?(await upload(file)).id:null);const widths={'720p':{'16:9':1280,'9:16':720,'4:5':720,'1:1':720},'480p':{'16:9':854,'9:16':480,'4:5':480,'1:1':480}};const chosenDuration=$('max-seconds').value;
 const customDuration=chosenDuration==='custom'?Number($('custom-seconds').value):null;
 if(chosenDuration==='custom'&&(!Number.isFinite(customDuration)||customDuration<6||customDuration>300))throw Error('自訂全片秒數需介於 6–300 秒。');
-const body={face_refine:$('face_refine').checked,upscale_1080p:$('upscale_1080p').checked,face_refine_reference:Number($('face_refine_reference').value),script_review:!direct,project_name:$('project-name').value,prompt:$('prompt').value,image_slots:slots,
+const body={face_refine:$('face_refine').checked,upscale_1080p:$('upscale_1080p').checked,face_refine_reference:Number($('face_refine_reference').value),face_refine_reference_2:$('face_refine_reference_2').value ? Number($('face_refine_reference_2').value) : null,script_review:!direct,project_name:$('project-name').value,prompt:$('prompt').value,image_slots:slots,
 auto_director:$('auto-director').checked,genres:$('auto-director').checked?genreKeys.filter(k=>$('genre-'+k).checked):[],
 duration_preference:chosenDuration==='prompt'?'prompt':chosenDuration==='custom'?'custom':'selector',
 max_seconds:chosenDuration==='prompt'?300:chosenDuration==='custom'?customDuration:Number(chosenDuration),segment_seconds:$('segment').value==='auto'?'auto':Number($('segment').value),visual_style:$('visual-style').value,sound_mode:$('sound-mode').value,mode:modeAtSubmit,aspect:$('aspect').value,width:widths[$('resolution').value][$('aspect').value],intensity:$('intensity').value,seed:$('seed').value,kitchen_attention:$('kitchen').checked,sparse_attention:$('sparse').checked,motion_lora:$('motion').checked,rewrite_retries:2};const job=await api(direct?'api/film/start':'api/film/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});active=job.id;localStorage.setItem('banana_film_job',active);renderJob(job);if(job.request?.mode!==modeAtSubmit)throw Error(`已建立作品 ${job.id}，但接續模式不一致：送出 ${modeAtSubmit}，後端回傳 ${job.request?.mode||'未提供'}。請勿直接開拍，先檢查設定。`);await poll();}catch(error){busy(false);$('status').textContent=error.message;}};

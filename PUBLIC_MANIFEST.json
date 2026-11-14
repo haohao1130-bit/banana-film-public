@@ -56,11 +56,11 @@
     },
     {
       "path": "banana_mv/face_refine.py",
-      "sha256": "cf535f68cae9f86fd2fc5bc9d89c32821925374250d06219359410aaec172b6f"
+      "sha256": "03af3e0719b1da2c95df5bd603fdc6caa88b5e969cc534911a7c72f2d21a2f7c"
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "55a3eabdff52b206805ba156d3f0ecbfb36ad589c629349be3d1fb12908d3ec9"
+      "sha256": "29dfd22a64d6f8a62ad7aa9c73292e92ac78bf24240aa6993395cae3ef684db4"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -148,11 +148,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "86a42945e8436aff615fe884cd5e389e28708d1dd98f5f9db5ddb5939663fad3"
+      "sha256": "ed9f08d8374239ba493f578bfb114dfb1ab9959c456d2a0ebd33470d2241de8c"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "bab6155ddbf36472a81306d7031cd34229f7b99bb4c639d91648eb6b7e6d779d"
+      "sha256": "4155adbbf2d99e37b3df602ccfa8a8645aa5e512cc63e7fc0846ce1ac688c341"
     },
     {
       "path": "banana_mv/web/film_review.js",

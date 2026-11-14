@@ -601,11 +601,9 @@ def start(req):
     if not isinstance(req.get('face_refine', False), bool):
         raise ValueError('遠景救臉設定必須為布林值。')
     if req.get('face_refine'):
-        from banana_mv.face_refine import template
-        reference = req.get('face_refine_reference')
-        if type(reference) is not int or not 1 <= reference <= len(rows):
-            raise ValueError('請指定一張已上傳的臉部參考圖。')
-        template(app, cfg)
+        from banana_mv.face_refine import references, template
+        selected = references(req, len(rows))
+        template(app, cfg, dual=len(selected) == 2)
     map_story(req,story,len(rows))
     manual_plan=None
     if not req['auto_director']:
