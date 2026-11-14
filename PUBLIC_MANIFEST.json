@@ -56,11 +56,11 @@
     },
     {
       "path": "banana_mv/face_refine.py",
-      "sha256": "03af3e0719b1da2c95df5bd603fdc6caa88b5e969cc534911a7c72f2d21a2f7c"
+      "sha256": "3adb92ca20d5e29a7439405ac524454d5648715a9700081975005a1a093905c4"
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "29dfd22a64d6f8a62ad7aa9c73292e92ac78bf24240aa6993395cae3ef684db4"
+      "sha256": "20b6e56eb681983b8b0b65ba5100e5306389aa30a94426a4f04d9efada804a69"
     },
     {
       "path": "banana_mv/film_actor_state.py",

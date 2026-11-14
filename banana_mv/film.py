@@ -653,6 +653,7 @@ def start(req):
         for i,p in enumerate(originals):
             target=source_dir/f'image_{i}{p.suffix.lower()}';shutil.copyfile(p,target);paths.append(str(target.relative_to(work)))
         job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,
+             'face_refine_chain': bool(req.get('face_refine') and req['mode'] in ('chain', 'chain5')),
              'duration':manual_plan['duration'] if manual_plan else 0,
              'segments':manual_plan['segments'] if manual_plan else [],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
              'images_comfy':[r['comfy_name'] for r in rows],'sources':{'images':paths},
@@ -764,6 +765,7 @@ def revise_script(job_id,draft,revision,instruction):
 
 def worker(job,cfg,originals,song=None,drive=None):
     work=app.job_dir(job['id']);tail=None
+    from banana_mv import face_refine
     from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
     try:
         if not job['segments']:
@@ -775,15 +777,18 @@ def worker(job,cfg,originals,song=None,drive=None):
         if job['request'].get('script_review') and not job.get('script_approved'):
             job.update(status='script_ready',script_revision=uuid.uuid4().hex)
             job['script_draft']=review_draft(job);app.write_state(job);return
+        guide_source = None
         for seg in job['segments']:
             if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
             i=seg['index'];part=app.adopted_part(job,seg);job['current']=i+1
             if seg.get('takes') and not part.is_file():raise ValueError('採用版片段遺失，請恢復該版本或另選版本。')
             if seg.get('status')=='done' and app.valid_part(part,seg,job['size']):
-                require_audio(part);continue
+                require_audio(part)
+                guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals, reuse=True)
+                continue
             tail=None;context_names=[];prefix=motion_prefix(job,seg)
             if prefix:
-                source=app.adopted_part(job,job['segments'][i-1])
+                source=guide_source
                 context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{i:02d}')
                 previous=seg.get('motion_context')
                 if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
@@ -791,7 +796,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                 seg['motion_context']=receipt
             if i and job['request']['mode']=='chain':
                 tail=work/f'{i:02d}_opening.png'
-                app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
+                app.last_frame(guide_source,tail)
                 opening_sha256=hashlib.sha256(tail.read_bytes()).hexdigest()
                 if seg.get('opening_sha256')!=opening_sha256:
                     seg.pop('prompt_id',None)
@@ -842,7 +847,9 @@ def worker(job,cfg,originals,song=None,drive=None):
             if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
             else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
-            seg['status']='done';app.write_state(job)
+            seg['status']='done'
+            guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
+            app.write_state(job)
             if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
         if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
         job['status']='assembling';app.write_state(job);masters.preserve_current(job,work)
@@ -853,7 +860,6 @@ def worker(job,cfg,originals,song=None,drive=None):
         try:app.export_finished_video(job,work/'final.mp4')
         except OSError as error:job['export_error']=str(error)
         if job['request'].get('face_refine') and job['id'] not in app.CANCEL:
-            from banana_mv import face_refine
             try:
                 parts = [app.adopted_part(job, segment) for segment in job['segments']]
                 face_refine.render_version(app, cfg, job, parts, originals)
