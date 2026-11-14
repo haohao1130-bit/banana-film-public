@@ -31,17 +31,57 @@ async function upload(file){return api('api/upload',{method:'POST',headers:{'X-F
 function renderPrompt(){const index=Number($('prompt-segment').value);$('rewritten-prompt').value=currentJob?.segments?.[index]?.prompt||'';}
 $('prompt-segment').onchange=renderPrompt;
 $('copy-prompt').onclick=async()=>{try{await navigator.clipboard.writeText($('rewritten-prompt').value);$('copy-feedback').textContent='已複製';}catch{$('rewritten-prompt').select();$('copy-feedback').textContent='請長按選取文字複製。';}};
+function renderFinalPreviews(job, relative = false) {
+ const current = (job.final_versions || []).find(version => version.version === job.current_master);
+ const refined = (job.final_versions || []).findLast(version =>
+  version.reason === 'face_refine' && version.source_master === job.current_master);
+ const url = value => relative ? value.replace(/^\//, '') : value;
+ function show(videoId, linkId, source) {
+  const video = $(videoId), link = $(linkId);
+  video.hidden = link.hidden = !source;
+  link.style.display = source ? 'block' : 'none';
+  if (source) {
+   const src = url(source);
+   if (video.getAttribute('src') !== src) video.setAttribute('src', src);
+   link.href = src;
+  } else if (video.getAttribute('src')) {
+   video.removeAttribute('src');
+   video.load?.();
+   link.removeAttribute('href');
+  }
+ }
+ const master = current?.download || job.video;
+ $('final-previews').hidden = !master;
+ show('video', 'download', master);
+ show('refined-video', 'refined-download', refined?.download);
+ const output = $('refined-output');
+ output.textContent = refined?.output_video ? '修臉版成品：' + refined.output_video : refined?.export_error || '';
+ output.hidden = !output.textContent;
+ const status = $('refined-status');
+ const segmentCount = job.segments?.length || 0;
+ status.hidden = Boolean(refined && refined.refined_clips === segmentCount);
+ if (refined) {
+  status.textContent = `${refined.refined_clips}／${segmentCount} 段完成修臉，其餘沿用母片。`;
+ } else if (job.face_refine_error) {
+  status.textContent = '修臉版未輸出：' + job.face_refine_error;
+ } else if (job.status === 'refining_faces') {
+  status.textContent = '正在生成修臉版…';
+ } else {
+  status.textContent = '這版母片尚無完整修臉版。';
+ }
+}
+
 function renderJob(j){
  currentJob=j;globalThis.BananaKitchen?.render(j);$('projector').dataset.state=j.status;renderScript(j);const segments=j.segments||[],done=segments.filter(s=>s.status==='done').length,working=!terminal.includes(j.status);
  busy(working);$('resume-project').hidden=!['error','cancelled','interrupted'].includes(j.status);
- $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
+ $('activity').textContent=({script_ready:'編劇桌｜劇本完成，等待你的確認',planning_story:'編劇桌｜導演正在安排故事與分場',running:'攝影棚｜正在製作片段',retaking:'補拍現場｜正在重拍指定片段',assembling:'剪接室｜正在合成原生影音',refining_faces:'剪接室｜正在生成修臉版',done:'放映室｜作品完成',error:'製作暫停｜請查看錯誤',cancelled:'已停機｜完成片段保留',interrupted:'執行階段中斷｜可繼續製作'})[j.status]||'正在備料';
  if(j.status==='running'&&j.current){const s=segments[j.current-1];$('activity').textContent=`第 ${j.current} 段｜${s?.status==='rewriting'?'攝影導演寫稿':'H3 原生影音生成中'}`;}
  $('progress').max=segments.length||1;$('progress').value=done;$('progress-label').textContent=segments.length?`${done} / ${segments.length} 段完成 · 全片 ${j.duration.toFixed(2)} 秒`:'依故事決定實際長度';
  $('status').textContent=j.error?`${j.error_stage||''}：${j.error}`:j.status==='done'?'作品已合成。可以放映，或挑選片段補拍。':j.status==='script_ready'?'劇本已完成，可細修；尚未送入 H3。':j.status==='planning_story'?`全片上限 ${j.request?.max_seconds||0} 秒；${j.request?.duration_policy==='target'?'自動導演依目標展開故事。':'依提供內容安排自然長度。'}`:'原始資料與完成片段會保留，請勿重複提交。';
  const continuityLabels={independent:'各段獨立',chain:'單張末幀參考',chain5:'末五幀動作接續'};$('project-summary').textContent=`${j.title||j.id} · ${j.id} · 接續：${continuityLabels[j.request?.mode]||j.request?.mode||'未記錄'}`;$('job-seed').textContent='Seed：'+j.seed;
- $('video').hidden=!j.video;$('download').style.display=j.video?'block':'none';if(j.video){const url=j.video.replace(/^\//,'');if($('video').getAttribute('src')!==url)$('video').src=url;$('download').href=url;}
- $('output-location').textContent=[j.final_video?'目前完整作品：'+j.final_video:'',j.output_video?'另存副本：'+j.output_video:'',j.export_error||''].filter(Boolean).join('\n');
- $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download=`banana-film-v${v.version}.mp4`;a.textContent=`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
+ renderFinalPreviews(j, true);
+ $('output-location').textContent=[j.final_video?'目前完整作品：'+j.final_video:'',j.output_video?'母片成品：'+j.output_video:'',j.export_error||''].filter(Boolean).join('\n');
+ $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download=`banana-film-v${v.version}.mp4`;a.textContent=(v.reason==='face_refine'?'修臉版 · ':'')+`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
  $('plan-panel').hidden=!segments.length;const plan=JSON.stringify(segments.map(s=>s.director_plan));if($('scene-list').dataset.signature!==plan){$('scene-list').replaceChildren();for(const s of segments){const d=document.createElement('details');d.className='scene';const title=document.createElement('summary');title.textContent=`${s.index+1} / ${s.start.toFixed(2)}–${(s.start+s.seconds).toFixed(2)} 秒`;const text=document.createElement('pre');text.textContent=s.director_plan?.event||'';d.append(title,text);$('scene-list').append(d);}$('scene-list').dataset.signature=plan;}
  const written=segments.filter(s=>s.prompt);$('prompt-panel').hidden=!written.length;const prior=$('prompt-segment').value;$('prompt-segment').replaceChildren();for(const s of written){const o=document.createElement('option');o.value=s.index;o.textContent='第 '+(s.index+1)+' 段';$('prompt-segment').append(o);}if(written.some(s=>String(s.index)===prior))$('prompt-segment').value=prior;renderPrompt();renderClipPreviews(j);
 }
@@ -122,8 +162,7 @@ function clearFilmWorkspaceCache(){
  $('script-review').hidden=true;
  $('plan-panel').hidden=true;
  $('prompt-panel').hidden=true;
- $('video').hidden=true;
- $('download').style.display='none';
+ renderFinalPreviews({});
  $('status').textContent='新丹爐已啟動。介面已清空；歷史作品仍可從作品清單開啟。';
  busy(false);
 }

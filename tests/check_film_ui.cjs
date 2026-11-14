@@ -16,7 +16,7 @@ const posts=[],uploads=[],copied=[],store=new Map(),creationRoutes=[];
 let status={id:'film123',title:'短片',status:'planning_story',seed:0,duration:0,segments:[],request:{production:'film',max_seconds:60,mode:'independent'}};
 const context=vm.createContext({document:{getElementById:id=>{assert(els[id],id);return els[id];},createElement:()=>new Element()},console,
  URL:{createObjectURL:f=>'blob:'+f.name,revokeObjectURL(){}},setTimeout:()=>0,clearTimeout(){},navigator:{clipboard:{writeText:async t=>copied.push(t)}},
- localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)},
+ localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},
  fetch:async(url,options)=>({ok:true,json:async()=>{
   if(url==='api/upload'){uploads.push(options.body);return {id:'ref'+uploads.length};}
   if(['api/film/plan','api/film/start'].includes(url)){creationRoutes.push(url);const body=JSON.parse(options.body);posts.push(body);status={...status,status:'planning_story',request:{...status.request,...body}};return status;}
@@ -37,8 +37,14 @@ vm.runInContext(fs.readFileSync('banana_mv/web/film_review.js','utf8'),context);
   final_versions:[{version:1,download:'/api/mv/file?id=film123&version=1'},{version:2,download:'/api/mv/file?id=film123&version=2'}],
   segments:[{index:0,start:0,seconds:6,status:'done',director_plan:{event:'Only local event'},prompt:'native filming prompt',preview:'/api/mv/clip?id=film123&index=0',selected_take:'original',takes:[{id:'original',status:'ready',seed:0,preview:'/api/mv/clip?id=film123&index=0'}]}]};
  await vm.runInContext('poll()',context);assert.equal(els.progress.value,1);assert.equal(els['master-list'].children.length,2);assert(els['output-location'].textContent.includes('final.mp4'));assert.equal(els.video.hidden,false);
+ assert.equal(els.video.src,'api/mv/file?id=film123&version=2');
+ assert.equal(els['refined-video'].hidden,true);
+ status={...status,final_versions:[...status.final_versions,{version:3,source_master:2,reason:'face_refine',refined_clips:1,download:'/api/mv/file?id=film123&version=3'}]};
+ await vm.runInContext('poll()',context);
+ assert.equal(els['refined-video'].src,'api/mv/file?id=film123&version=3');
+ assert.equal(els['refined-status'].hidden,true);
  const row=vm.runInContext('clipView.rows.get(0)',context);assert.equal(row.video.muted,false);row.correction.value='只改燈光';row.correction.oninput();await vm.runInContext('poll()',context);assert.equal(vm.runInContext('clipView.rows.get(0).video',context),row.video);assert.equal(row.correction.value,'只改燈光');
- await els['copy-prompt'].onclick();assert.equal(copied[0],'native filming prompt');row.check.checked=true;await els['clips-retake'].onclick();assert.deepEqual(posts.at(-1).instructions,{'0':'只改燈光'});
+ await els['copy-prompt'].onclick();assert.equal(copied[0],'native filming prompt');row.check.checked=true;await els['clips-retake'].onclick();assert.deepEqual(posts.at(-1).prompts,{'0':'只改燈光'});assert.deepEqual(posts.at(-1).bases,{'0':'original'});
  status={...status,status:'done'};await vm.runInContext('poll()',context);
  await els.form.onsubmit({preventDefault(){},submitter:{id:'direct-render'}});
  assert.equal(posts.at(-1).script_review,false);assert.equal(creationRoutes.at(-1),'api/film/start');assert.equal(els['direct-render'].disabled,true);assert.equal(els.generate.disabled,true);

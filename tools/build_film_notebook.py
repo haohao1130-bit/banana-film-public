@@ -16,12 +16,22 @@ cells=[md('''# 🍽️ 大乘蕉宗・蕉其林三星中餐廳
 程式可匿名下載，不需要 GitHub Token。模型通常可匿名下載；需要時可在 Colab 左側 🔑 設定唯讀 `HF_TOKEN`，不要貼進程式。
 
 本入口不需歌曲，聲音由 H3 逐段生成；跨段聲線與配樂連續性不保證。第一次選無對白、15 秒試拍。
-'''),code('#@title ① 開灶｜安裝短片製作所\n'+clone+'''
+
+**遠景修臉（選用）**：在①勾選 `INSTALL_FACE_REFINE` 後執行，再跑②③。開啟網頁後，在生成設定勾選實驗性修臉。首次使用可能下載人臉辨識模型，修臉會額外花時間。完成後可並排播放與下載母片及修臉版，兩支 MP4 也會另存到成品資料夾。
+'''),code('#@title ① 開灶｜安裝短片製作所（含選用修臉）\n#@markdown **選用遠景修臉**。需要用到時請勾選，再執行本格。一般生成可直接執行本格。\nINSTALL_FACE_REFINE = False #@param {type:"boolean"}\n'+clone+'''
 PROJECT=Path('/content/banana-film-public')
 clone_project(PROJECT,'https://github.com/haohao1130-bit/banana-film-public.git')
 sys.path.insert(0,str(PROJECT/'tools'))
 import film_runtime as runtime
+face_installer = PROJECT / 'tools/install_face_refine.py'
+if INSTALL_FACE_REFINE and not face_installer.is_file():
+    raise RuntimeError('這個執行階段沿用了舊版程式。請中斷連線並刪除執行階段，連線後重跑①。')
+
 runtime.install(globals())
+if INSTALL_FACE_REFINE:
+    subprocess.run([sys.executable, str(face_installer),
+                    '--comfy-source', str(COMFY), '--comfy-base', str(COMFY)], check=True)
+    print('修臉安裝完成。接著執行②③，再到生成設定開啟實驗性修臉。')
 '''),code('''#@title ② 備料｜下載 H3 與 9B 模型
 USE_DRIVE_CACHE = False #@param {type:"boolean"}
 runtime.download(globals(),use_drive_cache=USE_DRIVE_CACHE)

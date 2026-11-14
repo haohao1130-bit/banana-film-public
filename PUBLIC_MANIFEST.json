@@ -12,7 +12,7 @@
     },
     {
       "path": "Banana_Film_Studio.ipynb",
-      "sha256": "601ea41fb774b02146139ff0092248f4f05075a353aef0397ae8cb15301bcbfb"
+      "sha256": "952b1177963060ed29338e65437e9b628c942fdb2c9b9f2a41e3fa3850805e20"
     },
     {
       "path": "LICENSE",
@@ -52,11 +52,11 @@
     },
     {
       "path": "banana_mv/face_refine.py",
-      "sha256": "4b11dc223383ba48e4d0035986a278a5a51c85af777a2dcecef8414771a3ec5b"
+      "sha256": "e85b487dcb1079e3d26e6bf3583c4ca3942c8e154c1355f4994606726cd012d0"
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "ee258bf70a8f7aa40d60bc0618f94aafd25080a9fb13a87d3afdcc91f8b0180d"
+      "sha256": "bff7015a680e05ebe1671a7ea99cf6e54717827a3bafab126efe8d0869365de0"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -108,7 +108,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "275a05e09f72320e95be96a7ac4731ccd06b3cb0a1ada281b5144018b95f8028"
+      "sha256": "e193a337d76e9881f3fa6851bd0d79fb3b05abcdf004635852d364c6a6f96310"
     },
     {
       "path": "banana_mv/services.py",
@@ -140,15 +140,15 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "8dc9d98245a965bd7ad6d8ad0d8bb97d887e7ccb34f37d06166d0891d9bbb24e"
+      "sha256": "63306ff687b2c416462552366304a7e65eb9c1a9c52de85f1b178effc4fc54b9"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "7ff26984d9e6cad4bf2010877d85463c8fded3ca8f6c9ccc769a64a485a4e860"
+      "sha256": "7929da8f859929650aa4d6d6cba96cc3707940f0bd06bf09902f56b2c68f15a3"
     },
     {
       "path": "banana_mv/web/film_review.js",
-      "sha256": "0c72bbc72ea480f1150c69a296fc86fc82f2e45da4d8930a2f7e88bafc178620"
+      "sha256": "a09c991b4d96d44ef46f985c458d9ddd5b42f419eb4aba14b3aeaf9397027a92"
     },
     {
       "path": "banana_mv/web/index.html",
@@ -196,7 +196,7 @@
     },
     {
       "path": "tests/check_film_ui.cjs",
-      "sha256": "81b178ab6e8a5374e65b838da826bbf4a52e1136ea280b192ebf79ad76385252"
+      "sha256": "cf397f7943f8785ea4fee1690f0a4b8a5563dacbb5be153508c3b969635bee9e"
     },
     {
       "path": "tests/check_ui.cjs",
@@ -340,7 +340,7 @@
     },
     {
       "path": "tools/build_film_notebook.py",
-      "sha256": "cc295015708d6112b1d7a8d5f0d61673e0e52aefc1295be9264bd3661fec58aa"
+      "sha256": "f810c64e8d12c4c2b3eeb1e28ce8af420a2bcef02516731608fb773f045401c4"
     },
     {
       "path": "tools/colab_runtime.py",
