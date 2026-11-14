@@ -14,12 +14,21 @@ args = parser.parse_args()
 source = args.comfy_source.resolve()
 if not (source / 'main.py').is_file():
     parser.error(f'ComfyUI main.py missing: {source}')
-nodes = source / 'custom_nodes'
+base = args.comfy_base.resolve()
+if not base.is_dir():
+    parser.error(f'ComfyUI base directory missing: {base}')
+nodes = base / 'custom_nodes'
 nodes.mkdir(exist_ok=True)
 plugin = nodes / 'ComfyUI-H3-FaceRefine'
 if not plugin.exists():
-    subprocess.run(['git','clone','--depth','1',
-                    'https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git',str(plugin)],check=True)
+    revision = 'd8521d14fe0d721d80cd9417fff5a559cbc21aba'
+    with tempfile.TemporaryDirectory(dir=nodes.parent) as temporary:
+        checkout = Path(temporary) / 'checkout'
+        subprocess.run(['git', 'init', str(checkout)], check=True)
+        subprocess.run(['git', '-C', str(checkout), 'fetch', '--depth', '1',
+                        'https://github.com/Carasibana/ComfyUI-H3-FaceRefine.git', revision], check=True)
+        subprocess.run(['git', '-C', str(checkout), 'checkout', '--detach', 'FETCH_HEAD'], check=True)
+        checkout.rename(plugin)
 if not (plugin / 'requirements.txt').is_file():
     parser.error(f'Incomplete FaceRefine checkout: {plugin}')
 # Constrain the existing GPU stack while resolving plugin dependencies.
@@ -37,7 +46,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(pip+['-r',str(plugin / 'requirements.txt')],check=True)
     if importlib.util.find_spec('onnxruntime') is None:
         subprocess.run(pip+['onnxruntime'],check=True)
-detector = args.comfy_base.resolve() / 'models' / 'ultralytics' / 'bbox' / 'face_yolov8m.pt'
+detector = base / 'models' / 'ultralytics' / 'bbox' / 'face_yolov8m.pt'
 detector.parent.mkdir(parents=True, exist_ok=True)
 if not detector.exists():
     pending = detector.with_suffix('.download')
@@ -48,4 +57,3 @@ if not detector.exists():
     finally:
         pending.unlink(missing_ok=True)
 print('Installed FaceRefine and detector. Restart ComfyUI to load the nodes.')
-print('Banana also requires a configured face_refine_api.json in its data folder.')
