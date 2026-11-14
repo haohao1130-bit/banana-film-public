@@ -287,7 +287,7 @@ def _dialogue_budget_seconds(action):
     return 0.035
 
 
-def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, chain5=False):
+def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, chain5=False, soundscape=''):
     """Fit complete authored action/dialogue units to native H3 frame windows.
 
     A generation clip is not an authored SHOT: editorial SHOTs may cross clip
@@ -461,7 +461,7 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, c
                    + '\n'.join('- ' + note for note in constraints) if constraints else ''))
             position = end
         prompt = '\n\n'.join(fragments)
-        delivered.append((length, compile_storyboard_slot(fixed, prompt, length, length, state)))
+        delivered.append((length, compile_storyboard_slot(fixed, prompt, length, length, state, soundscape=soundscape)))
         cursor = stop
     if cursor != len(atoms):
         raise ValueError('有劇情事件未分配到攝影段落。')
@@ -558,9 +558,14 @@ def _split_film_handoff(prompt):
 # form. H3 style sub-camera headings SHOT 11A/B/C belong to parent SHOT 11.
 _FILM_SHOT_HEADER = re.compile(
     r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?SHOT[ \t]+(\d+)(?![A-Za-z0-9])'
-    r'[ \t]*[｜|:：][ \t]*(\d+(?:\.\d+)?)[ \t]*[-–—~～至][ \t]*'
-    r'(\d+(?:\.\d+)?)(?:[ \t]*(?:秒(?:鐘)?|s(?:ec)?\b))?[^\n]*$'
+    r'[ \t]*[｜|:：][ \t]*((?:\d+:[0-5]\d|\d+)(?:\.\d+)?)[ \t]*[-–—~～至][ \t]*'
+    r'((?:\d+:[0-5]\d|\d+)(?:\.\d+)?)(?![\d.:])(?:[ \t]*(?:秒(?:鐘)?|s(?:ec)?\b))?[^\n]*$'
 )
+def parse_shot_time(value):
+    minutes, colon, seconds = value.rpartition(':')
+    return int(minutes) * 60 + float(seconds) if colon else float(seconds)
+
+
 _FILM_MICRO_RANGE = re.compile(
     r'^\s*\d+(?:\.\d+)?\s*[-–—~～至]\s*\d+(?:\.\d+)?\s*(?:秒)?\s*$')
 _FILM_FIXED_NUMBERED = re.compile(
@@ -571,14 +576,16 @@ _FILM_STORY_NUMBERED = re.compile(
     r'(?:精密鏡頭時間軸|鏡頭時間軸|劇情|故事|分鏡|正片)')
 _FILM_METADATA = re.compile(
     r'^\s*(?:影片類型|畫面比例|影格率|對白語言|對白模式|整體影像|'
-    r'固定角色|人物外貌|角色綁定|世界觀|背景設定|演出風格)\s*[：:]')
+    r'影片風格|固定角色|人物外貌|角色綁定|世界觀|背景設定|演出風格)\s*[：:]')
 _FILM_FUTURE_SETUP = re.compile(
     r'第一次落淚發生於SHOT|說出「[^」]*」時|最後耳光前|'
     r'耳光慢動作開始時|三角度重播期間|最後一句台詞說完')
 _FILM_END_APPENDIX = re.compile(
-    r'(?m)^\s*(?:(?:[一二三四五六七八九十]+[、.．]\s*)?'
-    r'(?:最終生成優先級|禁止與連續性檢查|聲音與表演控制|電影攝影控制|核心敘事))'
-    r'\s*[:：]?\s*$')
+    r'(?m)^[ \t]*(?:[一二三四五六七八九十]+[、.．][ \t]*)?【?'
+    r'(最終生成優先級|禁止與連續性檢查|聲音與表演控制|電影攝影控制|核心敘事|'
+    r'空拍攝影控制|臉部修復測試控制|人物動作控制|聲音設定|畫面限制|核心測試)'
+    r'】?[ \t]*[:：]?[ \t]*$')
+
 
 
 def _film_shared_before_shots(source):
@@ -600,7 +607,7 @@ def _film_shared_before_shots(source):
         if _FILM_STORY_NUMBERED.match(line) or _FILM_STORY_HEADING.fullmatch(line):
             mode='story'
             continue
-        if _FILM_FIXED_NUMBERED.match(line) or _FILM_SHARED_HEADING.fullmatch(line):
+        if _FILM_FIXED_NUMBERED.match(line) or _FILM_SHARED_HEADING.fullmatch(line) or line in ('【固定角色】', '【固定場景】'):
             mode='fixed'
             fixed.append(raw)
             continue
@@ -691,12 +698,22 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
     largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
     count = math.ceil(total_seconds / largest)
     shots = list(_FILM_SHOT_HEADER.finditer(source))
+    soundscape = ''
+    shared_controls = []
     if shots:
         setup = (shared_setup + '\n' + source[:shots[0].start()]
                  if shared_setup else source[:shots[0].start()])
         end = _FILM_END_APPENDIX.search(source[shots[-1].end():])
         body_end = shots[-1].end() + end.start() if end else len(source)
         appendix = source[body_end:]
+        appendix_sections = list(_FILM_END_APPENDIX.finditer(appendix))
+        for index, heading in enumerate(appendix_sections):
+            stop = appendix_sections[index+1].start() if index+1<len(appendix_sections) else len(appendix)
+            body = appendix[heading.end():stop].strip()
+            if heading[1] == '聲音設定':
+                soundscape = body
+            elif heading[1] in ('人物動作控制', '畫面限制') and body:
+                shared_controls.append(heading[0].strip() + '\n' + body)
         chapters = []
         for index, shot in enumerate(shots):
             stop = shots[index+1].start() if index+1 < len(shots) else body_end
@@ -709,7 +726,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
             actions=_shot_action_units(body)
             if not actions:
                 raise ValueError(f'SHOT {int(shot[1]):02d} 沒有可拍攝的演出內容。')
-            chapters.append({'start':float(shot[2]), 'end':float(shot[3]),
+            chapters.append({'start':parse_shot_time(shot[2]), 'end':parse_shot_time(shot[3]),
                              'actions':actions, 'constraints':notes})
         global_audio = re.split(r'(?m)^[ \t]*(?:電影攝影控制|核心敘事)[ \t]*[:：]?[ \t]*$', appendix, maxsplit=1)[0]
         setup += '\n' + '\n'.join(
@@ -748,7 +765,8 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
             if suffix:
                 fixed += '\n' + suffix
         if shots:
-            return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, chain5=chain5)
+            fixed = '\n'.join(filter(None, [fixed, *shared_controls]))
+            return _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, chain5=chain5, soundscape=soundscape)
         # Quantize the full timeline once, then distribute legal frame counts.
         minimum = 124
         maximum = math.floor(ceiling * FPS)
@@ -806,7 +824,7 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
     return result
 
 
-def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
+def compile_storyboard_slot(fixed, prompt, length, source_length, state=None, *, soundscape=''):
     """Turn the MV allocator's local assignments into native Ref2VA fields."""
     assigned = re.compile(r'(?m)^USER-SPECIFIED FILM TIME [^\n]*?'
                           r'inside THIS clip is ([\d.]+)–[\d.]+s\.[^\n]*\n')
@@ -883,6 +901,8 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
         for ref in refs)
     subject=fixed_for_clip or 'Use the actors and scene specified in the shots.'
     if state_note: subject+='\n'+state_note
+    music = ('No background music.' if re.search(r'無背景音樂|不加背景音樂', soundscape)
+             else 'Follow the authored music cues for these shots.')
     return ('subject_definitions:\n' + subject
             + '\n\nsummary:\nFilm the assigned shots in order within '
             + f'{length:.3f} seconds. Only text enclosed in <d> is spoken dialogue; '
@@ -890,8 +910,8 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None):
             + dialogue_end_note
             + '\n\nretention_analysis:\n' + (retention or 'Preserve established appearance and continuity.')
             + '\n\ndetailed_description:\n' + details
-            + '\n\noverall_soundscape:\nFollow the specified voices, dialogue, and scene sounds.'
-            + '\n\nnon_diegetic_music:\nFollow the authored music cues for these shots.')
+            + '\n\noverall_soundscape:\n' + (soundscape or 'Follow the specified voices, dialogue, and scene sounds.')
+            + '\n\nnon_diegetic_music:\n' + music)
 
 
 
