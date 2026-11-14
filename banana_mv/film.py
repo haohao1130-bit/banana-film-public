@@ -855,8 +855,8 @@ def worker(job,cfg,originals,song=None,drive=None):
         if job['request'].get('face_refine') and job['id'] not in app.CANCEL:
             from banana_mv import face_refine
             try:
-                source = face_refine.template(app, cfg)
-                face_refine.candidates(app, cfg, job, [app.adopted_part(job,s) for s in job['segments']], originals, source)
+                parts = [app.adopted_part(job, segment) for segment in job['segments']]
+                face_refine.render_version(app, cfg, job, parts, originals)
             except Exception as error:
                 job['face_refine_error'] = str(error)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
