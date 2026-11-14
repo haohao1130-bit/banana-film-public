@@ -12,7 +12,7 @@
     },
     {
       "path": "Banana_Film_Studio.ipynb",
-      "sha256": "fdf49bb18acfd683bfed88b7a68b07118e0a7967817b3998677432475e6d5071"
+      "sha256": "f7dd9ef58fe6ea3787b419f9d4228884ed52966da9600137228880673f2912c0"
     },
     {
       "path": "LICENSE",
@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/face_refine.py",
-      "sha256": "a6f37414321b6b99fedba059922f8ac70341f628238b8342505f1db26e84537f"
+      "sha256": "4b11dc223383ba48e4d0035986a278a5a51c85af777a2dcecef8414771a3ec5b"
     },
     {
       "path": "banana_mv/film.py",
@@ -349,6 +349,10 @@
     {
       "path": "tools/film_runtime.py",
       "sha256": "68f784f7a14e9a6e298ce01fcbe8ce2965b6bb74a0c17f8c515ee588b843e810"
+    },
+    {
+      "path": "tools/install_face_refine.py",
+      "sha256": "1bb1ec8144646f257e98206c9cf73f27d1baede873fa221225187b9fab6a8434"
     },
     {
       "path": "tools/public_clone.py",
