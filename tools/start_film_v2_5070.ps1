@@ -46,8 +46,20 @@ Write-Host "Film backend Python: $python (CUDA version is NOT a frontend gate)"
 foreach($bin in @('ffmpeg','ffprobe')){
  if(-not (Get-Command $bin -ErrorAction SilentlyContinue)){ throw "$bin not found in PATH." }
 }
-foreach($name in @('','library','films','_runtime\logs','_runtime\comfy_input','_runtime\comfy_output','_runtime\comfy_temp')){
+# If the direct-folder launcher supplies real data roots, use those exact
+# folders. Other installations retain their original DataRoot layout.
+$filmProjects = if($env:BANANA_FILM_PROJECTS){$env:BANANA_FILM_PROJECTS}else{Join-Path $DataRoot 'films'}
+$filmLibrary = if($env:BANANA_FILM_LIBRARY){$env:BANANA_FILM_LIBRARY}else{Join-Path $DataRoot 'library'}
+foreach($name in @('','_runtime\logs','_runtime\comfy_input','_runtime\comfy_output','_runtime\comfy_temp')){
  New-Item -ItemType Directory -Force -Path (Join-Path $DataRoot $name) | Out-Null
+}
+foreach($folder in @($filmProjects,$filmLibrary)){
+ if(-not (Test-Path -LiteralPath $folder -PathType Container)){throw "Film data folder missing: $folder"}
+ $item=Get-Item -LiteralPath $folder -Force
+ if($env:BANANA_FILM_DIRECT_FOLDERS -eq '1' -and
+    ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){
+  throw "Expected a real Film data folder, not a junction: $folder"
+ }
 }
 function Read-JsonUrl([string]$url){
  try{ return Invoke-RestMethod -Uri $url -TimeoutSec 5 -ErrorAction Stop }catch{ return $null }
@@ -204,9 +216,9 @@ Write-Host "Running backend version: $($health.version.branch) | $($health.versi
 Write-Host ''
 Write-Host 'BANANA FILM 5070 STUDIO - FULL COLAB UI + FUNCTION PARITY READY'
 Write-Host "UI: http://127.0.0.1:$Port"
-Write-Host "Uploaded originals: $(Join-Path $DataRoot 'library')"
-Write-Host "Finished videos: $(Join-Path (Split-Path -Parent $DataRoot) 'videos')"
-Write-Host "Colab-compatible Film projects: $(Join-Path $DataRoot 'films')"
+Write-Host "Uploaded originals: $filmLibrary"
+Write-Host "Finished videos: $(if($env:BANANA_FINISHED_VIDEOS){$env:BANANA_FINISHED_VIDEOS}else{Join-Path (Split-Path -Parent $DataRoot) 'videos'})"
+Write-Host "Colab-compatible Film projects: $filmProjects"
 Write-Host "Original Python-Owned V2 projects preserved: $(Join-Path $DataRoot 'films_v2')"
 Write-Host "ComfyUI: $ComfyUrl; input: $ComfyInputDir"
 Write-Host 'No Torch/CUDA/model changes. Do NOT generate from MV concurrently.'
