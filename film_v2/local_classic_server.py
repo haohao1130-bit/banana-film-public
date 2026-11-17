@@ -21,6 +21,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app
 
+# Only this Film entrypoint overrides its shared storage. Keep the public
+# backend's original DATA/library default for MV and legacy deployments.
+if os.environ.get("BANANA_FILM_LIBRARY"):
+    app.backend.LIBRARY = Path(os.environ["BANANA_FILM_LIBRARY"])
+
 if app.backend.DATA.name.lower() == "media":
     os.environ.setdefault("BANANA_FINISHED_VIDEOS", str(app.backend.DATA.parent / "videos"))
 
