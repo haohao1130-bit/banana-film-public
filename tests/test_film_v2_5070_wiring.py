@@ -20,15 +20,19 @@ class Local5070WiringTests(unittest.TestCase):
         cls.local_version_js = (ROOT / "film_v2/web/build_5070.js").read_text(encoding="utf-8")
 
     def test_f_drive_is_authoritative_for_uploads_and_outputs(self):
-        self.assertIn(r"F:\BANANA_FILM_5070_STUDIO\Media", self.launcher_source)
+        # Shared checkout defaults still work, while the modern direct-folder
+        # F:\BANANAFILM launcher passes the REAL root projects/library via env.
+        self.assertIn(r"F:\AI\BANANA_FILM_5070_STUDIO\Media", self.launcher_source)
         self.assertIn("BANANA_DATA=$DataRoot", self.launcher_source)
-        for folder in ("library", "videos", "films_v2", "logs"):
-            self.assertIn("'" + folder + "'", self.launcher_source)
+        self.assertIn("$env:BANANA_FILM_PROJECTS", self.launcher_source)
+        self.assertIn("$env:BANANA_FILM_LIBRARY", self.launcher_source)
+        self.assertIn("BANANA_FILM_DIRECT_FOLDERS", self.launcher_source)
+        self.assertIn("'_runtime\\logs'", self.launcher_source)
         self.assertIn("Join-Path $InstallRoot 'Media'", self.boot)
 
-    def test_local_port_not_mv_or_colab(self):
-        self.assertIn("[int]$Port=8195", self.launcher_source)
-        self.assertIn("[int]$Port=8195", self.boot)
+    def test_local_port_can_be_overridden_by_root_launcher(self):
+        self.assertIn("[int]$Port=8193", self.launcher_source)
+        self.assertIn("[int]$Port=8193", self.boot)
         self.assertIn("BANANA_PORT=[string]$Port", self.launcher_source)
         self.assertIn("'rtx5070-fdrive'", self.launcher_source)
         self.assertIn('"rtx5070-fdrive"', self.server)
