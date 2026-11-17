@@ -124,9 +124,12 @@ class Handler(colab.Handler):
 
 
 def main():
-    # This is exactly Colab Film's project directory, just on the F: data root.
-    # Keep older Python-Owned V2 project data in Media/films_v2 untouched.
+    # Legacy installs keep DATA/films. The direct F-drive launcher passes
+    # BANANA_FILM_PROJECTS to use F:\\BANANAFILM\\projects as the REAL folder.
+    # No junction, relocation, merge, or deletion of existing projects.
     app.RUNS = app.backend.DATA / "films"
+    if os.environ.get("BANANA_FILM_PROJECTS"):
+        app.RUNS = Path(os.environ["BANANA_FILM_PROJECTS"])
     app.RUNS.mkdir(parents=True, exist_ok=True)
     app.backend.LIBRARY.mkdir(parents=True, exist_ok=True)
     for path in app.RUNS.glob("*/status.json"):
