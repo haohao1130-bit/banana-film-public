@@ -17,7 +17,9 @@ from banana_mv.core import probe
 ROOT = Path(__file__).resolve().parents[1]
 # Legacy environment is accepted only to keep existing local launchers/data usable.
 DATA = Path(os.environ.get('BANANA_DATA') or os.environ.get('H3TOYBOX_DATA') or '/content/banana_mv_data')
-LIBRARY = DATA/'library'
+# Film's standalone F-drive launcher may supply a real library folder outside DATA.
+# Without this override MV/Colab/legacy installations keep DATA/library.
+LIBRARY = Path(os.environ['BANANA_FILM_LIBRARY']) if os.environ.get('BANANA_FILM_LIBRARY') else DATA/'library'
 PORT = int(os.environ.get('BANANA_PORT', '8190'))
 ASSET_LOCK = threading.Lock()
 DEFAULTS = {
