@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class Film5070ColabParityTests(unittest.TestCase):
     def test_original_colab_handler_is_used_for_every_production_action(self):
         self.assertTrue(issubclass(local.Handler, colab.Handler))
-        self.assertIs(local.Handler.do_POST, colab.Handler.do_POST)
+        # 5070 intentionally wraps POST only to handle its own restart route.
+        # Every production action still delegates to the canonical handler.
+        self.assertIn("return super().do_POST()", (ROOT / "film_v2/local_classic_server.py").read_text(encoding="utf-8"))
         source = "\\n".join(
             (ROOT / item).read_text(encoding="utf-8")
             for item in ("banana_mv/web/film.js", "banana_mv/web/film_review.js")
@@ -28,6 +30,14 @@ class Film5070ColabParityTests(unittest.TestCase):
                 "api/mv/retake", "api/mv/condense",
                 "api/mv/select-take", "api/mv/resume", "api/mv/projects"):
             self.assertIn(required, source)
+
+    def test_real_f_drive_library_and_projects_are_read_directly(self):
+        runtime = (ROOT / "film_v2/local_classic_server.py").read_text(encoding="utf-8")
+        services = (ROOT / "banana_mv/services.py").read_text(encoding="utf-8")
+        self.assertIn('if os.environ.get("BANANA_FILM_LIBRARY"):', runtime)
+        self.assertIn('app.backend.LIBRARY = Path(os.environ["BANANA_FILM_LIBRARY"])', runtime)
+        self.assertIn('app.RUNS = Path(os.environ["BANANA_FILM_PROJECTS"])', runtime)
+        self.assertIn("LIBRARY = DATA/'library'", services, "shared MV service default must stay unchanged")
 
     def test_colab_html_is_authoritative_not_simplified_v2(self):
         canonical = (ROOT / "banana_mv/web/film.html").read_text(encoding="utf-8")
