@@ -160,7 +160,7 @@
     },
     {
       "path": "banana_mv/web/kitchen.js",
-      "sha256": "702537e1a35d58144f1cd9e05327e0f877b75b1675a851bc6ef988f641542dc8"
+      "sha256": "f67b655f9537c23a939497a9d7e3675993dd0cfad08fa01ecc64ed280f986ea9"
     },
     {
       "path": "docs/clip_review.md",
@@ -196,7 +196,7 @@
     },
     {
       "path": "tests/check_film_browser.cjs",
-      "sha256": "b05f40a2b19f9464e1cc3ae7c119800944a973951262b1d1183da9f18d4e5cd2"
+      "sha256": "6871c487db3effd41865d3330731232e1a3a1e65c6ed0263280c2c1ed8ce2093"
     },
     {
       "path": "tests/check_film_ui.cjs",
