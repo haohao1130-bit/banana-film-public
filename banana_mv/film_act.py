@@ -182,3 +182,109 @@ def split_act_source(story):
         chapters.append((duration, h3))
         previous = end
     return chapters
+
+
+
+def _act_blocks(story):
+    """Read ACT boundaries only. Never turn their content into H3 speech."""
+    source = story.replace('\r\n', '\n').replace('\r', '\n')
+    markers = list(_ACT.finditer(source))
+    if not markers:
+        if _ACT_LIKE.search(source):
+            raise ValueError('ACT 時間格式需為 ACT 01｜00:00.000–00:10.000。')
+        return None
+    blocks = []
+    previous = 0.0
+    for index, marker in enumerate(markers):
+        number = int(marker.group('number'))
+        start = _clock(marker.group('start'))
+        end = _clock(marker.group('end'))
+        if number != index + 1 or abs(start - previous) > 0.01 or end <= start:
+            raise ValueError('ACT 必須從 01 開始、時間連續、不重疊且依序連號。')
+        body = source[marker.end():markers[index + 1].start()
+                      if index + 1 < len(markers) else len(source)].strip()
+        if not body:
+            raise ValueError(f'ACT {number:02d} 沒有內容。')
+        blocks.append((end - start, body))
+        previous = end
+    return source[:markers[0].start()].strip(), blocks
+
+
+def split_act_commissions(story):
+    """9B-only route: Python owns shared settings and ACT time windows.
+
+    Return (shared_setup, [(seconds, original local commission)]).
+    The per-ACT writing is passed to the 9B H3 director, NOT directly to H3.
+    Python does not infer, tag, voice, or rewrite any local dialogue.
+    """
+    parsed = _act_blocks(story)
+    if parsed is None:
+        return None
+    intro, blocks = parsed
+    shared_head = _SHARED.search(intro)
+    if not shared_head:
+        raise ValueError('9B ACT 劇本需要在所有 ACT 前提供【共同設定】。')
+    shared_end = _STORY_START.search(intro, shared_head.end())
+    shared = intro[shared_head.end():shared_end.start() if shared_end else len(intro)]
+    shared = _COMPILER_META.sub('', shared).strip(' \n─-')
+    if not shared:
+        raise ValueError('【共同設定】是空的。')
+    commissions = []
+    for index, (seconds, body) in enumerate(blocks, 1):
+        local = _field(body, 'H3 提示詞') or _field(body, 'H3提示詞')
+        if not local:
+            raise ValueError(f'ACT {index:02d} 需要【H3 提示詞】中的當段故事與台詞。')
+        beats = list(_BEAT.finditer(local))
+        if not beats or abs(float(beats[0].group('start'))) > 0.01 or abs(
+                float(beats[-1].group('end')) - seconds) > 0.01:
+            raise ValueError(f'ACT {index:02d} 段內鏡頭必須從 0 到 {seconds:g} 秒。')
+        last = 0.0
+        for beat in beats:
+            start, end = float(beat.group('start')), float(beat.group('end'))
+            if abs(start - last) > 0.01 or not start < end <= seconds + 0.01:
+                raise ValueError(f'ACT {index:02d} 段內秒數不連續。')
+            last = end
+        scene = _field(body, '場景')
+        opening = _field(body, '承接')
+        emotion = _field(body, '角色表情')
+        sound = _field(body, '音效')
+        outgoing = _field(body, '交棒')
+        entrance = _inline(body, '入鏡')
+        title = _inline(body, '段落')
+        # These are author-authored directions, not H3 output sections.
+        # 9B receives exactly this ACT and the stable shared_setup separately.
+        brief = '\n'.join(part for part in (
+            f'ACT {index:02d}｜{seconds:g}秒；只拍這一幕，不拍其他幕。',
+            '當段名稱：' + title if title else '',
+            '當段入鏡：' + entrance if entrance else '',
+            '當段場景：\n' + scene if scene else '',
+            '當段開場狀態：\n' + opening if opening else '',
+            '當段表演情緒：\n' + emotion if emotion else '',
+            '當段鏡頭、動作與指定台詞（依原文順序與時間，不改台詞）：\n' + local,
+            '當段環境音與音效：\n' + sound if sound else '',
+            '當段交棒結果（只作連續性）：\n' + outgoing if outgoing else '',
+        ) if part)
+        commissions.append((seconds, brief))
+    return shared, commissions
+
+
+def split_act_native(story):
+    """9B-off route: split independent, fully-authored native H3 ACT blocks.
+
+    Nothing is prepended or extracted. A global shared block is not a
+    manually completed prompt and cannot be silently replicated to all ACTs.
+    """
+    parsed = _act_blocks(story)
+    if parsed is None:
+        return None
+    intro, blocks = parsed
+    if intro:
+        raise ValueError('關閉 9B 的純提示詞模式：ACT 前不可放共同設定或全片說明；請把完整六欄 H3 全咒各自寫在每個 ACT 內。')
+    from banana_mv.direction_contract import validate_h3_sections
+    clips = []
+    for index, (seconds, body) in enumerate(blocks, 1):
+        if not body.startswith('subject_definitions:'):
+            raise ValueError(f'關閉 9B 的 ACT {index:02d} 需要使用者提供完整的六欄 H3 原生提示詞；Python 不代寫、不複製共同設定。')
+        validate_h3_sections(body)
+        clips.append((seconds, body))
+    return clips
