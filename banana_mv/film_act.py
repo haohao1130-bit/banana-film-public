@@ -150,7 +150,7 @@ def split_act_source(story):
         shots[0] = shots[0].replace('[Shot 1] ', '[Shot 1] ' + prefix + '\n', 1)
         h3 = '\n\n'.join((
             'subject_definitions:\n' + shared,
-            f'summary:\nFilm ACT {number:02d}' + (f' ({name})' if name else '') + f' in {duration:g} seconds. Do not perform later ACT events.',
+            f'summary:\nFilm ACT {number:02d}' + (f' ({name})' if name else '') + f' in {duration:g} seconds. Do not perform later ACT events. Finish spoken lines at least 0.65 seconds before the clip ends; use the rest for silent acting and ambience.',
             'retention_analysis:\n' + (f'Outgoing continuity state: {outgoing}' if outgoing else 'Preserve established appearance and scene continuity.'),
             'detailed_description:\n' + '\n\n'.join(shots),
             'overall_soundscape:\nNo music; use only spoken dialogue, voiceover, environmental sound and sound effects.' + ('\n' + effects if effects else ''),
