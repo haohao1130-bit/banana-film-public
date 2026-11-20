@@ -956,7 +956,7 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     ceiling=float(req['segment_seconds'])
     model_counts=[legal_frames(seconds,ceiling) for seconds,_ in clips]
     delivery_counts=model_counts
-    if req.get('authored_segment_master') or math.isclose(ceiling, 10.0, abs_tol=1e-8):
+    if req.get('authored_segment_master') or req.get('ten_second_delivery_v2'):
         from banana_mv.film_continuity import render_frames
         delivery_counts=[round(seconds*FPS) for seconds,_ in clips]
         model_counts=[render_frames(frames) if i and req.get('mode')=='chain5'
