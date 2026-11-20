@@ -10,7 +10,7 @@ _ACT = re.compile(
     r'(?P<start>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'
     r'(?P<end>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*$'
 )
-_ACT_LIKE = re.compile(r'(?im)^[ \t]*ACT[ \t]+\d+\b')
+_ACT_LIKE = re.compile(r'(?im)^[ \t]*ACT[ \t]+\d+[ \t]*[｜|:：\-—][ \t]*\d')
 _SHARED = re.compile(
     r'(?m)^[ \t]*【(?:共同設定|共通設定|共用設定|固定設定|全局設定|全域設定)】[^\n]*$'
 )
