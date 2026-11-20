@@ -317,16 +317,14 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, c
     if len(atoms) < count:
         raise ValueError('原始 SHOT 無足夠的完整事件切點；請減少分段數或延長片長上限。')
 
-    # The 10-second selector is a CEILING, not a fixed clip duration and
-    # definitely not a fixed number of segments. First try the original number
-    # of legal H3 clips. If a sentence will run into the cut, end the preceding
-    # clip before that sentence and move the intact performance to the next.
-    # When the original number of slots cannot accommodate all completed
-    # speech, retry with one more (shorter) legal slot instead of rejecting.
-    # Frame grid, entire story duration and prompt order remain unchanged.
-    maximum = 5 + 17 * ((math.floor(ceiling * FPS) - 5) // 17)
+    # The 10s preset is an exact DELIVERED clip duration, not a native
+    # generation-grid ceiling. Render extra legal H3 frames later and trim
+    # to 240 delivered frames without clipping a sentence at the boundary.
+    # Other presets retain their existing native-frame speech-aware allocator.
+    fixed_ten = math.isclose(ceiling, 10.0, abs_tol=1e-8)
+    maximum = round(10 * FPS) if fixed_ten else 5 + 17 * ((math.floor(ceiling * FPS) - 5) // 17)
     target = round(total_seconds * FPS)
-    last_allowed_count = min(
+    last_allowed_count = count if fixed_ten else min(
         len(atoms), math.floor((target + 1.5 * FPS) / 124))
     if last_allowed_count < count:
         raise ValueError('整片時長無法排入 H3 最短合法鏡頭。')
@@ -341,17 +339,24 @@ def _speech_safe_storyboard(chapters, fixed, total_seconds, ceiling, count, *, c
     for slot_count in range(count, last_allowed_count + 1):
         # Prefer 7–10 seconds, but allow native 5.167–6.583-second shots
         # only when necessary to keep every spoken phrase intact.
-        minimum = (175 if ceiling >= 10 and slot_count * 175 <= target
-                   else 124)
-        choices = list(range(minimum, maximum + 1, 17))
-        if not choices:
-            break
+        if fixed_ten:
+            minimum = 124
+            final_frames = target - maximum * (slot_count - 1)
+            if not 124 <= final_frames <= maximum:
+                continue
+            choices = [maximum]
+        else:
+            minimum = (175 if ceiling >= 10 and slot_count * 175 <= target
+                       else 124)
+            choices = list(range(minimum, maximum + 1, 17))
+            if not choices:
+                break
         states = {(0, 0): (0.0, [])}  # (delivered frames, action cursor)
         for slot_no in range(1, slot_count + 1):
             following = {}
             for (used, cursor), (cost, path) in states.items():
-                for frames in choices:
-                    if chain5 and slot_no > 1 and frames + 17 > maximum:
+                for frames in ([final_frames] if fixed_ten and slot_no == slot_count else choices):
+                    if not fixed_ten and chain5 and slot_no > 1 and frames + 17 > maximum:
                         continue
                     new_used = used + frames
                     remaining = slot_count - slot_no
@@ -695,7 +700,8 @@ def distribute_manual_prompt(clips, total_seconds, ceiling, *, chain5=False):
     # identities, speaker mappings or the fixed world into the first clip.
     if shared_setup:
         source = story
-    largest = max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS
+    largest = (10.0 if math.isclose(ceiling, 10.0, abs_tol=1e-8) else
+               max(range(124, math.floor(ceiling * FPS) + 1, 17)) / FPS)
     count = math.ceil(total_seconds / largest)
     shots = list(_FILM_SHOT_HEADER.finditer(source))
     soundscape = ''
@@ -901,7 +907,7 @@ def compile_storyboard_slot(fixed, prompt, length, source_length, state=None, *,
         for ref in refs)
     subject=fixed_for_clip or 'Use the actors and scene specified in the shots.'
     if state_note: subject+='\n'+state_note
-    music = ('No background music.' if re.search(r'無背景音樂|不加背景音樂', soundscape)
+    music = ('No background music.' if re.search(r'無配樂|無背景音樂|不加背景音樂|不使用配樂', soundscape)
              else 'Follow the authored music cues for these shots.')
     return ('subject_definitions:\n' + subject
             + '\n\nsummary:\nFilm the assigned shots in order within '
@@ -950,7 +956,7 @@ def make_manual_plan(clips, req, normalize, map_mentions, image_count, validator
     ceiling=float(req['segment_seconds'])
     model_counts=[legal_frames(seconds,ceiling) for seconds,_ in clips]
     delivery_counts=model_counts
-    if req.get('authored_segment_master'):
+    if req.get('authored_segment_master') or math.isclose(ceiling, 10.0, abs_tol=1e-8):
         from banana_mv.film_continuity import render_frames
         delivery_counts=[round(seconds*FPS) for seconds,_ in clips]
         model_counts=[render_frames(frames) if i and req.get('mode')=='chain5'
