@@ -317,7 +317,19 @@ def validate_plan(raw,req,image_count):
         # With no external soundtrack, use the model's exact AV frame grid rather
         # than generating a longer utterance and chopping off its last syllable.
         requested=round(seconds*FPS)
-        frames=5+((requested-5)//17)*17
+        exact_ten=req['segment_seconds']==10 and req.get('segment_policy')=='capped'
+        if exact_ten:
+            # The 10S selector means exact DELIVERY length (240 frames at
+            # 24fps), not the shorter native 5+17*k rendering grid.
+            if i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8:
+                raise ValueError('10S 模式每個非最後片段都必須是完整 10 秒，僅短尾可縮短。')
+            frames=requested
+            from banana_mv.film_continuity import render_frames
+            model_frames=(render_frames(frames) if i and req.get('mode')=='chain5'
+                          else 5+17*math.ceil((frames-5)/17))
+        else:
+            frames=5+((requested-5)//17)*17
+            model_frames=frames
         minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
         if seconds<minimum-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<math.ceil(minimum*FPS):
             raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {minimum:.6f}–{req['segment_seconds']:g} 秒。"
@@ -330,7 +342,7 @@ def validate_plan(raw,req,image_count):
         if key in seen:raise ValueError('短片重複完整事件，請推進故事而非複製段落。')
         seen.add(key)
         result.append({'index':i,'start_frame':start,'frames':frames,'start':start/FPS,
-                       'seconds':frames/FPS,'model_frames':frames,'status':'waiting',
+                       'seconds':frames/FPS,'model_frames':model_frames,'status':'waiting',
                        'director_mode':mode,'director_plan':{'index':i,'mode':mode,'event':brief}})
         start+=frames
     if start>math.floor(req['max_seconds']*FPS):raise ValueError('導演規劃超過片長上限。')
@@ -372,7 +384,14 @@ def plan_film(cfg,job,originals):
     if req.get('planning_contract_version')==2:
         minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
         source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=minimum,
-                      legal_clip_seconds=[frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17) if frames/FPS>=minimum-1e-8])
+                      legal_clip_seconds=([10.0,9.0,8.0,7.0,6.0,124/FPS]
+                          if req['segment_seconds']==10 else
+                          [frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17)
+                           if frames/FPS>=minimum-1e-8]))
+    if req['segment_seconds']==10 and req.get('segment_policy')=='capped':
+        source['clip_duration_rule']=('Use exactly 10.000 seconds for every nonfinal clip; '
+            'the final short tail may be shorter only when needed. 10 seconds means '
+            'delivered length after trimming extra native H3 render frames.')
     if 'auto_director' in req:
         source['adaptation']=('AUTO: creatively develop the premise, keeping explicit events, dialogue and outcome.'
                               if req['auto_director'] else 'FAITHFUL: organize and stage only the supplied events and dialogue; do not invent new plot or lines.')
@@ -606,7 +625,25 @@ def start(req):
         template(app, cfg, dual=len(selected) == 2)
     map_story(req,story,len(rows))
     manual_plan=None
-    if not req['auto_director']:
+    # Authored ACT + shared setup is a precise H3 work order even when the
+    # auto-director checkbox is on: preserve its complete dialogue and timing.
+    from banana_mv.film_act import split_act_source
+    authored_acts=split_act_source(story)
+    if authored_acts:
+        from banana_mv.film_manual import make_manual_plan
+        req['authored_segment_master']=True
+        if req['sound_mode']=='ambient' and any('<d>' in prompt for _,prompt in authored_acts):
+            # No music does not mean no dialogue. Honor explicit ACT speech.
+            req['sound_mode']='dialogue'
+        authored=sum(seconds for seconds,_ in authored_acts)
+        if preference=='prompt' and declaration is None:
+            req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
+                       timeline_tolerance=1.5,target_is_exact=True,duration_source='authored_acts')
+        req['manual_h3']=True
+        manual_plan=make_manual_plan(authored_acts,req,normalize_prompt,map_story,
+                                     len(rows),validate_manual_sound,
+                                     title=str(req.get('project_name') or 'ACT 原生 H3 攝影'))
+    elif not req['auto_director']:
         from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan,legal_frames,split_segment_master
         single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
         authored_segments=split_segment_master(story)
@@ -626,7 +663,7 @@ def start(req):
             # Explicit CLIP timing sets the duration in prompt mode.
             # Custom time always wins and conflicting supplied CLIPs must error.
             if preference=='prompt' and declaration is None and has_clips:
-                if not 6<=authored<=300:raise ValueError('H3 全咒總長需為 6–300 秒。')
+                if not 6<=authored<=300:raise ValueError('H3 全咒總長需在 6–300 秒。')
                 req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
                            timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
             req['manual_h3']=True
