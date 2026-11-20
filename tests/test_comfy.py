@@ -15,7 +15,11 @@ class ComfyTests(unittest.TestCase):
         class Fake(BaseHTTPRequestHandler):
             def log_message(self,*args):pass
             def do_POST(self):
-                payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                raw=self.rfile.read(int(self.headers['Content-Length']))
+                if self.path=='/upload/image':
+                    self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers()
+                    self.wfile.write(json.dumps({'name':'banana_rewrite_http-test_0.jpg','subfolder':''}).encode());return
+                payload=json.loads(raw)
                 if self.path=='/free':
                     self.send_response(200);self.end_headers();return
                 requests.append(payload)
