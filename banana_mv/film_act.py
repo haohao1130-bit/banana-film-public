@@ -23,6 +23,10 @@ _QUOTE = re.compile(r'「([^」\n]+)」')
 _SPEECH = re.compile(r'(?:說|問|喊|吼|道|答|回應|喝斥|咆哮)[：:]?[ \t]*$')
 _BINDING = re.compile(r'@(?:圖片|图片|image)[ \t]*(\d+)[ \t]*[=＝][ \t]*([^，,：:\n\s]+)', re.I)
 _FIELD = re.compile(r'(?m)^[ \t]*【([^】\n]+)】[ \t]*')
+_COMPILER_META = re.compile(
+    r'(?ms)^■[ \t]*(?:H3[ \t]*鏡頭指令|通告單格式)[^\n]*\n.*?(?=^■|\Z)'
+)
+_SOUND_QUOTE = re.compile(r'「(鏗|鏘|砰|轟|喀|咚|啪)」')
 
 
 def _clock(value):
@@ -52,25 +56,35 @@ def _stamp(seconds):
 
 
 def _tag_speech(line, cast):
-    """Mark only explicit speech, not quoted prop names or written placards."""
+    """Mark only explicitly authored character speech.
+
+    A shot can introduce an actor by name and refer to the same speaker as
+    '他' after a semicolon. Resolve this within the current shot only.
+    Quoted props and onomatopoeia are not dialogue.
+    """
     out = []
     cursor = 0
     prior_quote_end = 0
     for quote in _QUOTE.finditer(line):
         out.append(line[cursor:quote.start()])
         before = line[prior_quote_end:quote.start()]
-        speaker_phrase = before.rsplit('。', 1)[-1].rsplit('；', 1)[-1]
-        if _SPEECH.search(speaker_phrase):
-            possible = []
-            for number, name in cast.items():
-                for token in (name, f'@圖片{number}', f'<Picture {number}>'):
-                    position = speaker_phrase.rfind(token)
-                    if position >= 0:
-                        possible.append((position, number))
-            if '赤兔馬' in speaker_phrase:
-                possible.append((speaker_phrase.rfind('赤兔馬'), 6))
-            if possible:
-                speaker = max(possible)[1]
+        phrase = before.rsplit('。', 1)[-1].rsplit('；', 1)[-1]
+        if _SPEECH.search(phrase):
+            candidates = []
+            for window in (phrase, line[:quote.start()]):
+                candidates = []
+                for number, name in cast.items():
+                    for token in (name, f'@圖片{number}', f'<Picture {number}>'):
+                        at = window.rfind(token)
+                        if at >= 0:
+                            candidates.append((at, number))
+                horse = window.rfind('赤兔馬')
+                if horse >= 0:
+                    candidates.append((horse, max(cast) + 1))
+                if candidates:
+                    break
+            if candidates:
+                speaker = max(candidates)[1]
                 out.append(f'(S{speaker}) <d>[Chinese] {quote.group(1)}</d>')
             else:
                 out.append(quote.group(0))
@@ -79,8 +93,7 @@ def _tag_speech(line, cast):
         cursor = quote.end()
         prior_quote_end = cursor
     out.append(line[cursor:])
-    return ''.join(out)
-
+    return _SOUND_QUOTE.sub(lambda m: m.group(1), ''.join(out))
 
 def split_act_source(story):
     """Return (exact seconds, independent six-field H3 prompt), or None."""
@@ -96,7 +109,7 @@ def split_act_source(story):
         raise ValueError('ACT 通告單前缺少【共同設定】；請保留固定角色與世界規則。')
     shared_end = _STORY_START.search(intro, shared_head.end())
     shared = intro[shared_head.end():shared_end.start() if shared_end else len(intro)].strip()
-    shared = shared.strip(' \n─-')
+    shared = _COMPILER_META.sub('', shared).strip(' \n─-')
     if not shared:
         raise ValueError('ACT 的【共同設定】沒有內容。')
     cast = {int(number): name for number, name in _BINDING.findall(shared)}
@@ -130,6 +143,10 @@ def split_act_source(story):
             if not action:
                 raise ValueError(f'ACT {number:02d} 第 {j+1} 鏡沒有拍攝事件。')
             action = _tag_speech(action, cast)
+            if '<d>' not in action:
+                action += '\nSound for this shot: physical effects and natural ambience only. All actors remain silent with closed mouths.'
+            else:
+                action += '\nSound for this shot: precisely the scripted character dialogue, plus physical effects and natural ambience. No other human or animal vocalization.'
             camera = f'[Shot {j+1}]' + (f' At {_stamp(beat_start)},' if j else '')
             shots.append(camera + ' ' + action)
             last = beat_end
@@ -148,12 +165,18 @@ def split_act_source(story):
             'Acting and facial emotion: ' + emotion if emotion else '',
         )))
         shots[0] = shots[0].replace('[Shot 1] ', '[Shot 1] ' + prefix + '\n', 1)
+        name = re.sub(r'[「」『』]', '', name)
         h3 = '\n\n'.join((
             'subject_definitions:\n' + shared,
-            f'summary:\nFilm ACT {number:02d}' + (f' ({name})' if name else '') + f' in {duration:g} seconds. Do not perform later ACT events. Finish spoken lines at least 0.65 seconds before the clip ends; use the rest for silent acting and ambience.',
+            f'summary:\nFilm ACT {number:02d}' + (f' ({name})' if name else '') +
+            f' in {duration:g} seconds. Do not perform later ACT events. Spoken words are restricted to explicitly tagged character dialogue spans. ' +
+            'Every other description, scene direction, quoted prop text, and setting is silent instruction, never narration. ' +
+            'Finish authored dialogue at least 0.65 seconds before the clip ends.',
             'retention_analysis:\n' + (f'Outgoing continuity state: {outgoing}' if outgoing else 'Preserve established appearance and scene continuity.'),
             'detailed_description:\n' + '\n\n'.join(shots),
-            'overall_soundscape:\nNo music; use only spoken dialogue, voiceover, environmental sound and sound effects.' + ('\n' + effects if effects else ''),
+            'overall_soundscape:\nAudio contains only synchronized, explicitly tagged character dialogue, plus authored environmental and physical sound effects. ' +
+            'Start with scene ambience, not an opening vocal. Dialogue begins only at its assigned scripted shot; never synthesize spoken production notes, scene descriptions, invented words, grunts, crowd speech, chants, or ad-lib narration. ' +
+            'No background music.' + ('\n' + effects if effects else ''),
             'non_diegetic_music:\nNo background music.',
         ))
         chapters.append((duration, h3))
