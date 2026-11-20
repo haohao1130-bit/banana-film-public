@@ -54,7 +54,8 @@ class ServicesTests(unittest.TestCase):
             def queue(config,graph):captured.append(graph);return 'prompt'
             with patch.object(services,'queue_prompt',side_effect=queue),\
                  patch.object(services,'wait_prompt',return_value={'outputs':{'result':{'text':['hello']}}}),\
-                 patch.object(services,'comfy',return_value={}) as api:
+                 patch.object(services,'comfy',return_value={}) as api,\
+                 patch.object(services,'upload_comfy_image',side_effect=lambda cfg,name,data,content_type:name):
                 self.assertEqual(services.rewrite_local(cfg,'guide',parts,'test'),'hello')
                 api.assert_called_once_with(cfg,'/free',{'unload_models':True,'free_memory':True})
             graph=captured[0]
@@ -63,7 +64,8 @@ class ServicesTests(unittest.TestCase):
             self.assertEqual(graph['generate']['inputs']['prompt'].count('<|image_pad|>'),2)
             self.assertEqual(graph['generate']['inputs']['max_length'],8192)
             self.assertEqual(list(Path(tmp).glob('*.jpg')),[])
-            with patch.object(services,'queue_prompt',side_effect=RuntimeError('rejected')):
+            with patch.object(services,'queue_prompt',side_effect=RuntimeError('rejected')),\
+                 patch.object(services,'upload_comfy_image',side_effect=lambda cfg,name,data,content_type:name):
                 with self.assertRaisesRegex(RuntimeError,'rejected'):
                     services.rewrite_local(cfg,'guide',parts,'failed')
             self.assertEqual(list(Path(tmp).glob('*.jpg')),[])
