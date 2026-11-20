@@ -317,7 +317,7 @@ def validate_plan(raw,req,image_count):
         # With no external soundtrack, use the model's exact AV frame grid rather
         # than generating a longer utterance and chopping off its last syllable.
         requested=round(seconds*FPS)
-        exact_ten=req['segment_seconds']==10 and req.get('segment_policy')=='capped'
+        exact_ten=bool(req.get('ten_second_delivery_v2')) and req['segment_seconds']==10 and req.get('segment_policy')=='capped'
         if exact_ten:
             # The 10S selector means exact DELIVERY length (240 frames at
             # 24fps), not the shorter native 5+17*k rendering grid.
@@ -385,10 +385,10 @@ def plan_film(cfg,job,originals):
         minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
         source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=minimum,
                       legal_clip_seconds=([10.0,9.0,8.0,7.0,6.0,124/FPS]
-                          if req['segment_seconds']==10 else
+                          if req.get('ten_second_delivery_v2') else
                           [frames/FPS for frames in range(124,math.floor(req['segment_seconds']*FPS)+1,17)
                            if frames/FPS>=minimum-1e-8]))
-    if req['segment_seconds']==10 and req.get('segment_policy')=='capped':
+    if req.get('ten_second_delivery_v2') and req.get('segment_policy')=='capped':
         source['clip_duration_rule']=('Use exactly 10.000 seconds for every nonfinal clip; '
             'the final short tail may be shorter only when needed. 10 seconds means '
             'delivered length after trimming extra native H3 render frames.')
@@ -583,6 +583,7 @@ def start(req):
                duration_contract_version=3,duration_source=duration_source,target_is_exact=exact,
                timeline_tolerance=tolerance,target_seconds=float(maximum),
                max_seconds=min(300.0,float(maximum)+tolerance),segment_seconds=float(chunk),
+               ten_second_delivery_v2=(float(chunk)==10.0),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
                sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
