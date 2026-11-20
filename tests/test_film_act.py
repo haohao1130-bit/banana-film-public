@@ -1,7 +1,7 @@
 """Regression checks for full ACT + shared-settings film briefs."""
 import unittest
 
-from banana_mv.film_act import split_act_source
+from banana_mv.film_act import split_act_source, split_act_commissions, split_act_native
 
 
 COMMON = """BANANAMV｜《三英戰呂布》
@@ -65,6 +65,37 @@ class ActParserTests(unittest.TestCase):
         self.assertIn('(S5) <d>[Chinese] 誰動了我的奉先？！</d>', clips[5][1])
         self.assertIn('(S6) <d>[Chinese] ……我只是一匹馬。</d>', clips[5][1])
         self.assertIn('「免戰三日」', clips[5][1])
+
+    def test_director_routes_clean_commissions_to_9b_not_h3(self):
+        shared, acts = split_act_commissions(_six_act_story())
+        self.assertEqual(len(acts), 6)
+        self.assertEqual([duration for duration, _ in acts], [10.0] * 6)
+        self.assertIn('@圖片1 = 呂布', shared)
+        self.assertIn('■ 畫風', shared)
+        self.assertNotIn('■ H3 鏡頭指令', shared)
+        for i, (_, brief) in enumerate(acts, 1):
+            self.assertIn(f'ACT {i:02d}', brief)
+            self.assertIn('當段鏡頭、動作與指定台詞', brief)
+            self.assertNotIn('subject_definitions:', brief)
+            self.assertNotIn('<d>', brief)
+            self.assertNotIn('全片共同設定', brief)
+        self.assertIn('劉備說：「奉先，今日我們三人，好好談談。」', acts[0][1])
+        self.assertIn('關羽說：「奉先，你的呼吸，亂了。」', acts[1][1])
+
+    def test_manual_act_requires_authored_independent_h3(self):
+        with self.assertRaisesRegex(ValueError, '共同設定'):
+            split_act_native(_six_act_story())
+        raw = (
+            'subject_definitions:\n<Picture 1> = 呂布\n\n'
+            'summary:\n當段。\n\nretention_analysis:\n延續。\n\n'
+            'detailed_description:\n[Shot 1] 呂布緩緩回頭。\n'
+            '(S1) <d>[Chinese] 來者何人？</d>\n\n'
+            'overall_soundscape:\n微風。\n\n'
+            'non_diegetic_music:\nNo background music.'
+        )
+        result=split_act_native('ACT 01｜00:00.000–00:10.000\n'+raw)
+        self.assertEqual(result, [(10.0,raw)])
+        self.assertEqual(result[0][1].count('<d>'),1)
 
     def test_legacy_is_unchanged(self):
         self.assertIsNone(split_act_source('SHOT 01｜0–10秒\n開場。'))
