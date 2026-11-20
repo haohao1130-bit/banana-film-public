@@ -142,8 +142,13 @@ reassign a character's action to another actor, reverse an attacker and defender
 invent an opponent, exchange a prop between characters without an assigned handoff,
 add or omit an event, change an outcome or invent dialogue. Even in AUTO mode,
 creativity applies ONLY to how the existing event is filmed, not what happens.
-fixed_reference_settings governs identity, appearance and fixed geography ONLY;
-it cannot authorize plot events, cast attendance or dialogue. The guide governs
+fixed_reference_settings governs stable identity, appearance, fixed geography,
+global filming style and silent soundscape constraints only. It never contains
+performed events, cast attendance, or spoken dialogue. Only explicitly authored
+character lines inside current_clip_commission may become (Sx) <d>speech</d>.
+Global reference settings, camera instructions, production notes and quoted prop
+text must NEVER be vocalized or paraphrased as speech. Begin with scene ambience
+until the first explicitly scripted voice; do not generate opening filler voices. The guide governs
 native H3 output syntax ONLY, not story alterations. A previous generated frame
 is visual motion context ONLY, not permission to continue a different story.
 If the local commission names a supporting character without a reference, retain
@@ -628,6 +633,7 @@ def start(req):
     manual_plan=None
     from banana_mv.film_act import split_act_commissions, split_act_native
     if req['auto_director']:
+        req['manual_h3']=False  # Even a user-authored ACT outline MUST reach the 9B writer.
         # Director mode: Python dispatches immutable ACT commissions and one
         # shared reference/world table. The 9B local WRITER alone converts each
         # commission into the six-field MiniMax H3 filming prompt.
