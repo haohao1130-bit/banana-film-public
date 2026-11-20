@@ -626,51 +626,52 @@ def start(req):
         template(app, cfg, dual=len(selected) == 2)
     map_story(req,story,len(rows))
     manual_plan=None
-    # Authored ACT + shared setup is a precise H3 work order even when the
-    # auto-director checkbox is on: preserve its complete dialogue and timing.
-    from banana_mv.film_act import split_act_source
-    authored_acts=split_act_source(story)
-    if authored_acts:
-        from banana_mv.film_manual import make_manual_plan
-        req['authored_segment_master']=True
-        if req['sound_mode']=='ambient' and any('<d>' in prompt for _,prompt in authored_acts):
-            # No music does not mean no dialogue. Honor explicit ACT speech.
-            req['sound_mode']='dialogue'
-        authored=sum(seconds for seconds,_ in authored_acts)
-        if preference=='prompt' and declaration is None:
+    from banana_mv.film_act import split_act_commissions, split_act_native
+    if req['auto_director']:
+        # Director mode: Python dispatches immutable ACT commissions and one
+        # shared reference/world table. The 9B local WRITER alone converts each
+        # commission into the six-field MiniMax H3 filming prompt.
+        authored = split_act_commissions(story)
+        if authored is not None:
+            shared, acts = authored
+            authored_seconds = sum(seconds for seconds, _ in acts)
+            if preference=='prompt' and declaration is None:
+                req.update(target_seconds=authored_seconds,
+                           max_seconds=min(300.,authored_seconds+1.5),
+                           timeline_tolerance=1.5,target_is_exact=True,
+                           duration_source='authored_acts')
+            plan_data={'title':str(req.get('project_name') or 'ACT 自動導演'),
+                       'shared_setup':shared,
+                       'segments':[{'seconds':seconds,'mode':'story','brief':brief}
+                                   for seconds,brief in acts]}
+            manual_plan=validate_plan(json.dumps(plan_data,ensure_ascii=False),req,len(rows))
+            validate_planned_duration(manual_plan,req)
+            req['authored_act_commissions']=True
+    else:
+        # Manual mode: Python slices ONLY existing full H3 prompts.
+        # It may remap input Picture ordinals and native render frame counts,
+        # but must not infer a shared_setup or compose/voice any H3 content.
+        from banana_mv.film_manual import CLIP, split_native_h3, make_manual_plan
+        manual_clips = split_act_native(story)
+        if manual_clips is None:
+            single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
+            manual_clips=split_native_h3(story,single_seconds)
+            if not CLIP.search(story) and float(req['target_seconds']) > float(req['segment_seconds'])+1e-8:
+                raise ValueError('關閉 9B 的純提示詞模式不自動重寫／分配長篇劇本；請使用 === CLIP 1 (10s) === 或 ACT 01 時間標記，並在每段寫好完整 H3 六欄提示詞。')
+        for index,(seconds,h3_prompt) in enumerate(manual_clips,1):
+            if not h3_prompt.lstrip().startswith('subject_definitions:'):
+                raise ValueError(f'純提示詞第 {index} 段必須是使用者完成的 MiniMax H3 六欄全咒；Python 不代填共同設定、鏡頭或台詞。')
+            from banana_mv.direction_contract import validate_h3_sections
+            validate_h3_sections(h3_prompt)
+        authored=sum(seconds for seconds,_ in manual_clips)
+        if preference=='prompt' and declaration is None and (split_act_native(story) is not None or CLIP.search(story)):
+            if not 6<=authored<=300:raise ValueError('H3 全咒總長需在 6–300 秒。')
             req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
-                       timeline_tolerance=1.5,target_is_exact=True,duration_source='authored_acts')
+                       timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
         req['manual_h3']=True
-        manual_plan=make_manual_plan(authored_acts,req,normalize_prompt,map_story,
+        manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
                                      len(rows),validate_manual_sound,
-                                     title=str(req.get('project_name') or 'ACT 原生 H3 攝影'))
-    elif not req['auto_director']:
-        from banana_mv.film_manual import CLIP,distribute_manual_prompt,split_native_h3,make_manual_plan,legal_frames,split_segment_master
-        single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
-        authored_segments=split_segment_master(story)
-        has_clips=bool(authored_segments or CLIP.search(story))
-        if authored_segments:
-            req['authored_segment_master']=True
-        if not exact and not has_clips:
-            single_seconds=legal_frames(single_seconds,float(chunk))/FPS
-            req.update(duration_source='manual_single_clip',target_seconds=single_seconds)
-        manual_clips=authored_segments or split_native_h3(story,single_seconds)
-        if not has_clips:
-            req['python_manual_handoff']=True
-            manual_clips=distribute_manual_prompt(manual_clips,float(req['target_seconds']),float(chunk),
-                                                       chain5=req['mode']=='chain5')
-        if manual_clips is not None:
-            authored=sum(seconds for seconds,_ in manual_clips)
-            # Explicit CLIP timing sets the duration in prompt mode.
-            # Custom time always wins and conflicting supplied CLIPs must error.
-            if preference=='prompt' and declaration is None and has_clips:
-                if not 6<=authored<=300:raise ValueError('H3 全咒總長需在 6–300 秒。')
-                req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
-                           timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
-            req['manual_h3']=True
-            manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
-                                         len(rows),validate_manual_sound,
-                                         title=str(req.get('project_name') or '手動 H3 原生攝影'))
+                                     title=str(req.get('project_name') or '手動 H3 原生攝影'))
     size=dimensions(req.get('aspect','16:9'),req.get('width'));out=output_dimensions(req.get('aspect','16:9'),req.get('width'))
     if not manual_plan:
         if not Path(cfg['guides']['ref']).is_file():raise ValueError('請先執行 Colab ② 下載 9B 與原生指南。')
