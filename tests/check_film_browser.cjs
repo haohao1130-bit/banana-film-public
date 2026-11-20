@@ -79,8 +79,18 @@ const server=http.createServer((req,res)=>{
   await page.locator('#auto-director').check();
   assert(await page.locator('#genre-comedy').isEnabled());
   assert(await page.locator('#manual-h3-help').isHidden());
+  // Same review node moves below the chef board on mobile, back on desktop.
+  assert(await page.locator('#clip-review').evaluate(e=>!!e.closest('.grid .panel')));
   await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>document.getElementById('clip-review').previousElementSibling?.id==='banana-kitchen-board');
+  assert.equal(await page.locator('#clip-review').count(),1);
+  await page.locator('#clip-review').evaluate(e=>{e.hidden=false;});
+  assert(await page.locator('#clip-review').isVisible());
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:1280,height:900});
+  await page.waitForFunction(()=>!!document.getElementById('clip-review').closest('.grid .panel'));
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>document.getElementById('clip-review').previousElementSibling?.id==='banana-kitchen-board');
   assert.deepEqual(errors,[]);
   console.log('Chromium checks passed: 25K typing, no truncation, fixed-slot mentions, normal Enter, composition guard, 30K validation and mobile layout.');
  }finally{await browser.close();}
