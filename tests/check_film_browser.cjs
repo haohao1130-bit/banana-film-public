@@ -64,8 +64,22 @@ const server=http.createServer((req,res)=>{
   await prompt.fill('x'.repeat(30001));await prompt.press('a');assert.equal((await prompt.inputValue()).length,30002);
   assert.equal(await prompt.evaluate(e=>e.checkValidity()),false);
   assert((await page.locator('#prompt-count').textContent()).includes('超過上限'));
+  // Desktop keeps review inside the production panel; mobile serves it
+  // immediately after the cooking board without duplicating video controls.
+  assert(await page.locator('#clip-review').evaluate(e=>!!e.closest('.grid .panel')));
   await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.locator('#clip-review').evaluate(e=>e.previousElementSibling?.id),'banana-kitchen-board');
+  assert.equal(await page.locator('#clip-review').evaluate(e=>e.parentElement?.tagName),'MAIN');
+  assert.equal(await page.locator('#clip-review').count(),1);
+  await page.locator('#clip-review').evaluate(e=>{e.hidden=false;});
+  assert(await page.locator('#clip-review').isVisible());
+  assert.equal(await page.locator('#clip-review').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(26, 32, 36)');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:1280,height:900});
+  assert(await page.locator('#clip-review').evaluate(e=>!!e.closest('.grid .panel')));
+  assert.equal(await page.locator('#clip-review').evaluate(e=>e.classList.contains('mobile-clip-review')),false);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.locator('#clip-review').evaluate(e=>e.previousElementSibling?.id),'banana-kitchen-board');
   assert.deepEqual(errors,[]);
   console.log('Chromium checks passed: 25K typing, no truncation, fixed-slot mentions, normal Enter, composition guard, 30K validation and mobile layout.');
  }finally{await browser.close();}
