@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "922a72a939850fe07a1a5a78210909e1d05aebdc1bc2ca3ed5a7c7e45c0c0f71"
+      "sha256": "877ec5660d2ff8a135bc5b61a1eccf56861235113c95bfda8a4843cc9aea5eea"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -256,7 +256,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "4c6acb6329050ebd6553e3b537f8fd719e262a9bd16a69cfbf8f9bbcc7333e54"
+      "sha256": "e0e70dc652d0c08a89beeb8484a8977f0f6b007819e08af4793004d0759f2f7d"
     },
     {
       "path": "tests/test_film_dynamic.py",

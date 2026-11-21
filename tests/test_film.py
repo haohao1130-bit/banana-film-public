@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 from PIL import Image
@@ -289,6 +290,45 @@ class FilmTests(unittest.TestCase):
                 graph=preflight.call_args.args[1]
                 self.assertFalse(any(n['class_type'] in ('LoadImage','LoadAudio') for n in graph.values()))
             if app.GPU_LOCK.locked():app.GPU_LOCK.release()
+
+    def test_authored_clip_briefs_bypass_the_full_film_planner(self):
+        story = (
+            'subject_definitions:\n<Picture 1> = 店員，在居酒屋照顧客人。\n'
+            '=== CLIP 0 action ===\n時間：00:00–00:10\n'
+            '店員在吧檯端起陶杯，看向門口，對剛進門的客人說：「歡迎。」\n'
+            '=== CLIP 1 story ===\n時間：00:10–00:16\n'
+            '客人扶穩杯子，店員退到吧檯旁，兩人一同望向燈籠。'
+        )
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            photo, _, req, _, cfg = self.fixture(Path(tmp))
+            stack.enter_context(patch.object(app, 'GPU_LOCK', threading.Lock()))
+            stack.enter_context(patch.object(app, 'RUNS', photo.parent))
+            stack.enter_context(patch.object(app, 'write_state'))
+            stack.enter_context(patch.object(app.backend, 'load_config', return_value=cfg))
+            stack.enter_context(patch.object(app.backend, 'asset', return_value={
+                'kind': 'image', 'file': photo.name, 'comfy_name': 'photo.png',
+            }))
+            stack.enter_context(patch.object(app.backend, 'LIBRARY', photo.parent))
+            stack.enter_context(patch.object(app.backend, 'comfy', return_value={}))
+            stack.enter_context(patch.object(app.backend, 'upload_comfy_image', return_value='photo.png'))
+            model = stack.enter_context(patch.object(app.backend, 'rewrite_local'))
+            planner = stack.enter_context(patch.object(film, 'plan_film'))
+            worker_thread = stack.enter_context(patch.object(film.threading, 'Thread'))
+            job = film.start(dict(req, prompt=story, duration_preference='prompt',
+                                  segment_seconds='auto', image_ids=['asset']))
+            worker = worker_thread.call_args.kwargs
+            worker['target'](*worker['args'])
+            self.assertEqual(job['status'], 'script_ready')
+            self.assertEqual(job['timeline_source'], 'authored_clips')
+            self.assertEqual(job['duration'], 16)
+            first, second = job['segments']
+            self.assertEqual((first['start'], second['start']), (0, 10))
+            self.assertEqual((first['director_mode'], second['director_mode']), ('action', 'story'))
+            self.assertIn('「歡迎。」', first['director_plan']['event'])
+            self.assertNotIn('燈籠', first['director_plan']['event'])
+            self.assertTrue((app.RUNS / job['id'] / 'director_plan.json').is_file())
+            planner.assert_not_called()
+            model.assert_not_called()
 
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'),'ffmpeg required')

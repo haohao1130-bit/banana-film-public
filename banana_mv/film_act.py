@@ -1,7 +1,6 @@
 """Read authored ACT timelines as isolated native MiniMax H3 film commissions.
 
-This adapter is deliberately opt-in: an ACT time ruler must be present. Existing
-CLIP, SEGMENT, SHOT and freeform film paths are unaffected.
+The director route also accepts an explicit CLIP action/story timeline.
 """
 import re
 
@@ -27,11 +26,59 @@ _COMPILER_META = re.compile(
     r'(?ms)^■[ \t]*(?:H3[ \t]*鏡頭指令|通告單格式)[^\n]*\n.*?(?=^■|\Z)'
 )
 _SOUND_QUOTE = re.compile(r'「(鏗|鏘|砰|轟|喀|咚|啪)」')
+_CLIP_COMMISSION = re.compile(
+    r'(?im)^[ \t]*===[ \t]*CLIP[ \t]+(\d+)[ \t]+(action|story)[ \t]*===[ \t]*$'
+)
+_CLIP_TIME = re.compile(
+    r'^時間[：:][ \t]*(\d{1,2}:[0-5]\d(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'
+    r'(\d{1,2}:[0-5]\d(?:\.\d+)?)[ \t]*$'
+)
+_CLIP_HEADER = re.compile(r'(?im)^[ \t]*===[ \t]*CLIP\b')
 
 
 def _clock(value):
     minutes, seconds = value.split(':', 1)
     return int(minutes) * 60 + float(seconds)
+
+
+def split_clip_commissions(story, default_seconds):
+    """Keep each authored CLIP body and read its delivery window."""
+    source = story.replace('\r\n', '\n').replace('\r', '\n')
+    markers = list(_CLIP_COMMISSION.finditer(source))
+    if not markers:
+        return None
+    if len(_CLIP_HEADER.findall(source)) != len(markers):
+        raise ValueError('CLIP 通告單標記需為 === CLIP 0 action === 或 === CLIP 0 story ===。')
+    first = int(markers[0][1])
+    if first not in (0, 1):
+        raise ValueError('CLIP 通告單必須從 0 或 1 開始連號。')
+    shared = source[:markers[0].start()].strip()
+    shared = re.sub(r'(?im)^[ \t]*(?:===[ \t]*SETUP[ \t]*===|subject_definitions:)[ \t]*\n', '', shared)
+    clips = []
+    previous = 0.0
+    for i, marker in enumerate(markers):
+        number = int(marker[1])
+        if number != first + i:
+            raise ValueError('CLIP 通告單編號必須連續。')
+        stop = markers[i+1].start() if i+1 < len(markers) else len(source)
+        body = source[marker.end():stop].strip()
+        body = re.sub(r'(?im)^[ \t]*===[ \t]*END[ \t]*===[ \t]*\Z', '', body).strip()
+        first_line, _, local = body.partition('\n')
+        seconds = default_seconds
+        if re.match(r'^時間[：:]', first_line):
+            timing = _CLIP_TIME.fullmatch(first_line)
+            if not timing:
+                raise ValueError(f'CLIP {number} 時間格式需為「時間：00:00–00:10」。')
+            start, end = map(_clock, timing.groups())
+            if abs(start - previous) > 0.01 or end <= start:
+                raise ValueError(f'CLIP {number} 時間必須接續前段且不得重疊。')
+            seconds = end - start
+            body = local.strip()
+        if not body:
+            raise ValueError(f'CLIP {number} 沒有當段內容。')
+        clips.append((seconds, marker[2].lower(), body))
+        previous += seconds
+    return shared.strip(), clips
 
 
 def _field(body, name):

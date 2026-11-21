@@ -322,10 +322,11 @@ def validate_plan(raw,req,image_count):
         # than generating a longer utterance and chopping off its last syllable.
         requested=round(seconds*FPS)
         exact_ten=bool(req.get('ten_second_delivery_v2')) and req['segment_seconds']==10 and req.get('segment_policy')=='capped'
-        if exact_ten:
+        authored_clip=req.get('authored_clip_commissions',False)
+        if exact_ten or authored_clip:
             # The 10S selector means exact DELIVERY length (240 frames at
             # 24fps), not the shorter native 5+17*k rendering grid.
-            if i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8:
+            if exact_ten and not authored_clip and i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8:
                 raise ValueError('10S 模式每個非最後片段都必須是完整 10 秒，僅短尾可縮短。')
             frames=requested
             from banana_mv.film_continuity import render_frames
@@ -334,7 +335,7 @@ def validate_plan(raw,req,image_count):
         else:
             frames=5+((requested-5)//17)*17
             model_frames=frames
-        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
+        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' and not authored_clip else 124/FPS
         if seconds<minimum-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<math.ceil(minimum*FPS):
             raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {minimum:.6f}–{req['segment_seconds']:g} 秒。"
                              '請拆分超限事件並保留因果、完整台詞與結束狀態；短鏡頭可放在同一生成段內。')
@@ -636,28 +637,36 @@ def start(req):
         template(app, cfg, dual=len(selected) == 2)
     map_story(req,story,len(rows))
     manual_plan=None
-    from banana_mv.film_act import split_act_commissions, split_act_native
+    from banana_mv.film_act import split_act_commissions, split_act_native, split_clip_commissions
     if req['auto_director']:
         req['manual_h3']=False  # Even a user-authored ACT outline MUST reach the 9B writer.
         # Director mode: Python dispatches immutable ACT commissions and one
         # shared reference/world table. The 9B local WRITER alone converts each
         # commission into the six-field MiniMax H3 filming prompt.
-        authored = split_act_commissions(story)
-        if authored is not None:
-            shared, acts = authored
-            authored_seconds = sum(seconds for seconds, _ in acts)
+        acts = split_act_commissions(story)
+        clips = split_clip_commissions(story, float(chunk)) if acts is None else None
+        if acts is not None or clips is not None:
+            if acts is not None:
+                shared, blocks = acts
+                commissions = [(seconds, 'story', brief) for seconds, brief in blocks]
+                authored_source = 'authored_acts'
+                req['authored_act_commissions'] = True
+            else:
+                shared, commissions = clips
+                authored_source = 'authored_clips'
+                req['authored_clip_commissions'] = True
+            authored_seconds = sum(seconds for seconds, _, _ in commissions)
             if preference=='prompt' and declaration is None:
                 req.update(target_seconds=authored_seconds,
                            max_seconds=min(300.,authored_seconds+1.5),
                            timeline_tolerance=1.5,target_is_exact=True,
-                           duration_source='authored_acts')
-            plan_data={'title':str(req.get('project_name') or 'ACT 自動導演'),
+                           duration_source=authored_source)
+            plan_data={'title':str(req.get('project_name') or ('ACT 自動導演' if acts else 'CLIP 自動導演')),
                        'shared_setup':shared,
-                       'segments':[{'seconds':seconds,'mode':'story','brief':brief}
-                                   for seconds,brief in acts]}
+                       'segments':[{'seconds':seconds,'mode':mode,'brief':brief}
+                                   for seconds,mode,brief in commissions]}
             manual_plan=validate_plan(json.dumps(plan_data,ensure_ascii=False),req,len(rows))
             validate_planned_duration(manual_plan,req)
-            req['authored_act_commissions']=True
     else:
         # Manual mode: Python slices ONLY existing full H3 prompts.
         # It may remap input Picture ordinals and native render frame counts,
@@ -714,7 +723,7 @@ def start(req):
             # reference table lives alongside local segment commissions.
             job['shared_setup']=manual_plan['shared_setup']
             job['title']=manual_plan['title']
-            job['timeline_source']='manual_native_h3'
+            job['timeline_source']='authored_clips' if req.get('authored_clip_commissions') else 'manual_native_h3'
             atomic_json(work/'director_plan.json',dict(manual_plan,
                          input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
         app.write_state(job)
