@@ -277,17 +277,44 @@ def local_prompt(cfg, req, segment, original, tail, *, scene_input=None, event_c
     return final
 
 
+def emergency_config(cfg, job_id):
+    return dict(cfg, _banana_stop_job=job_id, _banana_stop_check=lambda: job_id in CANCEL)
+
+
+def stop_job(job_id):
+    from banana_mv.comfy import active_prompt, interrupt_active
+
+    job = read_state(job_id)
+    if (job.get('status') in ('done', 'error', 'cancelled', 'interrupted', 'script_ready')
+            and not active_prompt(job_id)):
+        return {'ok': True, 'interruption': 'not_running', 'message': '目前沒有正在製作的任務。'}
+    CANCEL.add(job_id)
+    try:
+        result = interrupt_active(job_id)
+    except (OSError, RuntimeError, ValueError) as error:
+        return {'ok': True, 'interruption': 'api_error',
+                'message': f'已停止後續製作，ComfyUI 中斷未確認：{error}'}
+    return {'ok': True, 'interruption': result, 'message': '已要求立即停爐，已完成片段保留。'}
+
+
 def wait_generation(cfg, prompt_id, job):
-    deadline = time.monotonic()+7200
-    while time.monotonic()<deadline:
-        entry = backend.history_entry(cfg,prompt_id)
-        if entry:
-            if entry.get('status',{}).get('status_str')=='error':
-                raise RuntimeError(backend.execution_error(entry))
-            if entry.get('status',{}).get('completed'):
-                return entry
-        time.sleep(2)
-    raise RuntimeError('單段生成等待超過兩小時；請檢查 ComfyUI 紀錄。')
+    from banana_mv.comfy import check_cancelled, release_prompt
+
+    try:
+        deadline = time.monotonic()+7200
+        while time.monotonic()<deadline:
+            check_cancelled(cfg)
+            entry = backend.history_entry(cfg,prompt_id)
+            check_cancelled(cfg)
+            if entry:
+                if entry.get('status',{}).get('status_str')=='error':
+                    raise RuntimeError(backend.execution_error(entry))
+                if entry.get('status',{}).get('completed'):
+                    return entry
+            time.sleep(1)
+        raise RuntimeError('單段生成等待超過兩小時；請檢查 ComfyUI 紀錄。')
+    finally:
+        release_prompt(cfg, prompt_id)
 
 
 def video_info(entry):
@@ -862,8 +889,7 @@ class Handler(WebHandler):
                 body=self.body_json()
                 return self.send_json(select_take(body['id'],body.get('index'),body.get('take')))
             if path=='/api/mv/stop':
-                job_id=self.body_json()['id']; read_state(job_id); CANCEL.add(job_id)
-                return self.send_json({'ok':True,'message':'目前這段完成後停止。'})
+                return self.send_json(stop_job(self.body_json()['id']))
             return self.send_error(404)
         except Exception as e:
             return self.send_json({'error':str(e)},400)

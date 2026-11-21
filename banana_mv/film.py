@@ -811,7 +811,8 @@ def revise_script(job_id,draft,revision,instruction):
             raise ValueError('原生 H3 手動模式不使用 9B 細修，請在劇本欄直接修改六段式全咒再儲存。')
         current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
         instruction=map_story(req,instruction,count)
-        cfg=app.backend.project_config(job['request']);originals,_,_=inputs(job,cfg)
+        cfg=app.emergency_config(app.backend.project_config(job['request']), job_id)
+        originals,_,_=inputs(job,cfg)
         source={'original_story':map_story(req,req['prompt'],count),
                 'fixed_reference_settings':current['shared_setup'],
                 'current_script':{'title':current['title'],'segments':[
@@ -837,16 +838,21 @@ def revise_script(job_id,draft,revision,instruction):
         path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text(encoding='utf-8'))
         atomic_json(path,dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
         app.write_state(job);return job
-    finally:app.GPU_LOCK.release()
+    finally:
+        app.CANCEL.discard(job_id)
+        app.GPU_LOCK.release()
 
 def worker(job,cfg,originals,song=None,drive=None):
     work=app.job_dir(job['id']);tail=None
     from banana_mv import face_refine
+    from banana_mv.comfy import check_cancelled, track_prompt
     from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
+    cfg = app.emergency_config(cfg, job['id'])
     try:
         if not job['segments']:
             job['status']='planning_story';app.write_state(job)
             plan=plan_film(cfg,job,originals)
+            check_cancelled(cfg)
             job.update(segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'])
             if not job['request'].get('project_name'):job['title']=plan['title']
             app.write_state(job)
@@ -917,12 +923,15 @@ def worker(job,cfg,originals,song=None,drive=None):
             if entry and entry.get('status',{}).get('status_str')=='error':entry=None;seg.pop('prompt_id',None)
             if not entry or not entry.get('status',{}).get('completed'):
                 if not seg.get('prompt_id'):seg['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
+                else:track_prompt(cfg,seg['prompt_id'])
                 entry=app.wait_generation(cfg,seg['prompt_id'],job)
+            check_cancelled(cfg)
             app.backend.comfy_download(cfg,app.video_info(entry),work/f'{i:02d}_raw_v1.mp4')
             part=work/f'{i:02d}_part_v1.mp4'
             if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
             else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
+            check_cancelled(cfg)
             seg['status']='done'
             guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
             app.write_state(job)
@@ -931,6 +940,7 @@ def worker(job,cfg,originals,song=None,drive=None):
         job['status']='assembling';app.write_state(job);masters.preserve_current(job,work)
         pending=work/'final_pending.mp4'
         app.assemble([app.adopted_part(job,s) for s in job['segments']],None,pending,job['duration'],job['output_size'])
+        check_cancelled(cfg)
         master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume')
         pending.replace(work/'final.mp4');job['current_master']=master['version']
         try:app.export_finished_video(job,work/'final.mp4')
@@ -945,10 +955,21 @@ def worker(job,cfg,originals,song=None,drive=None):
                 job['face_refine_error'] = str(error)
         if job['request'].get('upscale_1080p'):
             nv_upscale.render_version(app, cfg, job)
+        check_cancelled(cfg)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
     except Exception as error:
-        traceback.print_exc()
-        job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
+        if isinstance(error, InterruptedError) or job['id'] in app.CANCEL:
+            current = job.get('current', 0)
+            if type(current) is int and 1 <= current <= len(job['segments']):
+                segment = job['segments'][current-1]
+                if segment.get('status') != 'done':
+                    segment['status'] = 'waiting'
+                    segment.pop('prompt_id', None)
+            job.update(status='cancelled', error=str(error))
+        else:
+            traceback.print_exc()
+            job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}')
+        app.write_state(job)
     finally:
         app.CANCEL.discard(job['id']);app.GPU_LOCK.release()

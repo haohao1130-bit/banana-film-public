@@ -112,6 +112,7 @@ def start_finished(app, job_id, version=None):
 
 
 def finished_worker(app, cfg, job, source_row):
+    cfg = app.emergency_config(cfg, job['id'])
     try:
         master = render(app, cfg, job, source_row=source_row, resolution=UPGRADE_RESOLUTION)
         refine_upscaled(app, cfg, job, master)
