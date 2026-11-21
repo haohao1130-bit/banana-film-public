@@ -20,7 +20,9 @@ os.environ.setdefault("BANANA_PORT", "8193")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app
+from banana_mv import comfy as comfy_client
 from banana_mv.room_switch import same_origin_control
+from film_v2.live_progress import LiveProgress
 
 # Only this Film entrypoint overrides its shared storage. Keep the public
 # backend's original DATA/library default for MV and legacy deployments.
@@ -55,6 +57,7 @@ SERVER_INSTANCE = uuid.uuid4().hex
 
 
 RESTART_LAUNCHER = os.environ.get("BANANA_FILM_RESTART_LAUNCHER")
+LIVE_PROGRESS = LiveProgress()
 
 
 class Handler(colab.Handler):
@@ -100,7 +103,7 @@ class Handler(colab.Handler):
             marker = "</body>"
             assert html.count(marker) == 1
             html = html.replace(
-                marker, '<script defer src="/film-5070-build.js"></script>' + marker)
+                marker, '<script defer src="/film-5070-build.js?v=live-progress"></script>' + marker)
             data = html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -112,6 +115,11 @@ class Handler(colab.Handler):
             return
         if path == "/film-5070-build.js":
             return self.send_file(BUILD_SCRIPT)
+        if path == "/api/film/progress":
+            snapshot = LIVE_PROGRESS.snapshot()
+            snapshot["busy"] = app.GPU_LOCK.locked()
+            snapshot.pop("prompt_id", None)
+            return self.send_json(snapshot)
         if path == "/api/health":
             return self.send_json({
                 "service": "banana-film",
@@ -152,6 +160,8 @@ def main():
     print(
         f"BANANA FILM / COLAB-PARITY on http://127.0.0.1:{app.backend.PORT}",
         flush=True)
+    comfy_client.on_prompt_queued = LIVE_PROGRESS.queued
+    LIVE_PROGRESS.start(app.backend.load_config()["comfy_url"], comfy_client.CLIENT_ID)
     with ThreadingHTTPServer(("127.0.0.1", app.backend.PORT), Handler) as server:
         server.serve_forever()
 

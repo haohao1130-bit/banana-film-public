@@ -1,4 +1,4 @@
-"""Banana's small ComfyUI HTTP client; no websocket or frontend dependency."""
+"""Banana's small ComfyUI HTTP client."""
 import json
 import shutil
 import time
@@ -8,6 +8,7 @@ import urllib.request
 import uuid
 
 CLIENT_ID = 'banana-' + uuid.uuid4().hex
+on_prompt_queued = None
 
 
 def comfy(cfg, path, payload=None, timeout=60):
@@ -39,6 +40,8 @@ def queue_prompt(cfg, graph):
     result = comfy(cfg, '/prompt', {'prompt': graph, 'client_id': CLIENT_ID})
     if result.get('error') or not result.get('prompt_id'):
         raise RuntimeError('ComfyUI 拒絕工作流：' + json.dumps(result, ensure_ascii=False)[:4000])
+    if on_prompt_queued is not None:
+        on_prompt_queued(result['prompt_id'], graph)
     return result['prompt_id']
 
 

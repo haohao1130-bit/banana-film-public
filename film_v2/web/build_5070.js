@@ -75,6 +75,70 @@
 })();
 
 (function () {
+  const transport = document.getElementById('progress')?.closest('.transport');
+  if (!transport) return;
+  const panel = document.createElement('details');
+  panel.innerHTML = '<summary>ComfyUI 即時進度</summary>'
+    + '<p class="muted" data-stage role="status"></p>'
+    + '<progress aria-label="目前節點進度" hidden></progress>'
+    + '<p class="muted" data-count hidden></p>';
+  transport.after(panel);
+  const stage = panel.querySelector('[data-stage]');
+  const bar = panel.querySelector('progress');
+  const count = panel.querySelector('[data-count]');
+  let timer, polling = false;
+
+  function show(message, value, max, unit, speed) {
+    if (stage.textContent !== message) stage.textContent = message;
+    bar.hidden = count.hidden = !(max > 0);
+    if (!bar.hidden) {
+      bar.max = max;
+      bar.value = value;
+      count.textContent = value + ' / ' + max + ' ' + unit
+        + (speed ? ' · ' + speed + ' 秒／' + unit : '');
+    }
+  }
+
+  async function refresh() {
+    if (!panel.open || polling) return;
+    polling = true;
+    try {
+      const response = await fetch('/api/film/progress', {cache: 'no-store'});
+      if (!response.ok) throw Error(response.status);
+      const task = await response.json();
+      if (task.connection !== 'connected') {
+        show(task.connection === 'unavailable' ? '目前的 Python 無法讀取即時事件。' : '等待 ComfyUI 連線…');
+      } else if (!task.busy) {
+        show('廚房待命');
+      } else if (task.state === 'finished') {
+        show('ComfyUI 節點已完成，廚房正在處理結果。');
+      } else if (task.state === 'failed' || task.state === 'interrupted') {
+        show(task.state === 'failed' ? 'ComfyUI 節點失敗，請查看作品狀態。' : 'ComfyUI 節點已中斷。');
+      } else if (task.node) {
+        const node = task.node;
+        const label = node === 'TextGenerate' ? '9B 寫稿'
+          : /sampler/i.test(node) ? 'H3 影片採樣'
+          : /VAEDecode/i.test(node) ? 'VAE 解碼' : node;
+        const unit = node === 'TextGenerate' ? 'token' : '步';
+        show(label, task.value, task.max, unit, task.seconds_per_unit);
+      } else {
+        show(task.state === 'queued' ? 'ComfyUI 排隊中…' : '等候節點回報…');
+      }
+    } catch (_) {
+      show('正在重新連線到廚房…');
+    } finally {
+      polling = false;
+      if (panel.open) timer = setTimeout(refresh, 1000);
+    }
+  }
+
+  panel.addEventListener('toggle', () => {
+    clearTimeout(timer);
+    void refresh();
+  });
+})();
+
+(function () {
  const button = Array.from(document.querySelectorAll('header button')).find(b => b.textContent === '切換至煉丹室（MV）');
  if (!button) return;
  let switching = false;
