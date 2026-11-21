@@ -45,6 +45,18 @@ def load_config():
     return cfg
 
 
+def project_config(request):
+    cfg = load_config()
+    if 'rewriter_thinking' in request:
+        thinking = request['rewriter_thinking']
+        if not isinstance(thinking, bool):
+            raise ValueError('9B 思考模式必須為勾選值。')
+        cfg['rewriter']['thinking'] = thinking
+        if thinking:
+            cfg['rewriter']['max_length'] = 16384
+    return cfg
+
+
 def safe_child(root, relative):
     root = Path(root).resolve()
     child = (root/relative).resolve()
@@ -148,6 +160,12 @@ def upload_comfy_image(cfg, name, data, content_type):
 def build_rewrite_graph(cfg, system, parts, job_id):
     """Use ComfyUI's native TextGenerate contract with the existing 9B settings."""
     rw = cfg['rewriter']
+    if rw['thinking']:
+        system += (
+            '\n\nKeep <think> concise. Plan once, then close with </think> and write '
+            'the complete requested output. Do not draft, count words, or repeatedly '
+            'recheck the instructions inside <think>.'
+        )
     contents = ''.join(value if kind == 'text' else '<|vision_start|><|image_pad|><|vision_end|>'
                        for kind, value in parts)
     chat = (f'<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n'
@@ -180,6 +198,9 @@ def build_rewrite_graph(cfg, system, parts, job_id):
             inputs['image'] = batch
         graph['generate'] = {'class_type': 'TextGenerate', 'inputs': inputs}
         graph['result'] = {'class_type': 'PreviewAny', 'inputs': {'source': ['generate', 0]}}
+        if rw['thinking']:
+            graph['thinking_preview'] = {'class_type': 'PreviewAny',
+                                         'inputs': {'source': ['generate', 1]}}
         return graph, names
     except Exception:
         for name in names:
@@ -191,10 +212,18 @@ def rewrite_local(cfg, system, parts, job_id):
     graph, names = build_rewrite_graph(cfg, system, parts, job_id)
     entry = None
     try:
-        entry = wait_prompt(cfg, queue_prompt(cfg, graph))
+        prompt_id = queue_prompt(cfg, graph)
+        entry = wait_prompt(cfg, prompt_id)
         values = entry.get('outputs', {}).get('result', {}).get('text', [])
         text = values if isinstance(values, str) else ''.join(values)
         if not text.strip():
+            if 'thinking_preview' in graph:
+                outputs = entry.get('outputs', {})
+                thinking = outputs.get('thinking_preview', {}).get('text')
+                if isinstance(thinking, (list, tuple)):
+                    thinking = ''.join(thinking)
+                status = f'{len(thinking.strip())} 字' if isinstance(thinking, str) else '讀不到預覽欄位'
+                raise ValueError(f'本地 9B 改寫回傳空白。思考端：{status}。ComfyUI 任務 ID：{prompt_id}')
             raise ValueError('本地 9B 改寫回傳空白。')
         return text.strip()
     finally:
