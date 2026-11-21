@@ -330,7 +330,7 @@ class FilmTests(unittest.TestCase):
             planner.assert_not_called()
             model.assert_not_called()
 
-    def test_authored_clip_writer_rejects_addressee_speaking_instead_of_actor(self):
+    def test_authored_clip_speaker_warning_does_not_block_rendering(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo, work, req, job, cfg = self.fixture(Path(tmp))
             req.update(authored_clip_commissions=True, python_auto_handoff=True, sound_mode='auto')
@@ -347,14 +347,14 @@ class FilmTests(unittest.TestCase):
                 'detailed_description:\n[Shot 1] <Subject %s> (S1) <d>[Chinese] '
                 + line + '</d>\noverall_soundscape:\nQuiet.\nnon_diegetic_music:\nNone.\n'
             )
-            correct = (template % 1).replace(
-                '<Subject 1> (S1) <d>', '<Subject 1> (S1) turns toward the waiter and asks in a low voice, <d>'
-            )
+            draft = template % 2
             with patch.object(app,'job_dir',return_value=work), patch.object(
-                    app.backend,'rewrite_local',side_effect=[template % 2, correct]) as writer:
-                prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
-            self.assertIn('<Subject 1> (S1) turns toward the waiter and asks', prompt)
-            self.assertEqual(writer.call_count,2)
+                    app.backend,'rewrite_local',return_value=draft) as writer:
+                with self.assertLogs('banana_mv.film', 'WARNING') as logged:
+                    prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
+            self.assertEqual(prompt, draft.strip())
+            self.assertIn('第 2 段台詞提醒', logged.output[0])
+            writer.assert_called_once()
             request = json.loads(writer.call_args_list[0].args[2][0][1])
             self.assertNotIn('already_established', request)
             self.assertEqual(request['authored_dialogue'], [

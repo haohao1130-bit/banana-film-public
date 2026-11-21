@@ -111,7 +111,7 @@ def validate_authored_dialogue(prompt, locks):
                 references.setdefault(subject[1], set()).update(found)
         elif picture:
             references.setdefault(picture[2], set()).add(f'<Picture {picture[1]}>')
-    shots = prompt.split('detailed_description:', 1)[1].split('overall_soundscape:', 1)[0]
+    shots = prompt.partition('detailed_description:')[2].split('overall_soundscape:', 1)[0]
     actual = Counter()
     expected_lines = {_line_key(lock['line']) for lock in locks}
     for line in _VOICE_LINE.finditer(shots):

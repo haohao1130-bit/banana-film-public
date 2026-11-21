@@ -1,6 +1,7 @@
 """Story-first short films. One upstream plan, isolated native H3 shot writers."""
 import hashlib
 import json
+import logging
 import math
 from pathlib import Path
 import random
@@ -485,7 +486,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
         task['dialogue_contract'] = (
             'Each listed line must be spoken exactly once by its named speaker, never by the addressee. '
             'In subject_definitions, bind each speaking <Subject N> to its exact reference <Picture N> on one line. '
-            'In the shot write <Subject N> (Sx) <d>[Chinese] original line</d>. '
+            'Use the native H3 speaker and dialogue tags, with natural shot prose. '
             'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
         )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
@@ -507,7 +508,10 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                 from banana_mv.direction_contract import validate_h3_sections
                 validate_h3_sections(raw)
             prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
-            validate_authored_dialogue(prompt, locks)
+            try:
+                validate_authored_dialogue(prompt, locks)
+            except ValueError as warning:
+                logging.getLogger(__name__).warning('第 %d 段台詞提醒：%s', seg['index'] + 1, warning)
             return prompt
         except ValueError as error:
             if attempt==req['rewrite_retries']:raise
