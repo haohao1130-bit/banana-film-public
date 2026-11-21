@@ -452,6 +452,8 @@ def plan_film(cfg,job,originals):
 
 
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
+    from banana_mv.direction_contract import authored_dialogue, validate_authored_dialogue
+
     req=job['request'];offset=int(bool(tail));brief=seg['director_plan']['event']
     brief=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',brief)
     fixed=seg.get('fixed_reference_settings') or job.get('shared_setup','')
@@ -466,7 +468,8 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     task['clip_opening']={'position':'first' if seg['index']==0 else 'continuation',
         'instruction':('Begin the commissioned film opening.' if seg['index']==0 else
                        'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
-    if seg['index'] > 0 and req.get('python_auto_handoff'):
+    authored_clip = req.get('authored_clip_commissions', False)
+    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip:
         previous = job['segments'][seg['index'] - 1]['director_plan']['event'].splitlines()[-1]
         task['already_established'] = re.sub(r'<Picture (\d+)>',
             lambda m:f'<Picture {int(m[1])+offset}>',previous)
@@ -476,6 +479,15 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                        'Preserve any pause or resolution explicitly required by the local commission.')}
     if fixed:task['fixed_reference_settings']=fixed
     task['adaptation']='cinematography only: freely choose shots, camera moves, coverage and lighting; current_clip_commission events, actors, dialogue and outgoing state are immutable'
+    locks = authored_dialogue(brief, fixed) if authored_clip and not correction and req['sound_mode'] != 'ambient' else []
+    if locks:
+        task['authored_dialogue'] = locks
+        task['dialogue_contract'] = (
+            'Each listed line must be spoken exactly once by its named speaker, never by the addressee. '
+            'In subject_definitions, bind each speaking <Subject N> to its exact reference <Picture N> on one line. '
+            'In the shot write <Subject N> (Sx) <d>[Chinese] original line</d>. '
+            'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
+        )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
     if req.get('mode')=='chain5' and seg['index']>0:
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
@@ -494,7 +506,9 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
             if req.get('h3_validation_version')==1:
                 from banana_mv.direction_contract import validate_h3_sections
                 validate_h3_sections(raw)
-            return validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+            prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+            validate_authored_dialogue(prompt, locks)
+            return prompt
         except ValueError as error:
             if attempt==req['rewrite_retries']:raise
             text+='\nReturn corrected complete prompt. '+str(error)

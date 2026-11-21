@@ -330,6 +330,34 @@ class FilmTests(unittest.TestCase):
             planner.assert_not_called()
             model.assert_not_called()
 
+    def test_authored_clip_writer_rejects_addressee_speaking_instead_of_actor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            photo, work, req, job, cfg = self.fixture(Path(tmp))
+            req.update(authored_clip_commissions=True, python_auto_handoff=True, sound_mode='auto')
+            shared = '<Picture 1> = 貓又老闆\n<Picture 2> = 小狐'
+            line = '小狐，三號桌的烤魚好了。'
+            before = {'director_plan': {'event': '小狐問：「今天會有大客人嗎？」'}}
+            current = {'index': 1, 'seconds': 10,
+                       'director_plan': {'event': f'貓又老闆對小狐提醒：「{line}」'}}
+            job.update(segments=[before, current], shared_setup=shared)
+            template = (
+                'subject_definitions:\n<Subject 1> is the boss from <Picture 2>.\n'
+                '<Subject 2> is the fox from <Picture 3>.\n'
+                'summary:\nA tray of fish.\nretention_analysis:\nKeep both characters.\n'
+                'detailed_description:\n[Shot 1] <Subject %s> (S1) <d>[Chinese] '
+                + line + '</d>\noverall_soundscape:\nQuiet.\nnon_diegetic_music:\nNone.\n'
+            )
+            with patch.object(app,'job_dir',return_value=work), patch.object(
+                    app.backend,'rewrite_local',side_effect=[template % 2, template % 1]) as writer:
+                prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
+            self.assertIn('<Subject 1> (S1) <d>', prompt)
+            self.assertEqual(writer.call_count,2)
+            request = json.loads(writer.call_args_list[0].args[2][0][1])
+            self.assertNotIn('already_established', request)
+            self.assertEqual(request['authored_dialogue'], [
+                {'speaker':'貓又老闆','reference':'<Picture 2>','line':line},
+            ])
+
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'),'ffmpeg required')
 class NativeMediaTests(unittest.TestCase):

@@ -48,7 +48,7 @@
     },
     {
       "path": "banana_mv/direction_contract.py",
-      "sha256": "b88c869f8ffd4865865336fbb57ff6a304487efb8225c1e8f5fa45db6cbd88f1"
+      "sha256": "9c8b62177250e57e624fb7fa4f724641aeca7e84d4211a053ff8d1a34daee64c"
     },
     {
       "path": "banana_mv/director.py",
@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "cb1cb66cf46af9f798581589fd640c18841f2116fe78dde10552d921e644c991"
+      "sha256": "2c31395fd982c3305f0d72b33914273abfe96d5e96e0e76a6fee2c78394bea75"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -256,7 +256,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "e0e70dc652d0c08a89beeb8484a8977f0f6b007819e08af4793004d0759f2f7d"
+      "sha256": "c1b4efd2042856fa775d6d87eb7175105647a02b9a0414cdd4d33fe7f05ca67c"
     },
     {
       "path": "tests/test_film_dynamic.py",
