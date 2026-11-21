@@ -21,16 +21,28 @@ def launcher(target, port):
     return next((path for path in candidates if path.is_file()), None)
 
 
+def same_origin_control(headers, control):
+    """Check browser control requests against the direct or forwarded host."""
+    try:
+        origin = urlsplit(headers.get('Origin', ''))
+    except ValueError:
+        return False
+    hosts = [headers.get(name, '').casefold() for name in ('Host', 'X-Forwarded-Host')]
+    return (
+        origin.scheme in ('http', 'https')
+        and bool(origin.netloc)
+        and origin.netloc.casefold() in hosts
+        and not (origin.path or origin.query or origin.fragment)
+        and headers.get('Sec-Fetch-Site', 'same-origin') in ('same-origin', 'none')
+        and headers.get('X-Banana-Control') == control
+    )
+
+
 def switch(handler, target, backend, gpu_lock):
     path = launcher(target, backend.PORT)
     if not path:
         return handler.send_json({'ok': False, 'error': '找不到另一套 5070 桌面啟動器。'}, 503)
-    origin = urlsplit(handler.headers.get('Origin', ''))
-    hosts = [handler.headers.get(name, '').casefold() for name in ('Host', 'X-Forwarded-Host')]
-    if (origin.scheme not in ('http', 'https') or not origin.netloc
-            or origin.netloc.casefold() not in hosts
-            or handler.headers.get('Sec-Fetch-Site', 'same-origin') not in ('same-origin', 'none')
-            or handler.headers.get('X-Banana-Control') != '5070-room-switch'):
+    if not same_origin_control(handler.headers, '5070-room-switch'):
         return handler.send_json({'ok': False, 'error': '切換請求來源無效。'}, 403)
     if not gpu_lock.acquire(blocking=False):
         return handler.send_json({'ok': False, 'error': '作品處理中，請等完成再切換。'}, 409)

@@ -20,6 +20,7 @@ os.environ.setdefault("BANANA_PORT", "8193")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app
+from banana_mv.room_switch import same_origin_control
 
 # Only this Film entrypoint overrides its shared storage. Keep the public
 # backend's original DATA/library default for MV and legacy deployments.
@@ -65,9 +66,7 @@ class Handler(colab.Handler):
             return switch(self, 'mv', app.backend, app.GPU_LOCK)
         if self.path != "/api/film/restart":
             return super().do_POST()
-        origin = self.headers.get("Origin")
-        expected_origin = f"http://127.0.0.1:{app.backend.PORT}"
-        if origin != expected_origin or self.headers.get("X-Banana-Control") != "film-restart":
+        if not same_origin_control(self.headers, "film-restart"):
             return self.send_error(403)
         if not RESTART_LAUNCHER or not Path(RESTART_LAUNCHER).is_file():
             return self.send_error(503, "Restart launcher unavailable")
