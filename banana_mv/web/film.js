@@ -139,7 +139,7 @@ $('form').onsubmit=async event=>{event.preventDefault();const direct=event.submi
 const customDuration=chosenDuration==='custom'?Number($('custom-seconds').value):null;
 if(chosenDuration==='custom'&&(!Number.isFinite(customDuration)||customDuration<6||customDuration>300))throw Error('自訂全片秒數需介於 6–300 秒。');
 const body={face_refine:$('face_refine').checked,upscale_1080p:$('upscale_1080p').checked,face_refine_reference:Number($('face_refine_reference').value),face_refine_reference_2:$('face_refine_reference_2').value ? Number($('face_refine_reference_2').value) : null,script_review:!direct,project_name:$('project-name').value,prompt:$('prompt').value,image_slots:slots,
-auto_director:$('auto-director').checked,genres:$('auto-director').checked?genreKeys.filter(k=>$('genre-'+k).checked):[],
+auto_director:$('auto-director').checked,rewriter_thinking:$('auto-director').checked&&$('rewriter_thinking').checked,genres:$('auto-director').checked?genreKeys.filter(k=>$('genre-'+k).checked):[],
 duration_preference:chosenDuration==='prompt'?'prompt':chosenDuration==='custom'?'custom':'selector',
 max_seconds:chosenDuration==='prompt'?300:chosenDuration==='custom'?customDuration:Number(chosenDuration),segment_seconds:$('segment').value==='auto'?'auto':Number($('segment').value),sampling_steps:samplingSteps,visual_style:$('visual-style').value,sound_mode:$('sound-mode').value,mode:modeAtSubmit,aspect:$('aspect').value,width:widths[$('resolution').value][$('aspect').value],intensity:$('intensity').value,seed:$('seed').value,kitchen_attention:$('kitchen').checked,sparse_attention:$('sparse').checked,motion_lora:$('motion').checked,rewrite_retries:2};const job=await api(direct?'api/film/start':'api/film/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});active=job.id;localStorage.setItem('banana_film_job',active);renderJob(job);if(job.request?.mode!==modeAtSubmit)throw Error(`已建立作品 ${job.id}，但接續模式不一致：送出 ${modeAtSubmit}，後端回傳 ${job.request?.mode||'未提供'}。請勿直接開拍，先檢查設定。`);await poll();}catch(error){busy(false);$('status').textContent=error.message;}};
 
@@ -168,6 +168,7 @@ $('script-save').onclick=()=>scriptAction('script');$('script-render').onclick=(
 
 function updateFilmControls(){
  const auto=$('auto-director').checked;
+ $('rewriter_thinking').disabled=!auto;
  $('manual-h3-help').hidden=auto;
  for(const genre of genreKeys)$('genre-'+genre).disabled=!auto;
  const custom=$('max-seconds').value==='custom';

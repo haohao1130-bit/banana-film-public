@@ -735,7 +735,7 @@ def resume(job_id,rewrite_retries=None):
         if retries is not None:job['request']['rewrite_retries']=retries
         if job['status'] not in ('error','cancelled','interrupted'):
             raise ValueError('這個專案沒有待續跑的失敗或中斷工作。')
-        cfg=copy.deepcopy(backend.load_config())
+        cfg=backend.project_config(job['request'])
         queue=backend.comfy(cfg,'/queue')
         if queue.get('queue_running') or queue.get('queue_pending'):
             raise ValueError('ComfyUI 仍在執行工作，請等佇列清空再續跑。')
