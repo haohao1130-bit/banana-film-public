@@ -48,7 +48,7 @@
     },
     {
       "path": "banana_mv/direction_contract.py",
-      "sha256": "9c8b62177250e57e624fb7fa4f724641aeca7e84d4211a053ff8d1a34daee64c"
+      "sha256": "ef3a9a7b8938a61ad5168cc16ea41d33cb614f90cb8c39559a2b00cdaf5a708b"
     },
     {
       "path": "banana_mv/director.py",
@@ -256,7 +256,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "c1b4efd2042856fa775d6d87eb7175105647a02b9a0414cdd4d33fe7f05ca67c"
+      "sha256": "4f50202da9dca67341a0ddbe742a1d8dfde67e4dedd67cf95323d8f6f7b94275"
     },
     {
       "path": "tests/test_film_dynamic.py",

@@ -347,10 +347,13 @@ class FilmTests(unittest.TestCase):
                 'detailed_description:\n[Shot 1] <Subject %s> (S1) <d>[Chinese] '
                 + line + '</d>\noverall_soundscape:\nQuiet.\nnon_diegetic_music:\nNone.\n'
             )
+            correct = (template % 1).replace(
+                '<Subject 1> (S1) <d>', '<Subject 1> (S1) turns toward the waiter and asks in a low voice, <d>'
+            )
             with patch.object(app,'job_dir',return_value=work), patch.object(
-                    app.backend,'rewrite_local',side_effect=[template % 2, template % 1]) as writer:
+                    app.backend,'rewrite_local',side_effect=[template % 2, correct]) as writer:
                 prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
-            self.assertIn('<Subject 1> (S1) <d>', prompt)
+            self.assertIn('<Subject 1> (S1) turns toward the waiter and asks', prompt)
             self.assertEqual(writer.call_count,2)
             request = json.loads(writer.call_args_list[0].args[2][0][1])
             self.assertNotIn('already_established', request)

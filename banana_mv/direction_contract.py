@@ -42,7 +42,13 @@ _QUOTED_LINE = re.compile(r'「([^」\n]+)」|『([^』\n]+)』')
 _VOICE_CUE = re.compile(
     r'(?:說|問|喊|吼|答|提醒|回應|低語|嘀咕|抱怨|忍笑|鎮定|旁白|開口)[^：:\n，,。！？；;]{0,8}[：:]\s*$'
 )
-_SPEAKER_CUE = re.compile(r'<Subject (\d+)>\s*\(S\d+\)\s*$', re.I)
+_SPEAKER_CUE = re.compile(r'<Subject (\d+)>\s*\(S\d+\)\s*[:：,，]?\s*$', re.I)
+_SPEECH_VERB = re.compile(
+    r'\b(?:says?|asks?|replies|reply|answers?|whispers?|calls?|shouts?|'
+    r'announces?|murmurs?|mutters?|adds?|responds?)\b', re.I
+)
+_SUBJECT = re.compile(r'<Subject (\d+)>', re.I)
+_SENTENCE_BREAK = re.compile(r'<\/d>|\[Shot \d+\]|[。！？!?]|\.(?=\s|$)|\n', re.I)
 _VOICE_LINE = re.compile(r'<d>\s*(?:\[[^\]\n]+\]\s*)?(.*?)\s*</d>', re.S)
 
 
@@ -74,7 +80,21 @@ def authored_dialogue(brief, shared):
 
 
 def _line_key(line):
-    return re.sub(r'\s+', '', unicodedata.normalize('NFKC', line)).strip('。.!?…')
+    return ''.join(char for char in unicodedata.normalize('NFKC', line)
+                   if not char.isspace() and not unicodedata.category(char).startswith('P'))
+
+
+def _dialogue_subject(context):
+    # Prefer explicit speech attribution over a nearby tag on the addressee.
+    sentence = _SENTENCE_BREAK.split(context.rstrip())[-1]
+    verbs = list(_SPEECH_VERB.finditer(sentence))
+    if verbs:
+        actors = set(_SUBJECT.findall(sentence[:verbs[-1].start()]))
+        if len(actors) == 1:
+            return next(iter(actors))
+        return None
+    cue = _SPEAKER_CUE.search(sentence)
+    return cue[1] if cue else None
 
 
 def validate_authored_dialogue(prompt, locks):
@@ -98,8 +118,8 @@ def validate_authored_dialogue(prompt, locks):
         key = _line_key(line[1])
         if key not in expected_lines:
             continue
-        cue = _SPEAKER_CUE.search(shots[max(0, line.start() - 100):line.start()])
-        found = references.get(cue[1], set()) if cue else set()
+        subject = _dialogue_subject(shots[:line.start()])
+        found = references.get(subject, set())
         actual[key, next(iter(found)) if len(found) == 1 else None] += 1
     for lock in locks:
         key = _line_key(lock['line'])
