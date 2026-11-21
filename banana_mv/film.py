@@ -564,6 +564,9 @@ def declared_film_seconds(story):
 
 def start(req):
     req=dict(req)
+    sampling_steps=req.get('sampling_steps',8)
+    if type(sampling_steps) is not int or sampling_steps not in (6,8):
+        raise ValueError('採樣步數僅支援 6 或 8。')
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
     selected=req.get('max_seconds',300)
@@ -589,7 +592,7 @@ def start(req):
                max_seconds=min(300.0,float(maximum)+tolerance),segment_seconds=float(chunk),
                ten_second_delivery_v2=(float(chunk)==10.0),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
-               sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
+               sampling_steps=sampling_steps,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','chain5') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
     req.setdefault('mode','chain5');req.setdefault('intensity','normal')
