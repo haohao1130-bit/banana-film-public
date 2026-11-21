@@ -56,11 +56,11 @@
     },
     {
       "path": "banana_mv/face_refine.py",
-      "sha256": "3adb92ca20d5e29a7439405ac524454d5648715a9700081975005a1a093905c4"
+      "sha256": "cb4515e63bf29bf00875993e89a8923788459169853d79c686ffef20dd49aa8c"
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "877ec5660d2ff8a135bc5b61a1eccf56861235113c95bfda8a4843cc9aea5eea"
+      "sha256": "cb1cb66cf46af9f798581589fd640c18841f2116fe78dde10552d921e644c991"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -104,7 +104,7 @@
     },
     {
       "path": "banana_mv/nv_upscale.py",
-      "sha256": "6921b6262bcda6dbe704662a2eac144656f8f625358fd7aadb91d7a8a2df5dc1"
+      "sha256": "469b5c8eef3fede1d9b37b613ff3eb997257fd425430bda35291b939d0634525"
     },
     {
       "path": "banana_mv/prompt_quality.py",
@@ -116,7 +116,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "ad2b4c555c371d7e94b36730bc7af467ab0314db9ed05e7ed6f1b4e67570e0f2"
+      "sha256": "f388230b0ae428c7cfa0c75570cdd698e7be3501f76bffba59e083471562b1dd"
     },
     {
       "path": "banana_mv/services.py",
@@ -148,11 +148,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "12fcb4c2fdb7efae3b8b587c6cd9b40f4dbe9dcfdb80629d8bb7b673ac66cffd"
+      "sha256": "2b03197c1aae89e98821135e690042fb65c33d32f863c4ba546277ee409a05ce"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "eb8c43d27c9baa34e3e65978ef9b05d6ca7deaafc0130dbd717785418a639f0b"
+      "sha256": "5c31010c1626bf9d370799ab44c22167b17f9b3a165a8614f6eea6738c2dc7ec"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -164,7 +164,7 @@
     },
     {
       "path": "banana_mv/web/kitchen.js",
-      "sha256": "ac8988c5fa48591483248c8e453573c4f8ca6953dc55fc285bab6928a3fa3abf"
+      "sha256": "886c64851f635db5a49b7cfcf3424e10032269c07552340157a303a185f87a63"
     },
     {
       "path": "docs/clip_review.md",

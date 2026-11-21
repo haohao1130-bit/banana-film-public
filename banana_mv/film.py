@@ -628,13 +628,15 @@ def start(req):
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
     if not isinstance(req.get('upscale_1080p', False), bool):
-        raise ValueError('1080P 放大設定必須是布林值。')
+        raise ValueError('升頻設定必須是布林值。')
+    if type(req.get('upscale_resolution', 1080)) is not int or req.get('upscale_resolution', 1080) not in (1080, 1440):
+        raise ValueError('升頻解析度必須為 1080P 或 1440P。')
     if not isinstance(req.get('face_refine', False), bool):
         raise ValueError('遠景救臉設定必須為布林值。')
     if req.get('face_refine'):
         from banana_mv.face_refine import references, template
         selected = references(req, len(rows))
-        template(app, cfg, dual=len(selected) == 2)
+        template(app, cfg, dual=len(selected) == 2, distant_only=req.get('upscale_resolution') == 1440)
     map_story(req,story,len(rows))
     manual_plan=None
     from banana_mv.film_act import split_act_commissions, split_act_native, split_clip_commissions
@@ -712,7 +714,8 @@ def start(req):
         for i,p in enumerate(originals):
             target=source_dir/f'image_{i}{p.suffix.lower()}';shutil.copyfile(p,target);paths.append(str(target.relative_to(work)))
         job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,
-             'face_refine_chain': bool(req.get('face_refine') and req['mode'] in ('chain', 'chain5')),
+             'face_refine_chain': bool(req.get('face_refine') and req['mode'] in ('chain', 'chain5')
+                                       and not (req.get('upscale_1080p') and req.get('upscale_resolution') == 1440)),
              'duration':manual_plan['duration'] if manual_plan else 0,
              'segments':manual_plan['segments'] if manual_plan else [],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
              'images_comfy':[r['comfy_name'] for r in rows],'sources':{'images':paths},
@@ -918,14 +921,15 @@ def worker(job,cfg,originals,song=None,drive=None):
         pending.replace(work/'final.mp4');job['current_master']=master['version']
         try:app.export_finished_video(job,work/'final.mp4')
         except OSError as error:job['export_error']=str(error)
-        if job['request'].get('face_refine') and job['id'] not in app.CANCEL:
+        from banana_mv import nv_upscale
+        if (job['request'].get('face_refine') and job['id'] not in app.CANCEL
+                and not nv_upscale.face_after_upscale(job['request'])):
             try:
                 parts = [app.adopted_part(job, segment) for segment in job['segments']]
                 face_refine.render_version(app, cfg, job, parts, originals)
             except Exception as error:
                 job['face_refine_error'] = str(error)
         if job['request'].get('upscale_1080p'):
-            from banana_mv import nv_upscale
             nv_upscale.render_version(app, cfg, job)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)

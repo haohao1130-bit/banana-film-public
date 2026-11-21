@@ -70,11 +70,11 @@ function render(job) {
   } else if (status === 'assembling') {
     stage='plating';heading='滿漢全席擺盤中';detail='每段已出鍋，正在剪接與合成原生影音。';
   } else if (status === 'upscaling_1080p') {
-    stage='upscaling';heading='蕉大師發功中';detail='光頭一閃，金焰全開。NV 正在升頻至 1080P…';
+    stage='upscaling';heading='蕉大師發功中';detail=job.upscale_resolution === 1440 ? 'NV 正在升頻至 2K…' : 'NV 正在升頻至 1080P…';
   } else if (status === 'done' && job.upscale_error) {
-    stage='banquet';heading='蕉大師收功';detail='升頻狀態請看 1080P 成品。原片已上桌。';
-  } else if (status === 'done' && (job.final_versions || []).some(v=>v.reason==='upscale_1080p'&&v.source_master===job.current_master)) {
-    stage='upscaled';heading='蕉大師收功';detail='1080P 已上桌，可以播放或下載。';
+    stage='banquet';heading='蕉大師收功';detail='升頻狀態請看升頻成品。原片已上桌。';
+  } else if (status === 'done' && (job.final_versions || []).some(v=>['upscale_1440p','upscale_1080p'].includes(v.reason)&&v.source_master===job.current_master)) {
+    stage='upscaled';heading='蕉大師收功';detail='升頻成品已上桌，可以播放或下載。';
   } else if (status === 'done' && segments.length && finished.length === segments.length && (job?.video || job?.final_video)) {
     stage='banquet';heading='滿漢全席上桌！';detail='蕉彌與蕉大師完成全部 ' + finished.length + ' 道菜，整部影片可享用！';
   } else if (status === 'error') {

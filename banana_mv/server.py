@@ -299,16 +299,18 @@ def video_info(entry):
     raise RuntimeError('生成已完成，但沒有找到影片輸出。')
 
 
-def export_finished_video(job,source,*,refined_version=None,upscaled_version=None):
+def export_finished_video(job,source,*,refined_version=None,upscaled_version=None,upscaled_resolution=1080,refined_resolution=None):
     """Keep the resumable project master and publish an atomic copy to the finished-video folder."""
     folder=Path(os.environ.get('BANANA_FINISHED_VIDEOS') or backend.DATA/'videos')
     folder.mkdir(parents=True,exist_ok=True)
     title=''.join(c for c in str(job.get('title') or 'Banana_MV') if c not in '<>:"/\\|?*' and ord(c)>=32).strip(' .')[:60] or 'Banana_MV'
     suffix=f'_v{job["current_master"]:03d}' if job.get('current_master') else ''
     if refined_version is not None:
+        if refined_resolution is not None:
+            suffix += f'_{refined_resolution}p'
         suffix += f'_face_refine_v{refined_version:03d}'
     if upscaled_version is not None:
-        suffix += f'_1080p_v{upscaled_version:03d}'
+        suffix += f'_{upscaled_resolution}p_v{upscaled_version:03d}'
     target=folder/f'{title}_{job["id"]}{suffix}.mp4'
     temp=target.with_name('.'+target.name+'.tmp')
     try:
