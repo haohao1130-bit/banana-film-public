@@ -1,5 +1,4 @@
 """Story-first short films. One upstream plan, isolated native H3 shot writers."""
-import copy
 import hashlib
 import json
 import math
@@ -564,7 +563,7 @@ def declared_film_seconds(story):
 
 
 def start(req):
-    cfg=copy.deepcopy(app.backend.load_config());req=dict(req)
+    req=dict(req)
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
     selected=req.get('max_seconds',300)
@@ -601,6 +600,9 @@ def start(req):
     req.setdefault('auto_director',True);req.setdefault('script_review',True)
     if not isinstance(req['auto_director'],bool) or not isinstance(req['script_review'],bool):
         raise ValueError('自動導演與劇本確認必須為勾選值。')
+    if not req['auto_director'] and req.get('rewriter_thinking') is True:
+        req['rewriter_thinking'] = False
+    cfg = app.backend.project_config(req)
     req['python_auto_handoff']=req['auto_director']
     req['duration_policy']='flexible' if req['auto_director'] else 'ceiling'
     genres=req.get('genres',[])
@@ -738,7 +740,7 @@ def save_script(job_id,draft,revision,render=False):
             plan=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),job['request'],len(job['images_comfy']))
         if any(s.get('prompt_id') or s.get('prompt') for s in job['segments']):
             raise ValueError('已有生成稿，請建立新作品而非覆寫劇本。')
-        cfg=copy.deepcopy(app.backend.load_config())
+        cfg=app.backend.project_config(job['request'])
         if render:
             queue=app.backend.comfy(cfg,'/queue')
             if queue.get('queue_running') or queue.get('queue_pending'):raise ValueError('ComfyUI 尚有工作，請稍後開拍。')
@@ -779,7 +781,7 @@ def revise_script(job_id,draft,revision,instruction):
             raise ValueError('原生 H3 手動模式不使用 9B 細修，請在劇本欄直接修改六段式全咒再儲存。')
         current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
         instruction=map_story(req,instruction,count)
-        cfg=copy.deepcopy(app.backend.load_config());originals,_,_=inputs(job,cfg)
+        cfg=app.backend.project_config(job['request']);originals,_,_=inputs(job,cfg)
         source={'original_story':map_story(req,req['prompt'],count),
                 'fixed_reference_settings':current['shared_setup'],
                 'current_script':{'title':current['title'],'segments':[

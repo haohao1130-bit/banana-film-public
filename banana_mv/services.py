@@ -3,6 +3,7 @@ import copy
 import io
 import urllib.request
 import json
+import logging
 import os
 import random
 import shutil
@@ -42,6 +43,18 @@ def load_config():
     for key in cfg['rewriter']:
         if key in saved.get('rewriter', {}):
             cfg['rewriter'][key] = saved['rewriter'][key]
+    return cfg
+
+
+def project_config(request):
+    cfg = load_config()
+    if 'rewriter_thinking' in request:
+        thinking = request['rewriter_thinking']
+        if not isinstance(thinking, bool):
+            raise ValueError('9B 思考模式必須為勾選值。')
+        cfg['rewriter']['thinking'] = thinking
+        if thinking:
+            cfg['rewriter']['max_length'] = 16384
     return cfg
 
 
@@ -148,6 +161,12 @@ def upload_comfy_image(cfg, name, data, content_type):
 def build_rewrite_graph(cfg, system, parts, job_id):
     """Use ComfyUI's native TextGenerate contract with the existing 9B settings."""
     rw = cfg['rewriter']
+    if rw['thinking']:
+        system += (
+            '\n\nKeep <think> concise. Plan once, then close with </think> and write '
+            'the complete requested output. Do not draft, count words, or repeatedly '
+            'recheck the instructions inside <think>.'
+        )
     contents = ''.join(value if kind == 'text' else '<|vision_start|><|image_pad|><|vision_end|>'
                        for kind, value in parts)
     chat = (f'<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n'
@@ -180,6 +199,9 @@ def build_rewrite_graph(cfg, system, parts, job_id):
             inputs['image'] = batch
         graph['generate'] = {'class_type': 'TextGenerate', 'inputs': inputs}
         graph['result'] = {'class_type': 'PreviewAny', 'inputs': {'source': ['generate', 0]}}
+        if rw['thinking']:
+            graph['thinking_preview'] = {'class_type': 'PreviewAny',
+                                         'inputs': {'source': ['generate', 1]}}
         return graph, names
     except Exception:
         for name in names:
@@ -188,15 +210,42 @@ def build_rewrite_graph(cfg, system, parts, job_id):
 
 
 def rewrite_local(cfg, system, parts, job_id):
+    text, thinking, prompt_id = _rewrite_once(cfg, system, parts, job_id)
+    if text:
+        return text
+    message = '本地 9B 改寫回傳空白。'
+    if cfg['rewriter']['thinking']:
+        status = f'{len(thinking)} 字' if thinking is not None else '讀不到預覽欄位'
+        message += f'正式稿端：空白；思考端：{status}。ComfyUI 任務 ID：{prompt_id}'
+        if thinking:
+            logging.getLogger(__name__).warning('%s 將關閉思考重試一次。', message)
+            retry_cfg = dict(cfg, rewriter=dict(cfg['rewriter'], thinking=False,
+                                               max_length=DEFAULTS['rewriter']['max_length']))
+            text, _, retry_id = _rewrite_once(retry_cfg, system, parts, job_id)
+            if text:
+                return text
+            message += f'。關閉思考重試後仍為空白。重試任務 ID：{retry_id}'
+    raise ValueError(message)
+
+
+def _preview_text(outputs, node):
+    preview = outputs.get(node)
+    values = preview.get('text') if isinstance(preview, dict) else None
+    if isinstance(values, str):
+        return values.strip()
+    if isinstance(values, (list, tuple)) and all(isinstance(value, str) for value in values):
+        return ''.join(values).strip()
+    return None
+
+
+def _rewrite_once(cfg, system, parts, job_id):
     graph, names = build_rewrite_graph(cfg, system, parts, job_id)
     entry = None
     try:
-        entry = wait_prompt(cfg, queue_prompt(cfg, graph))
-        values = entry.get('outputs', {}).get('result', {}).get('text', [])
-        text = values if isinstance(values, str) else ''.join(values)
-        if not text.strip():
-            raise ValueError('本地 9B 改寫回傳空白。')
-        return text.strip()
+        prompt_id = queue_prompt(cfg, graph)
+        entry = wait_prompt(cfg, prompt_id)
+        outputs = entry.get('outputs', {})
+        return _preview_text(outputs, 'result'), _preview_text(outputs, 'thinking_preview'), prompt_id
     finally:
         for name in names:
             (Path(cfg['comfy_input_dir'])/name).unlink(missing_ok=True)
