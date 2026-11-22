@@ -1,7 +1,6 @@
 """Read authored ACT timelines as isolated native MiniMax H3 film commissions.
 
-This adapter is deliberately opt-in: an ACT time ruler must be present. Existing
-CLIP, SEGMENT, SHOT and freeform film paths are unaffected.
+The director route also accepts an explicit CLIP action/story timeline.
 """
 import re
 
@@ -11,6 +10,11 @@ _ACT = re.compile(
     r'(?P<end>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*$'
 )
 _ACT_LIKE = re.compile(r'(?im)^[ \t]*ACT[ \t]+\d+[ \t]*[｜|:：\-—][ \t]*\d')
+_NUMBERED_SECTION = re.compile(r'(?m)^[ \t]*第[ \t]*(\d+)[ \t]*段[ \t]*[：:｜|][ \t]*([^\n]*)$')
+_LOCAL_WINDOW = re.compile(
+    r'(?m)^[ \t]*\[[ \t]*(\d+(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'
+    r'(\d+(?:\.\d+)?)[ \t]*秒[ \t]*\]'
+)
 _SHARED = re.compile(
     r'(?m)^[ \t]*【(?:共同設定|共通設定|共用設定|固定設定|全局設定|全域設定)】[^\n]*$'
 )
@@ -27,11 +31,59 @@ _COMPILER_META = re.compile(
     r'(?ms)^■[ \t]*(?:H3[ \t]*鏡頭指令|通告單格式)[^\n]*\n.*?(?=^■|\Z)'
 )
 _SOUND_QUOTE = re.compile(r'「(鏗|鏘|砰|轟|喀|咚|啪)」')
+_CLIP_COMMISSION = re.compile(
+    r'(?im)^[ \t]*===[ \t]*CLIP[ \t]+(\d+)[ \t]+(action|story)[ \t]*===[ \t]*$'
+)
+_CLIP_TIME = re.compile(
+    r'^時間[：:][ \t]*(\d{1,2}:[0-5]\d(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'
+    r'(\d{1,2}:[0-5]\d(?:\.\d+)?)[ \t]*$'
+)
+_CLIP_HEADER = re.compile(r'(?im)^[ \t]*===[ \t]*CLIP\b')
 
 
 def _clock(value):
     minutes, seconds = value.split(':', 1)
     return int(minutes) * 60 + float(seconds)
+
+
+def split_clip_commissions(story, default_seconds):
+    """Keep each authored CLIP body and read its delivery window."""
+    source = story.replace('\r\n', '\n').replace('\r', '\n')
+    markers = list(_CLIP_COMMISSION.finditer(source))
+    if not markers:
+        return None
+    if len(_CLIP_HEADER.findall(source)) != len(markers):
+        raise ValueError('CLIP 通告單標記需為 === CLIP 0 action === 或 === CLIP 0 story ===。')
+    first = int(markers[0][1])
+    if first not in (0, 1):
+        raise ValueError('CLIP 通告單必須從 0 或 1 開始連號。')
+    shared = source[:markers[0].start()].strip()
+    shared = re.sub(r'(?im)^[ \t]*(?:===[ \t]*SETUP[ \t]*===|subject_definitions:)[ \t]*\n', '', shared)
+    clips = []
+    previous = 0.0
+    for i, marker in enumerate(markers):
+        number = int(marker[1])
+        if number != first + i:
+            raise ValueError('CLIP 通告單編號必須連續。')
+        stop = markers[i+1].start() if i+1 < len(markers) else len(source)
+        body = source[marker.end():stop].strip()
+        body = re.sub(r'(?im)^[ \t]*===[ \t]*END[ \t]*===[ \t]*\Z', '', body).strip()
+        first_line, _, local = body.partition('\n')
+        seconds = default_seconds
+        if re.match(r'^時間[：:]', first_line):
+            timing = _CLIP_TIME.fullmatch(first_line)
+            if not timing:
+                raise ValueError(f'CLIP {number} 時間格式需為「時間：00:00–00:10」。')
+            start, end = map(_clock, timing.groups())
+            if abs(start - previous) > 0.01 or end <= start:
+                raise ValueError(f'CLIP {number} 時間必須接續前段且不得重疊。')
+            seconds = end - start
+            body = local.strip()
+        if not body:
+            raise ValueError(f'CLIP {number} 沒有當段內容。')
+        clips.append((seconds, marker[2].lower(), body))
+        previous += seconds
+    return shared.strip(), clips
 
 
 def _field(body, name):
@@ -266,6 +318,56 @@ def split_act_commissions(story):
         ) if part)
         commissions.append((seconds, brief))
     return shared, commissions
+
+
+def numbered_kitchen_sections(menu):
+    """Read numbered sections whose shot clocks restart at zero."""
+    source = menu.replace('\r\n', '\n').replace('\r', '\n')
+    headings = list(_NUMBERED_SECTION.finditer(source))
+    if not headings or not _LOCAL_WINDOW.search(source, headings[0].end()):
+        return None
+    blocks = []
+    for index, heading in enumerate(headings, 1):
+        if int(heading[1]) != index:
+            raise ValueError('菜單段落必須從第 01 段開始連號。')
+        stop = headings[index].start() if index < len(headings) else len(source)
+        body = source[heading.end():stop].strip()
+        windows = list(_LOCAL_WINDOW.finditer(body))
+        if not windows:
+            raise ValueError(f'第 {index:02d} 段缺少段內時間碼。')
+        last = 0.0
+        for window in windows:
+            start, end = map(float, window.groups())
+            if abs(start - last) > 0.01 or end <= start:
+                raise ValueError(f'第 {index:02d} 段的時間碼必須從 0 秒開始且連續。')
+            last = end
+        blocks.append((last, heading[2] + '\n' + body))
+    return source[:headings[0].start()].strip(), blocks
+
+
+def split_kitchen_act_commissions(menu, shared_setup):
+    """Keep the authored windows and local directions from a kitchen order."""
+    parsed = _act_blocks(menu) or numbered_kitchen_sections(menu)
+    if parsed is None:
+        return None
+    intro, blocks = parsed
+    if not shared_setup and _SHARED.search(intro) and all(
+            _field(body, 'H3 提示詞') or _field(body, 'H3提示詞') for _, body in blocks):
+        return split_act_commissions(menu)
+    if not shared_setup and (heading := _SHARED.search(intro)):
+        end = _STORY_START.search(intro, heading.end())
+        shared_setup = intro[heading.end():end.start() if end else len(intro)].strip()
+    if not shared_setup:
+        cast = re.search(r'(?m)^[ \t]*角色代號[：:][ \t]*\n[^\n=━─═]+(?:\n[^\n=━─═]+)*', intro)
+        if cast:
+            shared_setup = cast[0].strip()
+    commissions = []
+    for index, (seconds, body) in enumerate(blocks, 1):
+        body = re.sub(r'(?m)^[ \t]*[=━─═]{3,}[ \t]*\n?', '', body).strip()
+        if index == len(blocks):
+            body = re.sub(r'(?i)(?:^|\n)[ \t]*END[ \t]*\Z', '', body).rstrip()
+        commissions.append((seconds, f'ACT {index:02d}｜{seconds:g}秒\n{body}'))
+    return shared_setup, commissions
 
 
 def split_act_native(story):

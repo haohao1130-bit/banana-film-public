@@ -18,7 +18,9 @@ from banana_mv.core import probe
 ROOT = Path(__file__).resolve().parents[1]
 # Legacy environment is accepted only to keep existing local launchers/data usable.
 DATA = Path(os.environ.get('BANANA_DATA') or os.environ.get('H3TOYBOX_DATA') or '/content/banana_mv_data')
-LIBRARY = DATA/'library'
+# Film's standalone F-drive launcher may supply a real library folder outside DATA.
+# Without this override MV/Colab/legacy installations keep DATA/library.
+LIBRARY = Path(os.environ['BANANA_FILM_LIBRARY']) if os.environ.get('BANANA_FILM_LIBRARY') else DATA/'library'
 PORT = int(os.environ.get('BANANA_PORT', '8190'))
 ASSET_LOCK = threading.Lock()
 DEFAULTS = {
@@ -163,10 +165,20 @@ def build_rewrite_graph(cfg, system, parts, job_id):
     rw = cfg['rewriter']
     if rw['thinking']:
         system += (
-            '\n\nKeep <think> concise. Plan once, then close with </think> and write '
-            'the complete requested output. Do not draft, count words, or repeatedly '
-            'recheck the instructions inside <think>.'
+            '\n\nUse <think> to decide the shots, staging and continuity. Decide each question once and move on: '
+            'never reopen a settled decision, never re-check the guide, and do not deliberate about details the '
+            'request says Python fills in or overwrites (seconds, soundscape, music). Props and set dressing are '
+            'described inside the shots and need no <Subject> entry. As soon as the plan is settled, close </think>. '
+            'Do not draft, count words, or write the final text inside <think>. After </think>, always write the '
+            'complete requested output.'
         )
+    temperature, top_p = float(rw['temperature']), float(rw['top_p'])
+    presence = float(rw.get('presence_penalty', 0.0))
+    if rw['thinking'] and (temperature, top_p) == (DEFAULTS['rewriter']['temperature'], DEFAULTS['rewriter']['top_p']):
+        # Qwen3.5 思考模式建議值；沿用不思考的 0.7/0.8 + presence 0 會在 <think> 裡重複打轉直到 16K 用完。
+        temperature, top_p = 1.0, 0.95
+        if 'presence_penalty' not in rw:
+            presence = 1.5
     contents = ''.join(value if kind == 'text' else '<|vision_start|><|image_pad|><|vision_end|>'
                        for kind, value in parts)
     chat = (f'<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n'
@@ -190,10 +202,10 @@ def build_rewrite_graph(cfg, system, parts, job_id):
                 graph[merged] = {'class_type': 'ImageBatch', 'inputs': {'image1': batch, 'image2': [key, 0]}}
                 batch = [merged, 0]
         inputs = {'clip': ['encoder', 0], 'prompt': chat, 'max_length': int(rw['max_length']),
-                  'sampling_mode': 'on', 'sampling_mode.temperature': float(rw['temperature']),
-                  'sampling_mode.top_k': int(rw['top_k']), 'sampling_mode.top_p': float(rw['top_p']),
+                  'sampling_mode': 'on', 'sampling_mode.temperature': temperature,
+                  'sampling_mode.top_k': int(rw['top_k']), 'sampling_mode.top_p': top_p,
                   'sampling_mode.min_p': 0.0, 'sampling_mode.repetition_penalty': 1.0,
-                  'sampling_mode.seed': random.randint(0, 2**31-1), 'sampling_mode.presence_penalty': 0.0,
+                  'sampling_mode.seed': random.randint(0, 2**31-1), 'sampling_mode.presence_penalty': presence,
                   'thinking': bool(rw['thinking']), 'use_default_template': True, 'mtp': rw['mtp']}
         if batch is not None:
             inputs['image'] = batch

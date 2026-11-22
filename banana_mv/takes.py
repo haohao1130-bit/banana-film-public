@@ -307,6 +307,9 @@ def apply_takes(job,choices,song):
 
 
 def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
+    from banana_mv.comfy import check_cancelled
+
+    cfg = app.emergency_config(cfg, job['id'])
     work=app.job_dir(job['id']);choices={};temporary=[];current=None
     try:
         for i,take in batch:
@@ -321,28 +324,50 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             native=job['request'].get('production')=='film'
             if not native:
                 temporary.append(inp/name);app.audio_window(drive,inp/name,seg['start'],seg['model_frames']/app.FPS)
-            first=None;context_names=[];prefix=0
+            first = None
+            context_names = []
+            prefix = 0
+            cut = False
+            model_frames = seg['model_frames']
+            previous_index = i - 1 if i else None
             if native:
-                from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
-                prefix=motion_prefix(job,seg)
+                from banana_mv.film_continuity import (
+                    add_motion_guide, motion_prefix, opening_render_frames,
+                    opens_with_cut, previous_clip_index, upload_motion_tail,
+                )
+                cut = opens_with_cut(job, seg)
+                prefix = motion_prefix(job, seg)
+                model_frames = opening_render_frames(job, seg)
+                previous_index = previous_clip_index(seg)
+            single_tail = not cut and job['request']['mode'] == 'chain' and previous_index is not None
+            if prefix or single_tail:
+                previous = choices.get(previous_index, job.get('pending_takes', {}).get(str(previous_index), 'current'))
+                source = take_source(job, previous_index, previous)
+                take['previous_take'] = previous if previous != 'current' else segment(job,previous_index).get('selected_take','original')
             if prefix:
-                previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'))
-                source=take_source(job,i-1,previous)
-                context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{take["id"]}')
-                take['motion_context']=receipt
-                take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
-            if job['request']['mode']=='chain' and i>0:
-                previous=choices.get(i-1,job.get('pending_takes',{}).get(str(i-1),'current'));frame=output('opening.png')
-                app.last_frame(take_source(job,i-1,previous),frame)
+                context_names, receipt = upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{take["id"]}')
+                take['motion_context'] = receipt
+            if single_tail:
+                frame = output('opening.png')
+                app.last_frame(source, frame)
                 filename=f'banana_retake_{take["id"]}.png'
                 if native:
                     first=app.backend.upload_comfy_image(cfg,filename,frame.read_bytes(),'image/png')
                 else:
                     first=filename;temporary.append(inp/first);shutil.copyfile(frame,inp/first)
-                take['previous_take']=previous if previous!='current' else segment(job,i-1).get('selected_take','original')
+            base_record = next((row for row in seg.get('takes', []) if row['id'] == base), {})
+            stale_opening = cut and (base_record.get('opening_transition') != 'cut' if base != 'original'
+                                     else seg.get('opening_transition') != 'cut')
             if take.get('prompt_override'):
                 take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
                 prompt=take['prompt_override']
+            elif stale_opening:
+                from banana_mv.film import write_prompt
+                take['status'] = 'rewriting'
+                app.write_state(job)
+                prompt = write_prompt(cfg, job, seg, originals,
+                                      correction=take.get('correction'), dest=dest,
+                                      artifact_prefix=f'{i:02d}_v{take["version"]}_')
             elif take.get('correction'):
                 take['status']='rewriting';app.write_state(job)
                 take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
@@ -350,15 +375,22 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             if native and prefix:
                 from banana_mv.film_manual import protect_chain5_opening
                 prompt=protect_chain5_opening(prompt)
+            if cut:
+                take['opening_transition'] = 'cut'
             (output('prompt.txt')).write_text(prompt,encoding='utf-8')
             take['status']='generating';app.write_state(job)
-            graph=app.build_workflow(job['images_comfy'],None if native else name,*job['size'],seg['model_frames'],prompt,take['seed'],first,
+            images, graph_prompt = job['images_comfy'], prompt
+            if native and job.get('kitchen'):
+                from banana_mv.film import kitchen_workflow_refs
+                images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+            graph=app.build_workflow(images,None if native else name,*job['size'],model_frames,graph_prompt,take['seed'],first,
                                      **app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaMV/{job["id"]}/{i:02d}_v{take["version"]}'
             app.preflight(cfg,graph);(output('workflow.json')).write_text(json.dumps(graph,ensure_ascii=False,indent=2))
             take['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
             entry=app.wait_generation(cfg,take['prompt_id'],job)
+            # 生成已完成：就算這時剛好按了停爐，也先把算好的毛片存下來，迴圈開頭再停。
             app.backend.comfy_download(cfg,app.video_info(entry),output('raw.mp4'))
             if native:
                 from banana_mv.film_media import trim_native
@@ -372,8 +404,9 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
         job['status']=old_status
         job['retake']['status']='done'
     except Exception as e:
-        if current and current['status']!='ready':current.update(status='error',error=str(e))
-        job['status']=old_status;job['retake'].update(status='error',error=str(e))
+        status = 'cancelled' if isinstance(e, InterruptedError) or job['id'] in app.CANCEL else 'error'
+        if current and current['status']!='ready':current.update(status=status,error=str(e))
+        job['status']=old_status;job['retake'].update(status=status,error=str(e))
     finally:
         for _,take in batch:
             if take['status']=='waiting':take['status']='cancelled'

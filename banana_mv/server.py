@@ -277,17 +277,44 @@ def local_prompt(cfg, req, segment, original, tail, *, scene_input=None, event_c
     return final
 
 
+def emergency_config(cfg, job_id):
+    return dict(cfg, _banana_stop_job=job_id, _banana_stop_check=lambda: job_id in CANCEL)
+
+
+def stop_job(job_id):
+    from banana_mv.comfy import active_prompt, interrupt_active
+
+    job = read_state(job_id)
+    if (job.get('status') in ('done', 'error', 'cancelled', 'interrupted', 'script_ready', 'kitchen_ready')
+            and not active_prompt(job_id)):
+        return {'ok': True, 'interruption': 'not_running', 'message': '目前沒有正在製作的任務。'}
+    CANCEL.add(job_id)
+    try:
+        result = interrupt_active(job_id)
+    except (OSError, RuntimeError, ValueError) as error:
+        return {'ok': True, 'interruption': 'api_error',
+                'message': f'已停止後續製作，ComfyUI 中斷未確認：{error}'}
+    return {'ok': True, 'interruption': result, 'message': '已要求立即停爐，已完成片段保留。'}
+
+
 def wait_generation(cfg, prompt_id, job):
-    deadline = time.monotonic()+7200
-    while time.monotonic()<deadline:
-        entry = backend.history_entry(cfg,prompt_id)
-        if entry:
-            if entry.get('status',{}).get('status_str')=='error':
-                raise RuntimeError(backend.execution_error(entry))
-            if entry.get('status',{}).get('completed'):
-                return entry
-        time.sleep(2)
-    raise RuntimeError('單段生成等待超過兩小時；請檢查 ComfyUI 紀錄。')
+    from banana_mv.comfy import check_cancelled, release_prompt
+
+    try:
+        deadline = time.monotonic()+7200
+        while time.monotonic()<deadline:
+            check_cancelled(cfg)
+            entry = backend.history_entry(cfg,prompt_id)
+            check_cancelled(cfg)
+            if entry:
+                if entry.get('status',{}).get('status_str')=='error':
+                    raise RuntimeError(backend.execution_error(entry))
+                if entry.get('status',{}).get('completed'):
+                    return entry
+            time.sleep(1)
+        raise RuntimeError('單段生成等待超過兩小時；請檢查 ComfyUI 紀錄。')
+    finally:
+        release_prompt(cfg, prompt_id)
 
 
 def video_info(entry):
@@ -299,14 +326,18 @@ def video_info(entry):
     raise RuntimeError('生成已完成，但沒有找到影片輸出。')
 
 
-def export_finished_video(job,source,*,refined_version=None):
+def export_finished_video(job,source,*,refined_version=None,upscaled_version=None,upscaled_resolution=1080,refined_resolution=None):
     """Keep the resumable project master and publish an atomic copy to the finished-video folder."""
     folder=Path(os.environ.get('BANANA_FINISHED_VIDEOS') or backend.DATA/'videos')
     folder.mkdir(parents=True,exist_ok=True)
     title=''.join(c for c in str(job.get('title') or 'Banana_MV') if c not in '<>:"/\\|?*' and ord(c)>=32).strip(' .')[:60] or 'Banana_MV'
     suffix=f'_v{job["current_master"]:03d}' if job.get('current_master') else ''
     if refined_version is not None:
+        if refined_resolution is not None:
+            suffix += f'_{refined_resolution}p'
         suffix += f'_face_refine_v{refined_version:03d}'
+    if upscaled_version is not None:
+        suffix += f'_{upscaled_resolution}p_v{upscaled_version:03d}'
     target=folder/f'{title}_{job["id"]}{suffix}.mp4'
     temp=target.with_name('.'+target.name+'.tmp')
     try:
@@ -314,7 +345,7 @@ def export_finished_video(job,source,*,refined_version=None):
         temp.replace(target)
     finally:
         temp.unlink(missing_ok=True)
-    if refined_version is None:
+    if refined_version is None and upscaled_version is None:
         job['output_video']=str(target)
         job.pop('export_error',None)
     return target
@@ -655,12 +686,14 @@ def project_inputs(job, cfg):
     return originals,song,drive
 
 
-def projects():
+def projects(*, kitchen=None):
     rows=[]
     for path in RUNS.glob('*/status.json'):
         try:
             job=json.loads(path.read_text(encoding='utf-8'))
             job_dir(job['id'])
+            if kitchen is not None and bool(job.get('kitchen')) != kitchen:
+                continue
             rows.append({'id':job['id'],'title':job.get('title',job['id']),
                 'created':job.get('created',0),'updated':job.get('resumed',job.get('created',0)),'status':job['status'],'duration':job['duration'],
                 'completed':sum(s.get('status')=='done' for s in job['segments']),
@@ -746,7 +779,11 @@ def resume(job_id,rewrite_retries=None):
         repair_unstarted_timeline(job,song)
         restore_render_settings(job)
         missing=False
-        for seg in job['segments']:
+        segments = job['segments']
+        if job.get('kitchen'):
+            from banana_mv.film_kitchen import latest
+            segments = [] if job['kitchen'].get('serving') else [segments[i] for i in latest(job)['clips']]
+        for seg in segments:
             part=adopted_part(job,seg)
             usable=valid_part(part,seg,job['size'])
             if not usable and seg.get('takes'):raise ValueError('採用版片段遺失或損壞，請恢復該版本或另選版本。')
@@ -763,8 +800,9 @@ def resume(job_id,rewrite_retries=None):
             else:
                 seg['status']='done'
         if missing:
-            graph=build_workflow(job['images_comfy'],'preflight.wav',*job['size'],job['segments'][0]['model_frames'],'',
-                                 job['seed'],**graph_options(job['request'],job['segments'][0]['seconds']))
+            first_segment = segments[0]
+            graph=build_workflow(job['images_comfy'],'preflight.wav',*job['size'],first_segment['model_frames'],'',
+                                 job['seed'],**graph_options(job['request'],first_segment['seconds']))
             preflight(cfg,graph)
         job.update(status='running',resuming=True,resumed=time.time())
         job.pop('error',None);job.pop('video',None);CANCEL.discard(job_id)
@@ -841,6 +879,10 @@ class Handler(WebHandler):
             if path=='/api/mv/resume':
                 body=self.body_json()
                 return self.send_json(resume(body['id'],body.get('rewrite_retries')))
+            if path=='/api/mv/upscale':
+                from banana_mv import nv_upscale
+                body=self.body_json()
+                return self.send_json(nv_upscale.start_finished(sys.modules[__name__], body['id'], body.get('version')), 202)
             if path=='/api/mv/retake':
                 from banana_mv.takes import retake
                 body=self.body_json()
@@ -854,8 +896,7 @@ class Handler(WebHandler):
                 body=self.body_json()
                 return self.send_json(select_take(body['id'],body.get('index'),body.get('take')))
             if path=='/api/mv/stop':
-                job_id=self.body_json()['id']; read_state(job_id); CANCEL.add(job_id)
-                return self.send_json({'ok':True,'message':'目前這段完成後停止。'})
+                return self.send_json(stop_job(self.body_json()['id']))
             return self.send_error(404)
         except Exception as e:
             return self.send_json({'error':str(e)},400)

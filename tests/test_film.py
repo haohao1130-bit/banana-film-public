@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 from PIL import Image
@@ -58,7 +59,9 @@ class FilmTests(unittest.TestCase):
         with patch.dict(os.environ):
             from banana_mv.film_server import Handler
         handler=object.__new__(Handler);handler.send_file=Mock();handler.send_json=Mock()
-        handler.path='/';handler.do_GET()
+        handler.path='/';handler.do_GET()  # 首頁：蕉彌鐵板燒
+        self.assertEqual(handler.send_file.call_args.args[0].name,'teppan.html')
+        handler.path='/film';handler.do_GET()  # 蕉其林中餐廳（手動介面）
         self.assertEqual(handler.send_file.call_args.args[0].name,'film.html')
         handler.path='/api/health';handler.do_GET()
         self.assertEqual(handler.send_json.call_args.args[0]['service'],'banana-film')
@@ -106,10 +109,11 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'write_state'))
                 stack.enter_context(patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)))
                 stack.enter_context(patch.object(app.backend,'load_config',return_value=cfg))
-                stack.enter_context(patch.object(app.backend,'upload_comfy_image',side_effect=lambda cfg,name,*_:name))
                 queue=stack.enter_context(patch.object(app.backend,'queue_prompt'))
                 writer=stack.enter_context(patch.object(film,'write_prompt'))
                 model=stack.enter_context(patch.object(app.backend,'rewrite_local',return_value=json.dumps(draft())))
+                # 參考圖經 ComfyUI /upload/image 上傳，不是直接寫進 input 資料夾。
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 app.GPU_LOCK.acquire();film.worker(job,cfg,[photo])
                 self.assertEqual(job['status'],'script_ready');queue.assert_not_called();writer.assert_not_called()
                 old_revision=job['script_revision'];edited=copy.deepcopy(job['script_draft'])
@@ -139,7 +143,7 @@ class FilmTests(unittest.TestCase):
             job.update(**plan,status='script_ready',script_revision='original')
             job['script_draft']=film.review_draft(job)
             before=copy.deepcopy(job)
-            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'upload_comfy_image',side_effect=lambda cfg,name,*_:name),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue:
+            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue,patch.object(app.backend,'upload_comfy_image',return_value='photo.png'):
                 with self.assertRaises(ValueError):film.revise_script(job['id'],job['script_draft'],'original','調整開頭')
                 self.assertEqual(job,before);save.assert_not_called();queue.assert_not_called()
                 self.assertFalse(app.GPU_LOCK.locked())
@@ -189,6 +193,7 @@ class FilmTests(unittest.TestCase):
                 self.assertNotIn('FULL_STORY_SECRET',text)
                 self.assertNotIn('slides one sealed',text)
                 self.assertIn('<Picture 2>',task['current_clip_commission'])
+                # 單張末幀以 H3 first_frame（Hybrid）送入，確實錨定在第 0 幀。
                 self.assertIn('anchored at frame zero',task['continuity_reference'])
                 self.assertIn('sound_mode',task);self.assertNotIn('<Audio',prompt)
 
@@ -259,7 +264,6 @@ class FilmTests(unittest.TestCase):
                 with patch.object(app.backend,'load_config',return_value=cfg),self.assertRaises(ValueError):film.start(r)
             with ExitStack() as stack:
                 stack.enter_context(patch.object(app.backend,'load_config',return_value=cfg))
-                stack.enter_context(patch.object(app.backend,'upload_comfy_image',side_effect=lambda cfg,name,*_:name))
                 stack.enter_context(patch.object(app.backend,'asset',return_value={'kind':'image','file':photo.name,'comfy_name':'photo.png'}))
                 stack.enter_context(patch.object(app.backend,'LIBRARY',photo.parent))
                 stack.enter_context(patch.object(app,'RUNS',photo.parent))
@@ -267,6 +271,7 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'write_state'))
                 stack.enter_context(patch.object(app.backend,'comfy',return_value={'queue_running':[],'queue_pending':[]}))
                 stack.enter_context(patch.object(film.threading,'Thread'))
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 started=film.start(dict(req,image_ids=['asset'],seed=0))
                 self.assertEqual(started['seed'],0);self.assertEqual(started['segments'],[])
                 self.assertEqual(started['request']['duration_policy'],'flexible')
@@ -278,7 +283,6 @@ class FilmTests(unittest.TestCase):
             photo,work,req,job,cfg=self.fixture(Path(tmp))
             with ExitStack() as stack:
                 stack.enter_context(patch.object(app.backend,'load_config',return_value=cfg))
-                stack.enter_context(patch.object(app.backend,'upload_comfy_image',side_effect=lambda cfg,name,*_:name))
                 asset=stack.enter_context(patch.object(app.backend,'asset'))
                 stack.enter_context(patch.object(app,'RUNS',photo.parent))
                 preflight=stack.enter_context(patch.object(app,'preflight'))
@@ -292,6 +296,76 @@ class FilmTests(unittest.TestCase):
                 graph=preflight.call_args.args[1]
                 self.assertFalse(any(n['class_type'] in ('LoadImage','LoadAudio') for n in graph.values()))
             if app.GPU_LOCK.locked():app.GPU_LOCK.release()
+
+    def test_authored_clip_briefs_bypass_the_full_film_planner(self):
+        story = (
+            'subject_definitions:\n<Picture 1> = 店員，在居酒屋照顧客人。\n'
+            '=== CLIP 0 action ===\n時間：00:00–00:10\n'
+            '店員在吧檯端起陶杯，看向門口，對剛進門的客人說：「歡迎。」\n'
+            '=== CLIP 1 story ===\n時間：00:10–00:16\n'
+            '客人扶穩杯子，店員退到吧檯旁，兩人一同望向燈籠。'
+        )
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            photo, _, req, _, cfg = self.fixture(Path(tmp))
+            stack.enter_context(patch.object(app, 'GPU_LOCK', threading.Lock()))
+            stack.enter_context(patch.object(app, 'RUNS', photo.parent))
+            stack.enter_context(patch.object(app, 'write_state'))
+            stack.enter_context(patch.object(app.backend, 'load_config', return_value=cfg))
+            stack.enter_context(patch.object(app.backend, 'asset', return_value={
+                'kind': 'image', 'file': photo.name, 'comfy_name': 'photo.png',
+            }))
+            stack.enter_context(patch.object(app.backend, 'LIBRARY', photo.parent))
+            stack.enter_context(patch.object(app.backend, 'comfy', return_value={}))
+            stack.enter_context(patch.object(app.backend, 'upload_comfy_image', return_value='photo.png'))
+            model = stack.enter_context(patch.object(app.backend, 'rewrite_local'))
+            planner = stack.enter_context(patch.object(film, 'plan_film'))
+            worker_thread = stack.enter_context(patch.object(film.threading, 'Thread'))
+            job = film.start(dict(req, prompt=story, duration_preference='prompt',
+                                  segment_seconds='auto', image_ids=['asset']))
+            worker = worker_thread.call_args.kwargs
+            worker['target'](*worker['args'])
+            self.assertEqual(job['status'], 'script_ready')
+            self.assertEqual(job['timeline_source'], 'authored_clips')
+            self.assertEqual(job['duration'], 16)
+            first, second = job['segments']
+            self.assertEqual((first['start'], second['start']), (0, 10))
+            self.assertEqual((first['director_mode'], second['director_mode']), ('action', 'story'))
+            self.assertIn('「歡迎。」', first['director_plan']['event'])
+            self.assertNotIn('燈籠', first['director_plan']['event'])
+            self.assertTrue((app.RUNS / job['id'] / 'director_plan.json').is_file())
+            planner.assert_not_called()
+            model.assert_not_called()
+
+    def test_authored_clip_speaker_warning_does_not_block_rendering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            photo, work, req, job, cfg = self.fixture(Path(tmp))
+            req.update(authored_clip_commissions=True, python_auto_handoff=True, sound_mode='auto')
+            shared = '<Picture 1> = 貓又老闆\n<Picture 2> = 小狐'
+            line = '小狐，三號桌的烤魚好了。'
+            before = {'director_plan': {'event': '小狐問：「今天會有大客人嗎？」'}}
+            current = {'index': 1, 'seconds': 10,
+                       'director_plan': {'event': f'貓又老闆對小狐提醒：「{line}」'}}
+            job.update(segments=[before, current], shared_setup=shared)
+            template = (
+                'subject_definitions:\n<Subject 1> is the boss from <Picture 2>.\n'
+                '<Subject 2> is the fox from <Picture 3>.\n'
+                'summary:\nA tray of fish.\nretention_analysis:\nKeep both characters.\n'
+                'detailed_description:\n[Shot 1] <Subject %s> (S1) <d>[Chinese] '
+                + line + '</d>\noverall_soundscape:\nQuiet.\nnon_diegetic_music:\nNone.\n'
+            )
+            draft = template % 2
+            with patch.object(app,'job_dir',return_value=work), patch.object(
+                    app.backend,'rewrite_local',return_value=draft) as writer:
+                with self.assertLogs('banana_mv.film', 'WARNING') as logged:
+                    prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
+            self.assertEqual(prompt, draft.strip())
+            self.assertIn('第 2 段台詞提醒', logged.output[0])
+            writer.assert_called_once()
+            request = json.loads(writer.call_args_list[0].args[2][0][1])
+            self.assertNotIn('already_established', request)
+            self.assertEqual(request['authored_dialogue'], [
+                {'speaker':'貓又老闆','reference':'<Picture 2>','line':line},
+            ])
 
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'),'ffmpeg required')
