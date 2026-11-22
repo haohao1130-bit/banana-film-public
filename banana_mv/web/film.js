@@ -66,7 +66,7 @@ function renderFinalPreviews(job, relative = false) {
  const upscaleLabel = upscale?.reason === 'upscale_1080p' ? '1080P' : '2K';
  $('upscale-title').textContent = upscaleLabel + ' 成品';
  $('upscale-download').textContent = '下載 ' + upscaleLabel + ' ↓';
- $('upscale-download').download = upscale?.reason === 'upscale_1080p' ? 'banana-1080p.mp4' : 'banana-1440p.mp4';
+ $('upscale-download').download = '';
  $('upscale-play').textContent = '播放 ' + upscaleLabel;
  const upgrade = $('upscale-again');
  const upgradeSource = current;
@@ -135,7 +135,7 @@ function renderJob(j){
  const continuityLabels={independent:'各段獨立',chain:'單張末幀參考',chain5:'末五幀動作接續'};$('project-summary').textContent=`${j.title||j.id} · ${j.id} · 接續：${continuityLabels[j.request?.mode]||j.request?.mode||'未記錄'} · H3 ${j.request?.sampling_steps??8} 步`;$('job-seed').textContent='Seed：'+j.seed;
  renderFinalPreviews(j, true);
  $('output-location').textContent=[j.final_video?'目前完整作品：'+j.final_video:'',j.output_video?'母片成品：'+j.output_video:'',j.export_error||''].filter(Boolean).join('\n');
- $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download=`banana-film-v${v.version}.mp4`;a.textContent=(v.reason==='face_refine'?'修臉版 · ':v.reason==='upscale_1440p'?'2K · ':v.reason==='upscale_1080p'?'1080P · ':'')+`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
+ $('master-review').hidden=!j.final_versions?.length;const signature=JSON.stringify([j.current_master,j.final_versions]);if($('master-list').dataset.signature!==signature){$('master-list').replaceChildren();for(const v of j.final_versions||[]){const a=document.createElement('a');a.className='secondary';a.href=v.download.replace(/^\//,'');a.download='';a.textContent=(v.reason==='face_refine'?'修臉版 · ':v.reason==='upscale_1440p'?'2K · ':v.reason==='upscale_1080p'?'1080P · ':'')+`第 ${v.version} 版`+(v.version===j.current_master?' · 目前採用':'');$('master-list').append(a);}$('master-list').dataset.signature=signature;}
  $('plan-panel').hidden=!segments.length;const plan=JSON.stringify(segments.map(s=>s.director_plan));if($('scene-list').dataset.signature!==plan){$('scene-list').replaceChildren();for(const s of segments){const d=document.createElement('details');d.className='scene';const title=document.createElement('summary');title.textContent=`${s.index+1} / ${s.start.toFixed(2)}–${(s.start+s.seconds).toFixed(2)} 秒`;const text=document.createElement('pre');text.textContent=s.director_plan?.event||'';d.append(title,text);$('scene-list').append(d);}$('scene-list').dataset.signature=plan;}
  const written=segments.filter(s=>s.prompt);$('prompt-panel').hidden=!written.length;const prior=$('prompt-segment').value;$('prompt-segment').replaceChildren();for(const s of written){const o=document.createElement('option');o.value=s.index;o.textContent='第 '+(s.index+1)+' 段';$('prompt-segment').append(o);}if(written.some(s=>String(s.index)===prior))$('prompt-segment').value=prior;renderPrompt();renderClipPreviews(j);
 }
