@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
   <link rel="stylesheet" href="teppan.css?v=chat-4">
-  <script defer src="teppan.js?v=chat-4"></script>
+  <script defer src="teppan.js?v=auto-timecode-1"></script>
 </head>
 <body>
   <div class="app">
@@ -135,7 +135,7 @@
           <span>共同設定</span><span id="shared-count" class="chip-badge">0</span>
         </button>
         <button id="open-settings" type="button" class="chip" aria-haspopup="dialog" aria-controls="sheet-settings">
-          <span id="profile">9:16 · 480P · 6步 · 10秒</span>
+          <span id="profile">9:16 · 480P · 6步 · 蕉彌估</span>
         </button>
         <span class="spacer"></span>
         <button id="stop" type="button" class="round danger" aria-label="緊急停爐" hidden>
@@ -191,7 +191,7 @@
       <label class="check"><input type="checkbox" id="upscale" checked> 上菜後升頻至 2K</label>
     </div>
     <label class="field initial">專案名稱（選填）<input id="name" maxlength="120" placeholder="不填就讓蕉彌取名"></label>
-    <input type="hidden" id="seconds" value="10">
+    <input type="hidden" id="seconds" value="auto">
     <input type="hidden" id="aspect" value="9:16">
     <input type="hidden" id="resolution" value="480">
     <input type="hidden" id="steps" value="6">

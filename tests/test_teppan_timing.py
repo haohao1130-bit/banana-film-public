@@ -56,6 +56,17 @@ class EstimateTests(unittest.TestCase):
         self.assertEqual(estimate_menu('長度：30秒。蕉彌翻炒。')['windows'], [10.0, 10.0, 10.0])
         self.assertEqual(estimate_menu('片長 1 分鐘，蕉彌開店。')['seconds'], 60.0)
 
+    def test_contiguous_act_timecodes_set_total(self):
+        menu = ('第一幕｜迎客（00:00–00:30）\n'
+                'MINIMAX H3 專用提示詞｜場景1（00:00–00:30）\n'
+                '第二幕｜入席（00:30–01:00）\n'
+                '第三幕｜揮手（01:00–00:30）\n'
+                'MINIMAX H3 專用提示詞｜場景3（01:00–01:30）')
+        result = estimate_menu(menu)
+        self.assertEqual(result['source'], 'timecode')
+        self.assertEqual(result['windows'], [10.0] * 9)
+        self.assertEqual(estimate_menu(menu + '\n總長正好180秒。')['windows'], [10.0] * 18)
+
     def test_native_h3_detected(self):
         result = estimate_menu('=== CLIP 1 (10s) ===\n' + H3 + '\n=== CLIP 2 (8s) ===\n' + H3)
         self.assertTrue(result['native_h3'])

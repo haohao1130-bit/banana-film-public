@@ -148,7 +148,7 @@
     },
     {
       "path": "banana_mv/teppan_timing.py",
-      "sha256": "1eade36e093f69cc5d5d5f44ae4a46d802af916908cc1c56afea72c47f5e5236"
+      "sha256": "7e293ba70bf102ccb9964be83f2e750e553d5b3a281c0d5e43978e5157ebc44c"
     },
     {
       "path": "banana_mv/timed_slots.py",
@@ -184,11 +184,11 @@
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "a36a4a1fce5c4fda3ec2bbae1b2f8334837fca4dc4d9294bd63434c199b79be4"
+      "sha256": "1a46f0c7e63f491296df7a6a55b520af258c8b70cf28ddf3c52f68f286a04a6b"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "4aaf660aaf188ba5740c968675e976b6abee792c4ec03f87a2048d13daa38bc4"
+      "sha256": "ca45ad10f0fe0770dfb7b31c14d3608840e08775f183067c81dc4e65136378e0"
     },
     {
       "path": "docs/clip_review.md",
@@ -388,7 +388,7 @@
     },
     {
       "path": "tests/test_teppan_timing.py",
-      "sha256": "6d0fe04a81a4bbfcd4e9ff748bc9a0d6cfdcc4c4b48f01b3aa141736a0bf0f66"
+      "sha256": "1471c44e4e0af3371b15bbd329b5a20d2c523fbf74d137556f3330b388754a54"
     },
     {
       "path": "tests/test_unified_direction.py",

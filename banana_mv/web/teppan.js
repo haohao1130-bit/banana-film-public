@@ -325,7 +325,7 @@ function describeEstimate(result, chosen) {
     return `老闆，這是 H3 全咒，照你寫的 ${result.clips} 段（${result.windows.map(w => w.toFixed(1)).join('／')} 秒）直接上鐵板，不經 9B 改寫，約 ${formatWait(result.render_seconds)}出菜。`;
   }
   if (chosen === 'auto') {
-    const lead = result.source === 'declared' ? '菜單有寫長度，照寫的：' : '這道我看大概';
+    const lead = {declared: '照菜單寫的全片長度', timecode: '照菜單時間碼'}[result.source] || '這道我看大概';
     return `老闆，${lead} ${result.seconds.toFixed(1)} 秒，切 ${result.clips} 段（${result.windows.map(w => w.toFixed(1)).join('／')} 秒），約 ${formatWait(result.render_seconds)}出菜。`;
   }
   const windows = clipWindows(chosen);

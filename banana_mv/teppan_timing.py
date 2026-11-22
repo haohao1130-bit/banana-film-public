@@ -27,12 +27,35 @@ ACTION_SECONDS = 2.5          # 一個動作／事件句大約演多久
 _QUOTE = re.compile(r'「([^」]*)」|『([^』]*)』|“([^”]*)”|"([^"\n]*)"')
 _SENTENCE_END = re.compile(r'(?<=[。！？!?；;\n])')
 _DECLARED = re.compile(
-    r'(?:片長|長度|秒數|時長|全片|這道|本道|總長)\s*[：:為是約]?\s*'
+    r'(?:片長|長度|秒數|時長|全片|這道|本道|總長)\s*[：:為是約]?\s*(?:正好\s*)?'
     r'(\d+(?:\.\d+)?)\s*(秒|s\b|sec|分鐘|分|min)', re.I)
 _CLIP = re.compile(
     r'(?im)^[ \t]*===\s*CLIP\s+([1-9]\d*)\s*'
     r'\(\s*(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?\s*\)\s*===\s*$')
 _FENCE = re.compile(r'```(?:text|h3|plaintext)?[ \t]*\n([\s\S]*?)\n```[ \t]*', re.I)
+
+
+_CLOCK = r'(?:\d{1,2}:)?\d{1,2}:[0-5]\d(?:\.\d+)?'
+_TIMELINE_RANGE = re.compile(
+    rf'(?m)^[ \t]*(?:\#{{1,6}}[ \t]+)?(?:'
+    rf'(?:第[一二三四五六七八九十百零〇\d]+[幕場段]|(?:MINIMAX H3 專用提示詞[｜|][ \t]*)?場景[ \t]*\d+|(?:ACT|SCENE|CLIP|SHOT)[ \t]+\d+)[^：:\n（(]*[（(]?[ \t]*'
+    rf'|[（(]?)({_CLOCK})[ \t]*[–—~～-][ \t]*({_CLOCK})'
+    rf'[ \t]*[）)]?(?=[ \t]*(?:$|[｜|：:]))', re.I)
+
+
+def _timeline_seconds(menu):
+    def seconds(clock):
+        return sum(float(part) * 60**i for i, part in enumerate(reversed(clock.split(':'))))
+
+    ranges = sorted((seconds(start), seconds(end)) for start, end in _TIMELINE_RANGE.findall(menu))
+    end_time = 0.0
+    for start, end in ranges:
+        if end <= start:
+            continue
+        if start > end_time + 0.05:
+            return None
+        end_time = max(end_time, end)
+    return end_time or None
 
 
 def _frame(seconds):
@@ -116,6 +139,9 @@ def estimate_menu(menu, cap=DEFAULT_CAP):
             value = float(declared[1])
             seconds = value * 60 if declared[2].lower() in ('分鐘', '分', 'min') else value
             source = 'declared'
+        elif (timeline := _timeline_seconds(menu)) is not None:
+            seconds = timeline
+            source = 'timecode'
         else:
             lines = [next(filter(None, m.groups()), '') for m in _QUOTE.finditer(menu)]
             speech = sum(len(re.sub(r'\s', '', line)) for line in lines)
