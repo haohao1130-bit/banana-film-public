@@ -124,7 +124,7 @@
     },
     {
       "path": "banana_mv/services.py",
-      "sha256": "79bb7dd3041ff121bb273bc13d81813fc0ec3905419d3bd440d08d63efec8fa3"
+      "sha256": "db60b80a783bb5def97543f745c82cf66bbf90be45d88748d57f0dd8d57c16f6"
     },
     {
       "path": "banana_mv/shoot_plan.py",
@@ -389,6 +389,10 @@
     {
       "path": "tests/test_teppan_timing.py",
       "sha256": "1471c44e4e0af3371b15bbd329b5a20d2c523fbf74d137556f3330b388754a54"
+    },
+    {
+      "path": "tests/test_thinking_sampling.py",
+      "sha256": "789ba92b2ef3dc0bb3763dc720ada8fecc4ef5ce09f38cae161042383b90d5b4"
     },
     {
       "path": "tests/test_unified_direction.py",
