@@ -59,7 +59,9 @@ class FilmTests(unittest.TestCase):
         with patch.dict(os.environ):
             from banana_mv.film_server import Handler
         handler=object.__new__(Handler);handler.send_file=Mock();handler.send_json=Mock()
-        handler.path='/';handler.do_GET()
+        handler.path='/';handler.do_GET()  # 首頁：蕉彌鐵板燒
+        self.assertEqual(handler.send_file.call_args.args[0].name,'teppan.html')
+        handler.path='/film';handler.do_GET()  # 蕉其林中餐廳（手動介面）
         self.assertEqual(handler.send_file.call_args.args[0].name,'film.html')
         handler.path='/api/health';handler.do_GET()
         self.assertEqual(handler.send_json.call_args.args[0]['service'],'banana-film')

@@ -40,8 +40,9 @@ a { color: var(--gold); }
   border-bottom: 1px solid var(--line);
   background: linear-gradient(#3b261b, #2a1d16);
 }
-.back { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
-  text-decoration: none; font-size: 1.3rem; border-radius: 22px; }
+.back { min-width: 44px; min-height: 44px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  text-decoration: none; font-size: 1.15rem; line-height: 1.1; border-radius: 12px; padding: 2px 4px; }
+.back small { font-size: .62rem; letter-spacing: .04em; color: var(--gold); }
 .stage svg { display: block; width: 92px; height: auto; }
 .counter-copy { min-width: 0; }
 h1 { font-size: 1.15rem; margin: 0; line-height: 1.3; }

@@ -19,9 +19,10 @@ class Handler(app.Handler):
 
     def do_GET(self):
         path=urllib.parse.urlparse(self.path).path
-        if path in ('/','/film','/mv'):return self.send_file(app.WEB/'film.html')
+        # 蕉彌鐵板燒是首頁；蕉其林中餐廳（手動介面）改從 /film 進入。
+        if path in ('/film','/mv'):return self.send_file(app.WEB/'film.html')
         if path in ('/film.js','/film_review.js','/kitchen.js'):return self.send_file(app.WEB/path.lstrip('/'))
-        if path=='/teppan':return self.send_file(app.WEB/'teppan.html')
+        if path in ('/','/teppan'):return self.send_file(app.WEB/'teppan.html')
         if path in ('/teppan.html','/teppan.js','/teppan.css'):return self.send_file(app.WEB/path.lstrip('/'))
         if path in ('/api/film/kitchen/projects', '/api/mv/projects'):
             return self.send_json(app.projects(kitchen=(path == '/api/film/kitchen/projects')))

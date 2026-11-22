@@ -104,7 +104,8 @@ class Handler(colab.Handler):
             return self.send_json({'available': bool(launcher('mv', app.backend.PORT)),
                                    'busy': app.GPU_LOCK.locked()})
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/", "/film", "/mv"):
+        # "/" 交給上層：蕉彌鐵板燒是首頁；蕉其林中餐廳在 /film。
+        if path in ("/film", "/mv"):
             # The only HTML change is loading the local-only Git version badge.
             # Everything else is the exact Colab film.html.
             html = (app.WEB / "film.html").read_text(encoding="utf-8")

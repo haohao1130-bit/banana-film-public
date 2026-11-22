@@ -75,7 +75,11 @@ class Film5070ColabParityTests(unittest.TestCase):
                 finally:
                     conn.close()
 
-            code, html = request("/")
+            # 首頁是蕉彌鐵板燒；蕉其林中餐廳（原版 Colab UI）在 /film。
+            code, home = request("/")
+            self.assertEqual(code, 200)
+            self.assertEqual(home, (mv.WEB / "teppan.html").read_text(encoding="utf-8"))
+            code, html = request("/film")
             self.assertEqual(code, 200)
             canonical = (mv.WEB / "film.html").read_text(encoding="utf-8")
             # 原版 UI 一字不改，只在 </body> 前多插一行本機版本號腳本（允許快取版本號）。
