@@ -379,7 +379,11 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
                 take['opening_transition'] = 'cut'
             (output('prompt.txt')).write_text(prompt,encoding='utf-8')
             take['status']='generating';app.write_state(job)
-            graph=app.build_workflow(job['images_comfy'],None if native else name,*job['size'],model_frames,prompt,take['seed'],first,
+            images, graph_prompt = job['images_comfy'], prompt
+            if native and job.get('kitchen'):
+                from banana_mv.film import kitchen_workflow_refs
+                images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+            graph=app.build_workflow(images,None if native else name,*job['size'],model_frames,graph_prompt,take['seed'],first,
                                      **app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaMV/{job["id"]}/{i:02d}_v{take["version"]}'

@@ -352,6 +352,8 @@ def validate_plan(raw,req,image_count):
         result.append({'index':i,'start_frame':start,'frames':frames,'start':start/FPS,
                        'seconds':frames/FPS,'model_frames':model_frames,'status':'waiting',
                        'director_mode':mode,'director_plan':{'index':i,'mode':mode,'event':brief}})
+        if req.get('kitchen_mode'):
+            result[-1]['absent_cast_pictures'] = sorted(kitchen_absent_pictures(brief, shared))
         start+=frames
     if start>math.floor(req['max_seconds']*FPS):
         raise ValueError(f'導演規劃 {start / FPS:.2f} 秒，超過片長上限 {req["max_seconds"]:g} 秒。')
@@ -516,20 +518,69 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
                    ('text','Correct the delivery and return the complete JSON only. '+json.dumps(repair,ensure_ascii=False))]
 
 
+_CAST_BINDING = re.compile(r'<Picture (\d+)>[ \t]*[=＝][ \t]*([^\s=＝，,。；;（(]+)')
+_PICTURE_TAG = re.compile(r'<Picture (\d+)>')
+_ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:]?|[：:])')
+
+
+def kitchen_absent_pictures(brief, fixed):
+    """Scan the clip commission against the shared character bindings."""
+    roles = {int(n): name for n, name in _CAST_BINDING.findall(fixed or '')
+             if not re.search(r'場景|環境|背景|場地', name)}
+    mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}
+    present = {n for n, name in roles.items() if n in mentioned or name in brief}
+    if not present and not _ONSCREEN.search(brief):
+        return set()
+    return roles.keys() - present
+
+
+def kitchen_workflow_refs(job, seg, prompt, first):
+    """Use dense picture numbers for H3 while keeping stored prompts editable."""
+    images = job['images_comfy']
+    if not job.get('kitchen') or seg.get('manual_h3_prompt'):
+        return images, prompt
+    offset = int(bool(first))
+    fixed = seg.get('fixed_reference_settings') or job.get('shared_setup', '')
+    planned_hidden = seg.get('absent_cast_pictures')
+    hidden = (set(planned_hidden) if planned_hidden is not None else
+              kitchen_absent_pictures(seg['director_plan']['event'], fixed))
+    referenced = {int(n) for n in _PICTURE_TAG.findall(prompt)}
+    # Saved legacy and manually overridden takes can still explicitly use these pictures.
+    if not hidden or any(n + offset in referenced for n in hidden):
+        return images, prompt
+    active = [(n, image) for n, image in enumerate(images, 1) if n not in hidden]
+    mapping = {old + offset: new + offset for new, (old, _) in enumerate(active, 1)}
+    prompt = _PICTURE_TAG.sub(lambda m: f'<Picture {mapping.get(int(m[1]), int(m[1]))}>', prompt)
+    return [image for _, image in active], prompt
+
+
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
     from banana_mv.direction_contract import authored_dialogue, validate_authored_dialogue
     from banana_mv.film_continuity import motion_prefix, opens_with_cut, previous_clip_index
 
     req=job['request'];offset=int(bool(tail));brief=seg['director_plan']['event']
-    brief=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',brief)
     fixed=seg.get('fixed_reference_settings') or job.get('shared_setup','')
     if req.get('fixed_reference_version')==1 and not fixed:
         raise ValueError('當段缺少固定角色表與場景設定，請重新產生劇本。')
-    fixed=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',fixed)
+    hidden = set()
+    if job.get('kitchen'):
+        planned_hidden = seg.get('absent_cast_pictures')
+        hidden = (set(planned_hidden) if planned_hidden is not None and not correction else
+                  kitchen_absent_pictures(brief + ('\n' + correction if correction else ''), fixed))
+        fixed = '\n'.join(line for line in fixed.splitlines()
+                         if not any(int(n) in hidden for n, _ in _CAST_BINDING.findall(line)))
+    brief = _PICTURE_TAG.sub(lambda m: f'<Picture {int(m[1])+offset}>', brief)
+    fixed = _PICTURE_TAG.sub(lambda m: f'<Picture {int(m[1])+offset}>', fixed)
     task={'seconds':seg['seconds'],'style':req['visual_style'],'sound_mode':req['sound_mode'],
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
     if job.get('kitchen'):
+        task['cast_instruction'] = (
+            'Use only the actors commissioned for this segment. Shared settings identify assets, '
+            'and the previous frame is continuity only. Unavailable picture numbers must not '
+            'appear in the prompt. Characters visible only in the previous frame cannot become '
+            'new subjects or reappear in the commissioned shots.'
+        )
         task['timing_instruction'] = (
             f'All camera cuts, motion, performance and complete spoken lines must fit in the '
             f'{seg["seconds"]:g}-second clip. Budget time for natural delivery and overlap simultaneous '
@@ -580,9 +631,15 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
     system=guide+'\n'+WRITER+'\n'+FILM_INTENSITY[req['intensity']]
     refs=([tail] if tail else [])+list(originals)
+    withheld = {n + offset for n in hidden}
+    pictures = _pictures(refs) if not withheld else []
+    if withheld:
+        for n, path in enumerate(refs, 1):
+            if n not in withheld:
+                pictures.extend([('text', f'<Picture {n}>:'), _pictures([path])[1]])
     if dest:atomic_json(Path(dest)/(artifact_prefix+'repair_request.json'),{'system':system,'user':text})
     for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,system,[('text',text)]+_pictures(refs),uuid.uuid4().hex[:8])
+        raw=app.backend.rewrite_local(cfg,system,[('text',text)]+pictures,uuid.uuid4().hex[:8])
         target=Path(dest) if dest else app.job_dir(job['id'])
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
         try:
@@ -590,6 +647,8 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                 from banana_mv.direction_contract import validate_h3_sections
                 validate_h3_sections(raw)
             prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+            if withheld.intersection(int(n) for n in _PICTURE_TAG.findall(prompt)):
+                raise ValueError('Remove unavailable character reference pictures from the complete H3 prompt.')
             try:
                 validate_authored_dialogue(prompt, locks)
             except ValueError as warning:
@@ -1075,7 +1134,8 @@ def worker(job,cfg,originals,song=None,drive=None):
             first=None
             if tail:
                 first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
-            graph=app.build_workflow(job['images_comfy'],None,*job['size'],opening_render_frames(job,seg),prompt,
+            images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+            graph=app.build_workflow(images,None,*job['size'],opening_render_frames(job,seg),graph_prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaFilm/{job["id"]}/{i:02d}_v1'
