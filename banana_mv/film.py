@@ -1056,13 +1056,12 @@ def worker(job,cfg,originals,song=None,drive=None):
                 if not seg.get('prompt_id'):seg['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
                 else:track_prompt(cfg,seg['prompt_id'])
                 entry=app.wait_generation(cfg,seg['prompt_id'],job)
-            check_cancelled(cfg)
+            # 生成已完成：先存下這段，停爐要求在下一段開始前處理，不浪費已算好的 GPU 時間。
             app.backend.comfy_download(cfg,app.video_info(entry),work/f'{i:02d}_raw_v1.mp4')
             part=work/f'{i:02d}_part_v1.mp4'
             if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
             else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
-            check_cancelled(cfg)
             seg['status']='done'
             guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
             app.write_state(job)

@@ -386,7 +386,7 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             app.preflight(cfg,graph);(output('workflow.json')).write_text(json.dumps(graph,ensure_ascii=False,indent=2))
             take['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
             entry=app.wait_generation(cfg,take['prompt_id'],job)
-            check_cancelled(cfg)
+            # 生成已完成：就算這時剛好按了停爐，也先把算好的毛片存下來，迴圈開頭再停。
             app.backend.comfy_download(cfg,app.video_info(entry),output('raw.mp4'))
             if native:
                 from banana_mv.film_media import trim_native
@@ -394,7 +394,6 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
                 else:trim_native(output('raw.mp4'),output('part.mp4'),seg['frames'])
             else:app.trim_video(output('raw.mp4'),output('part.mp4'),seg['frames'])
             if not app.valid_part(output('part.mp4'),seg,job['size']):raise ValueError('回爐毛片影格或尺寸不符。')
-            check_cancelled(cfg)
             take['status']='ready';choices[i]=take['id'];job['retake']['completed']=len(choices);app.write_state(job)
         if job['id'] in app.CANCEL:raise RuntimeError('已停止回爐；完成的新版本已保留，尚未替換原版。')
         # Candidates remain separate from adopted parts and the current master.

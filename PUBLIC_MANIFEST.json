@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "355c1460dfa033c0266426d23a71dde5931fdf67e0ce2486b3f2e9fca4ad67c9"
+      "sha256": "806a4824342eaeba7a644ca57711a6f9ec021e9b57c6f9d4e1f94805afbaf75c"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -140,7 +140,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "6d796130d4f0fe8e5ac5d3092d7dd87bc7e2d774fc54c16e7d43fddc5956b457"
+      "sha256": "05871c29255299cfa70dbef260f073b57934b591fb1858306f54577a33db441a"
     },
     {
       "path": "banana_mv/teppan_timing.py",
