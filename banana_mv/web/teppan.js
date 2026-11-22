@@ -329,17 +329,17 @@ function render() {
   $('project-title').hidden = !job;
   $('project-title').textContent = job?.title ?? '';
   const messages = {
-    planning_story: '9B 正在讀菜單…',
-    running: (rewriting ? '9B 正在備料 · ' : '鐵板加熱中 · ') + count + ' / ' + clips.length + ' 段完成',
-    kitchen_ready: accepted ? '這道已採用，可以繼續炒或上菜。' : '出鍋了，先看看毛片。',
-    assembling: '正在上菜，合成已採用的毛片…',
-    upscaling_1080p: '大火收汁・升頻 2K 中…',
-    done: '上菜完成。',
+    planning_story: '蕉彌正在讀菜單…',
+    running: (rewriting ? '蕉彌正在備料 · ' : '蕉彌正在炒菜 · ') + count + ' / ' + clips.length + ' 段完成',
+    kitchen_ready: accepted ? '這道已採用，可以繼續炒或上菜。' : '蕉彌炒好了，先看看毛片。',
+    assembling: '蕉彌正在上菜・合成影片中…',
+    upscaling_1080p: '蕉彌正在大火收汁・升頻 2K 中…',
+    done: '蕉彌上菜完成。',
     error: '製作暫停，完成的毛片已保存。',
     cancelled: '已停爐。',
     interrupted: '製作中斷，可繼續製作。'
   };
-  $('status').textContent = messages[status] || (working ? '正在準備鐵板…' : '鐵板就位，等你的第一道菜單。');
+  $('status').textContent = messages[status] || (working ? '蕉彌正在準備鐵板…' : '鐵板就位，等你的第一道菜單。');
   progress.hidden = status !== 'running' || !clips.length;
   progress.max = clips.length || 1;
   progress.value = count;
