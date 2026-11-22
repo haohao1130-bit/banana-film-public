@@ -188,11 +188,11 @@
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "7bd381416d9f301645d1eb6e550c75b7bb0161df07b6b71b1d57d0c5dfa0d6b2"
+      "sha256": "db2b64b301ad859000c76d6af6a777af895f2eaeb8cb3d1894d98b4aa3ae3516"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "f7e6bb5e4781e6da639daf6068c6f5b506711a270c3e6bcdaf7372b035952987"
+      "sha256": "c1f88d6b1a85e3620b1615ad7ad7e2aa87fc7c9d8438e7fdddab0a0056868b54"
     },
     {
       "path": "docs/clip_review.md",
@@ -236,7 +236,7 @@
     },
     {
       "path": "tests/check_teppan_browser.cjs",
-      "sha256": "30f21c0b2cb667b37a467997312ebf54c766050e1b619e37f42a12ee2abe5afe"
+      "sha256": "32a079f1344df13d7a59dee31820f02bd5cea413ebd7376850b53423bf232942"
     },
     {
       "path": "tests/check_ui.cjs",

@@ -72,7 +72,7 @@ const server = http.createServer((req, res) => {
   const snap = async name => { if (shots) await page.screenshot({path: path.join(shots, name + '.png')}); };
   await page.goto(base + '/teppan.html');
   await page.waitForSelector('.msg.bot');
-  assert.match(await page.locator('#profile').textContent(), /9:16 · 480P · 6步 · 蕉彌估/);
+  assert.match(await page.locator('#profile').textContent(), /9:16 · 首尾幀 · 480P · 6步 · 蕉彌估/);
   await snap('1-welcome');
 
   // 加圖 → 出現在輸入框上方與共同設定
@@ -107,6 +107,9 @@ const server = http.createServer((req, res) => {
   await page.click('#open-settings');
   assert.equal(await page.locator('[data-target="seconds"] [data-value="auto"]').getAttribute('aria-checked'), 'true');
   assert.equal(await page.locator('[data-target="steps"] [data-value="6"]').getAttribute('aria-checked'), 'true');
+  assert.equal(await page.locator('[data-target="mode"] [data-value="chain"]').getAttribute('aria-checked'), 'true');
+  await page.click('[data-target="mode"] [data-value="chain5"]');   // 改成末五幀
+  assert.equal(await page.locator('[data-target="mode"] [data-value="chain5"]').getAttribute('aria-checked'), 'true');
   await snap('3-settings-sheet');
   await page.click('#sheet-settings [data-close]');
 
@@ -129,6 +132,7 @@ const server = http.createServer((req, res) => {
   assert.equal(start.kitchen_shared_setup, '@圖片1=小巫=S1，S1=溫柔甜美女聲。');
   assert.deepEqual(start.image_slots.slice(0, 3), ['a1', 'a2', null]);   // 組合的圖不重傳，客人圖新上傳
   assert.equal(start.sampling_steps, 6);
+  assert.equal(start.mode, 'chain5');
   await snap('5-cooked');
 
   // 採用 → 出菜區多一道 → 上菜

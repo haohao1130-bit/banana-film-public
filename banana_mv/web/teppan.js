@@ -302,7 +302,8 @@ function profileText() {
     : $('resolution').value;
   const steps = request?.sampling_steps ?? $('steps').value;
   const seconds = $('seconds').value === 'auto' ? '蕉彌估' : $('seconds').value + '秒';
-  return `${aspect} · ${resolution}P · ${steps}步 · ${seconds}`;
+  const link = (request?.mode ?? $('mode').value) === 'chain5' ? '末五幀' : '首尾幀';
+  return `${aspect} · ${link} · ${resolution}P · ${steps}步 · ${seconds}`;
 }
 
 /* ---------- 估價 ---------- */
@@ -692,7 +693,7 @@ async function firstRequest(menu, seconds) {
     project_name: $('name').value.trim(), prompt, image_slots: slots,
     kitchen_menu: menu, kitchen_shared_setup: shared,
     max_seconds: seconds, duration_preference: 'selector',
-    segment_seconds: 10, mode: 'chain', sound_mode: $('sound').value, aspect,
+    segment_seconds: 10, mode: $('mode').value === 'chain5' ? 'chain5' : 'chain', sound_mode: $('sound').value, aspect,
     width: aspect === '16:9' ? (resolution === 480 ? 854 : 1280) : resolution,
     sampling_steps: Number($('steps').value), rewriter_thinking: $('thinking').checked,
     kitchen_attention: true, sparse_attention: false, motion_lora: false

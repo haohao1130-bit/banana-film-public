@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
   <link rel="stylesheet" href="teppan.css?v=chat-5">
-  <script defer src="teppan.js?v=profile-1"></script>
+  <script defer src="teppan.js?v=mode-1"></script>
 </head>
 <body>
   <div class="app">
@@ -153,7 +153,7 @@
 
   <section id="sheet-settings" class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="sheet-head"><h2 id="settings-title">參數</h2><button type="button" class="chip" data-close>完成</button></div>
-    <p id="settings-locked" class="muted" hidden>開桌後比例、解析度、步數、聲音與 Thinking 固定；每道秒數和上菜升頻隨時可改。</p>
+    <p id="settings-locked" class="muted" hidden>開桌後比例、接續方式、解析度、步數、聲音與 Thinking 固定；每道秒數和上菜升頻隨時可改。</p>
     <h3>每道菜秒數</h3>
     <div class="pills" role="radiogroup" aria-label="每道菜秒數" data-target="seconds">
       <button type="button" data-value="auto">蕉彌估</button>
@@ -169,6 +169,11 @@
       <button type="button" data-value="16:9">16:9</button>
       <button type="button" data-value="4:5">4:5</button>
       <button type="button" data-value="1:1">1:1</button>
+    </div>
+    <h3>段與段接續</h3>
+    <div class="pills initial" role="radiogroup" aria-label="段與段接續" data-target="mode">
+      <button type="button" data-value="chain">首尾幀</button>
+      <button type="button" data-value="chain5">末五幀（動作接續）</button>
     </div>
     <h3>解析度</h3>
     <div class="pills initial" role="radiogroup" aria-label="解析度" data-target="resolution">
@@ -193,6 +198,7 @@
     <label class="field initial">專案名稱（選填）<input id="name" maxlength="120" placeholder="不填就讓蕉彌取名"></label>
     <input type="hidden" id="seconds" value="auto">
     <input type="hidden" id="aspect" value="9:16">
+    <input type="hidden" id="mode" value="chain">
     <input type="hidden" id="resolution" value="480">
     <input type="hidden" id="steps" value="6">
     <input type="hidden" id="sound" value="auto">
