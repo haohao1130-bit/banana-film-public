@@ -29,6 +29,25 @@ def resolve_seconds(menu, seconds):
     return seconds, False
 
 
+def authored_act_plan(request, menu, shared, image_count, title):
+    from banana_mv.film_act import split_kitchen_act_commissions
+
+    acts = split_kitchen_act_commissions(menu, shared)
+    if acts is None:
+        return None
+    shared, clips = acts
+    validation_request = dict(request, python_clip_windows=True)
+    if not shared and not image_count:
+        validation_request['fixed_reference_version'] = 0
+    plan = film.validate_plan(json.dumps({
+        'title': title, 'shared_setup': shared,
+        'segments': [{'seconds': seconds, 'mode': 'story', 'brief': brief}
+                     for seconds, brief in clips],
+    }, ensure_ascii=False), validation_request, image_count)
+    film.validate_planned_duration(plan, request)
+    return plan
+
+
 def native_plan(job, request, clips, originals, title):
     """使用者直接貼 MiniMax H3 六欄全咒：Python 只切段對時，不經 9B 改寫。"""
     from banana_mv.direction_contract import validate_h3_sections
@@ -75,6 +94,9 @@ def prepare(job, cfg, originals):
         attempt['clips'] = list(range(len(job['segments'])))
         attempt['native_h3'] = True
         return
+    shared = job.get('shared_setup') or job['request'].get('kitchen_shared_setup', '').strip()
+    act_plan = None if native else authored_act_plan(
+        request, attempt['menu'], shared, len(originals), job['title'])
     if not job['segments']:
         shared = job['request'].get('kitchen_shared_setup', '').strip()
         if len(attempts) > 1:
@@ -84,7 +106,8 @@ def prepare(job, cfg, originals):
             if not all(f'<Picture {index}>' in shared for index in range(1, len(originals) + 1)):
                 # Preserve explicit settings and let the planner fill omitted image bindings.
                 shared = None
-        plan = film.plan_film(cfg, dict(job, request=request), originals, work=work, shared_setup=shared or None)
+        plan = act_plan or film.plan_film(cfg, dict(job, request=request), originals, work=work,
+                                         shared_setup=shared or None)
         job.update(segments=plan['segments'], shared_setup=plan['shared_setup'], duration=plan['duration'])
         if not job['request'].get('project_name'):
             job['title'] = plan['title']
@@ -92,10 +115,12 @@ def prepare(job, cfg, originals):
         return
 
     from banana_mv.film_act import split_clip_commissions
-    explicit = None if native else split_clip_commissions(attempt['menu'], request['segment_seconds'])
+    explicit = None if native or act_plan else split_clip_commissions(attempt['menu'], request['segment_seconds'])
     if native:
         plan = native_plan(job, request, native, originals, job['title'])
         attempt['native_h3'] = True
+    elif act_plan:
+        plan = act_plan
     elif explicit:
         request['authored_clip_commissions'] = True
         _, scenes = explicit

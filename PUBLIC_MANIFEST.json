@@ -60,7 +60,11 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "e43198410fa9d0d77d7cea5013a1de6c9ec836497e456e37a23daeb35b394255"
+      "sha256": "7c471a45221808ac9b6cf8374bffc19c42526018c1aaaf57960728117bc4c2d6"
+    },
+    {
+      "path": "banana_mv/film_act.py",
+      "sha256": "e78c576b4bbbd7ae8917ac5022c0fe7862a041b4126960c9dc4d5242e8206cdd"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -72,7 +76,7 @@
     },
     {
       "path": "banana_mv/film_kitchen.py",
-      "sha256": "b7bae2fff0065be3f9be35bf8b2ce7a37585d984dd6b47d7d3533936107e5f02"
+      "sha256": "85344531b0c210f48d40ccd631b25ae9859c924cc86997bcb7dc025c928d2f01"
     },
     {
       "path": "banana_mv/film_manual.py",
@@ -148,7 +152,7 @@
     },
     {
       "path": "banana_mv/teppan_timing.py",
-      "sha256": "7e293ba70bf102ccb9964be83f2e750e553d5b3a281c0d5e43978e5157ebc44c"
+      "sha256": "a57ceb27c161765e66448de85e8c96766a4594a427bdbb976a8806f689f57f18"
     },
     {
       "path": "banana_mv/timed_slots.py",
@@ -160,7 +164,7 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "904b2b4415ca973d47c4535bafdfaafb31b21be1063ad9edaf958c15fdc5cf1b"
+      "sha256": "9b7ee1a41d9be3344b7b35dc39b8fa8a25b4f8d112fcd3c0959cdef0f27b1078"
     },
     {
       "path": "banana_mv/web/film.js",
@@ -388,7 +392,7 @@
     },
     {
       "path": "tests/test_teppan_timing.py",
-      "sha256": "1471c44e4e0af3371b15bbd329b5a20d2c523fbf74d137556f3330b388754a54"
+      "sha256": "12c198f85ae866e7cdce5ab7748a324a3d329aa50d6239fc3acb7c7d052b40dd"
     },
     {
       "path": "tests/test_thinking_sampling.py",

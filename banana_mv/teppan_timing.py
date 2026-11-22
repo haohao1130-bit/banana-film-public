@@ -128,12 +128,28 @@ def estimate_menu(menu, cap=DEFAULT_CAP):
     """蕉彌估價：看菜單估秒數、段數、出餐時間。不呼叫 9B，不用 GPU。"""
     if not isinstance(menu, str) or not menu.strip():
         raise ValueError('請先寫菜單。')
+    menu = menu.replace('\r\n', '\n').replace('\r', '\n')
     native = native_h3_clips(menu, None, cap)
     if native:
         seconds = sum(s for s, _ in native)
         windows = [s for s, _ in native]
         source = 'native_h3'
     else:
+        from banana_mv.film_act import numbered_kitchen_sections
+
+        numbered = numbered_kitchen_sections(menu)
+        if numbered is not None:
+            _, sections = numbered
+            windows = [seconds for seconds, _ in sections]
+            for index, seconds in enumerate(windows, 1):
+                if not MIN_CLIP - 1e-6 <= seconds <= cap + 1e-6:
+                    raise ValueError(f'第 {index:02d} 段標了 {seconds:g} 秒；每段需介於 '
+                                     f'{MIN_CLIP:.2f}–{cap:g} 秒。')
+            if len(windows) > 34 or not 6 <= sum(windows) <= 300:
+                raise ValueError('菜單需有 1–34 段，總長 6–300 秒。')
+            return {'seconds': round(sum(windows), 3), 'windows': windows, 'clips': len(windows),
+                    'render_seconds': len(windows) * SECONDS_PER_CLIP_RENDER,
+                    'source': 'timecode', 'native_h3': False}
         declared = _DECLARED.search(menu)
         if declared:
             value = float(declared[1])
