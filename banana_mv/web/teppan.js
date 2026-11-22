@@ -3,7 +3,7 @@ const storageKey = 'banana_teppan_job';
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
 let job = null, timer, pending = false, restoring = false, repeating = false;
 const menuInput = $('menu');
-let imageMention = null, composing = false;
+let imageMention = null, composing = false, reactionTimer;
 const localImageUrls = new Map();
 
 for (let index = 1; index <= 8; index++) {
@@ -399,6 +399,12 @@ async function perform(action, fields = {}) {
     else if (['stop', 'resume'].includes(action)) {
       updated = await post('mv/' + action, {id: job.id});
     } else updated = await post('film/kitchen/' + action, {id: job.id, ...fields});
+    if (action === 'repeat') {
+      const counter = $('counter');
+      clearTimeout(reactionTimer);
+      counter.classList.add('is-surprised');
+      reactionTimer = setTimeout(() => counter.classList.remove('is-surprised'), 820);
+    }
     if (['start', 'append', 'repeat', 'adopt'].includes(action)) {
       $('menu').value = '';
       $('settings').open = false;

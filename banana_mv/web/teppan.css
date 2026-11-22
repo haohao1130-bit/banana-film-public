@@ -79,6 +79,16 @@ h1 { font-size: clamp(1.75rem, 6vw, 2.7rem); margin: 0 0 8px; line-height: 1.16;
 }
 @keyframes steam { 12% { opacity: .75; } to { transform: translateY(-20px); opacity: 0; } }
 @keyframes fire { from { transform: scaleY(.72); opacity: .7; } to { transform: scaleY(1.15); opacity: 1; } }
+.surprise-face { opacity: 0; }
+.counter.is-surprised .smile-face { opacity: 0; }
+.counter.is-surprised .surprise-face { opacity: 1; }
+.counter.is-surprised .chef-motion { animation: startled .82s ease-out both; }
+.counter.is-surprised .spatula { animation: none; }
+@keyframes startled {
+  0% { transform: scale(1); }
+  16% { transform: translateY(-6px) scale(1.04); }
+  30%, 100% { transform: scale(1); }
+}
 @media (prefers-reduced-motion: reduce) {
   .stage * { animation: none !important; }
   .counter[data-phase="cooking"] .steam path, .counter[data-phase="finishing"] .flames { opacity: .75; }
