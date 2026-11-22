@@ -640,6 +640,23 @@ def _total_from_complete_shot_timeline(story):
     return previous if 6 <= previous <= 300 else None
 
 
+def _strip_manual_duration_header(story):
+    """手動全咒上方只寫了「全片 20 秒」之類的長度說明時，切掉那行再交給分段器。"""
+    source=story.strip()
+    starts=[m.start() for m in re.finditer(r'(?im)^[ \t]*(?:subject_definitions:|===\s*CLIP\b|ACT\s*0*1\b)',source)]
+    if not starts or starts[0]==0:
+        return story
+    header=source[:starts[0]]
+    if len(header.strip())>60:
+        return story
+    try:
+        if declared_film_seconds(header) is None:
+            return story
+    except ValueError:
+        return story
+    return source[starts[0]:]
+
+
 def declared_film_seconds(story):
     """Detect an authored full runtime, never a standalone action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
@@ -786,22 +803,36 @@ def start(req):
         # It may remap input Picture ordinals and native render frame counts,
         # but must not infer a shared_setup or compose/voice any H3 content.
         from banana_mv.film_manual import CLIP, split_native_h3, make_manual_plan
-        manual_clips = split_act_native(story)
+        manual_story = _strip_manual_duration_header(story)
+        manual_clips = split_act_native(manual_story)
         if manual_clips is None:
-            single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
-            manual_clips=split_native_h3(story,single_seconds)
-            if not CLIP.search(story) and float(req['target_seconds']) > float(req['segment_seconds'])+1e-8:
-                raise ValueError('關閉 9B 的純提示詞模式不自動重寫／分配長篇劇本；請使用 === CLIP 1 (10s) === 或 ACT 01 時間標記，並在每段寫好完整 H3 六欄提示詞。')
+            ceiling = float(req['segment_seconds'])
+            has_clips = bool(CLIP.search(manual_story))
+            if not has_clips and req['target_is_exact'] and float(req['target_seconds']) > ceiling+1e-8:
+                raise ValueError(f'單段 H3 全咒最多 {ceiling:g} 秒（生成分段上限），但全片設定是 '
+                                 f'{float(req["target_seconds"]):g} 秒。請把全片改成 {ceiling:g} 秒以內，'
+                                 '或用 === CLIP 1 (10s) === 分段，每段各寫一份六欄全咒。')
+            # 沒指定全片長度時，單段全咒就是一段，長度取分段上限。
+            single_seconds=min(float(req['target_seconds']),ceiling)
+            manual_clips=split_native_h3(manual_story,single_seconds)
         for index,(seconds,h3_prompt) in enumerate(manual_clips,1):
             if not h3_prompt.lstrip().startswith('subject_definitions:'):
                 raise ValueError(f'純提示詞第 {index} 段必須是使用者完成的 MiniMax H3 六欄全咒；Python 不代填共同設定、鏡頭或台詞。')
             from banana_mv.direction_contract import validate_h3_sections
             validate_h3_sections(h3_prompt)
         authored=sum(seconds for seconds,_ in manual_clips)
-        if preference=='prompt' and declaration is None and (split_act_native(story) is not None or CLIP.search(story)):
-            if not 6<=authored<=300:raise ValueError('H3 全咒總長需在 6–300 秒。')
-            req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
-                       timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
+        if not 124/FPS-1e-8<=authored<=300:raise ValueError('H3 全咒總長需在 5.17–300 秒。')
+        if authored > float(req['target_seconds']) + float(req['timeline_tolerance']) + 1e-8:
+            raise ValueError(f'手動全咒總時長 {authored:.2f} 秒超過本次設定 {float(req["target_seconds"]):g} 秒。')
+        # 全片設定是「上限」：照使用者寫的分段秒數精確交付，短於上限也可以。
+        from banana_mv.film_continuity import render_frames
+        delivery=[round(seconds*FPS) for seconds,_ in manual_clips]
+        renders=[render_frames(f) if i and req['mode']=='chain5' else 5+17*math.ceil((f-5)/17)
+                 for i,f in enumerate(delivery)]
+        req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
+                   timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips',
+                   # 精確交付使用者寫的秒數（多渲染再裁掉）；超過 H3 安全影格數才退回網格對齊。
+                   authored_segment_master=max(renders)<=362)
         req['manual_h3']=True
         manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
                                      len(rows),validate_manual_sound,

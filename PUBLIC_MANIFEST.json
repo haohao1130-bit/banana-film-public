@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "806a4824342eaeba7a644ca57711a6f9ec021e9b57c6f9d4e1f94805afbaf75c"
+      "sha256": "6c0c442544775f6110591a4dc9054122fa9e67d221f2ee064d3d22bff1fa7d02"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -317,6 +317,10 @@
     {
       "path": "tests/test_lyrics_reference.py",
       "sha256": "8a2d562913669eee53c46c0564c57684d2175bbd850f57433d7521c4d4fe7fe4"
+    },
+    {
+      "path": "tests/test_manual_h3_entry.py",
+      "sha256": "a7e07c1f883dda1887fc87cdd4ccb8ace210ac86d7b946208df4ee17ebdd246b"
     },
     {
       "path": "tests/test_mv_scope.py",
