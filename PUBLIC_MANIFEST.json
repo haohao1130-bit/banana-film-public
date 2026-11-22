@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "0db77e087b379d980ab3c19d46864877906094dd69818e8e475dbf926e3f45b1"
+      "sha256": "c7f4db4ceb94e5e297edb7df0950f65a4846a902f6ac80f3cb51ca95dd296b7e"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -68,7 +68,11 @@
     },
     {
       "path": "banana_mv/film_continuity.py",
-      "sha256": "5088865826ffd7b4420db62c218f0255df8b0ec1dd3d364cdbc76f1a83ce926e"
+      "sha256": "a85ee027519a47daef65d901fd06f0cb96a88aacb36706e9006027c8fcbb1061"
+    },
+    {
+      "path": "banana_mv/film_kitchen.py",
+      "sha256": "32246fc2508eb2024757ee900da8017f0875ec34aea924e595c08092e8363f3d"
     },
     {
       "path": "banana_mv/film_manual.py",
@@ -80,7 +84,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "a35521ec6525f7764498b41f91904bdcbf26aff0797632192985a143683b354e"
+      "sha256": "06ee15519931c803d19ac50b0cfda67e749a7288eac2a5938cf8b6a5abcbdcd7"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -96,7 +100,7 @@
     },
     {
       "path": "banana_mv/masters.py",
-      "sha256": "87cb353a77dd4b6d95cde1111585df4a902ac43e6f8ba56b16ac1edb2417b569"
+      "sha256": "38cd02ac8f7069a4c9b09e8d8a38b3ccdfce1f90b6f24cb07164d1d00fc6045d"
     },
     {
       "path": "banana_mv/mv_scope.py",
@@ -116,7 +120,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "b67583ab43d1ccd52a57080b7a10ee398eaf01c7637e10b283eb1c94adc9149c"
+      "sha256": "a4e900941e2f09a9d1f9bd1e568b55f0f4c01787aa87fe48bbfc35b43607202b"
     },
     {
       "path": "banana_mv/services.py",
@@ -148,7 +152,7 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "f1b1d7bf0db61268dc3706f03dbfed99f6f199a4639833d516664c88ca6c3524"
+      "sha256": "727c0825df08ada2ba4ce239ac8ba5a68e2023e62463bc8ebd360e4fb0dfad45"
     },
     {
       "path": "banana_mv/web/film.js",
@@ -165,6 +169,18 @@
     {
       "path": "banana_mv/web/kitchen.js",
       "sha256": "886c64851f635db5a49b7cfcf3424e10032269c07552340157a303a185f87a63"
+    },
+    {
+      "path": "banana_mv/web/teppan.css",
+      "sha256": "78d489ea3edaf993d1a739dd5c4c480c9c104bd44b11d38ab35b29dc70649080"
+    },
+    {
+      "path": "banana_mv/web/teppan.html",
+      "sha256": "11cec2a7ded368d9cb59a569a159cb7ed9c4319e95d505c6482b1caae5e140bd"
+    },
+    {
+      "path": "banana_mv/web/teppan.js",
+      "sha256": "29aa09e59a1b2b25c6ca9260da825a00e956be3f478b45de875cb68dd8940dfa"
     },
     {
       "path": "docs/clip_review.md",

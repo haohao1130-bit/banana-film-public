@@ -380,13 +380,19 @@ def validate_planned_duration(plan,req):
     return None
 
 
-def plan_film(cfg,job,originals):
-    work=app.job_dir(job['id']);path=work/'director_plan.json';req=job['request']
+def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
+    work=work if work is not None else app.job_dir(job['id'])
+    path=work/'director_plan.json';req=job['request']
     source={'story':map_story(req,req['prompt'],len(originals)),
             'reference_count':len(originals),
             'max_seconds':req['max_seconds'],'max_clip_seconds':req['segment_seconds'],
             'style':req['visual_style'],'sound':req['sound_mode'],'intensity':req['intensity']}
     source.update(duration_contract(req))
+    if shared_setup is not None:
+        source['existing_shared_setup'] = shared_setup
+        source['continuation_instruction'] = (
+            'Plan only this menu as the next part of an existing film. Preserve the provided shared settings and character voices. '
+            'Open directly on the current event and leave room for another dish.')
     if req.get('planning_contract_version')==2:
         minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
         source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=minimum,
@@ -418,6 +424,10 @@ def plan_film(cfg,job,originals):
         raw=app.backend.rewrite_local(cfg,PLANNER,parts,uuid.uuid4().hex[:8])
         (work/f'director_attempt_{attempt:02d}.txt').write_text(raw,encoding='utf-8')
         try:
+            if shared_setup is not None:
+                data = parse_object(_text(raw))
+                data['shared_setup'] = shared_setup
+                raw = json.dumps(data, ensure_ascii=False)
             plan=validate_plan(raw,req,len(originals))
             validate_planned_duration(plan,req)
             atomic_json(path,dict(plan,input_sha256=fingerprint))
@@ -465,12 +475,13 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
     total=seg.get('segment_count') or len(job.get('segments',[])) or 1
-    final=seg['index']==total-1
-    task['clip_opening']={'position':'first' if seg['index']==0 else 'continuation',
-        'instruction':('Begin the commissioned film opening.' if seg['index']==0 else
+    final=not job.get('kitchen') and seg['index']==total-1
+    first=seg.get('kitchen_previous', seg['index'] - 1) in (None, -1)
+    task['clip_opening']={'position':'first' if first else 'continuation',
+        'instruction':('Begin the commissioned film opening.' if first else
                        'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
-    authored_clip = req.get('authored_clip_commissions', False)
-    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip:
+    authored_clip = seg.get('authored_clip_commission', req.get('authored_clip_commissions', False))
+    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip and not job.get('kitchen'):
         previous = job['segments'][seg['index'] - 1]['director_plan']['event'].splitlines()[-1]
         task['already_established'] = re.sub(r'<Picture (\d+)>',
             lambda m:f'<Picture {int(m[1])+offset}>',previous)
@@ -490,7 +501,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
             'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
         )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
-    if req.get('mode')=='chain5' and seg['index']>0:
+    if req.get('mode')=='chain5' and not first:
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
     if tail:task['continuity_reference']='<Picture 1> is the previous last frame anchored at frame zero. Continue from its exact composition, poses, and eyelines; this image is not another actor.'
     if correction:task.update(original_prompt=base,local_correction=correction)
@@ -583,6 +594,14 @@ def declared_film_seconds(story):
 
 def start(req):
     req=dict(req)
+    if req.get('kitchen_mode'):
+        shared = req.get('kitchen_shared_setup', '')
+        if not isinstance(shared, str) or len(shared) > 12000:
+            raise ValueError('共同設定最多 12000 字。')
+        menu = req.get('kitchen_menu', req.get('prompt', ''))
+        if not isinstance(menu, str) or not menu.strip():
+            raise ValueError('請填寫第一道菜單。')
+        req.update(auto_director=True, script_review=False, face_refine=False, upscale_1080p=False)
     sampling_steps=req.get('sampling_steps',8)
     if type(sampling_steps) is not int or sampling_steps not in (6,8):
         raise ValueError('採樣步數僅支援 6 或 8。')
@@ -747,6 +766,11 @@ def start(req):
             job['timeline_source']='authored_clips' if req.get('authored_clip_commissions') else 'manual_native_h3'
             atomic_json(work/'director_plan.json',dict(manual_plan,
                          input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
+        if req.get('kitchen_mode'):
+            from banana_mv.film_kitchen import new_attempt
+            attempt = new_attempt(menu, maximum)
+            attempt['clips'] = list(range(len(job['segments'])))
+            job['kitchen'] = {'dishes': [{'attempts': [attempt]}]}
         app.write_state(job)
         threading.Thread(target=worker,args=(job,cfg,*inputs(job,cfg)),daemon=True).start()
         return job
@@ -851,20 +875,41 @@ def worker(job,cfg,originals,song=None,drive=None):
     from banana_mv import face_refine
     from banana_mv.comfy import check_cancelled, track_prompt
     from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
-    cfg = app.emergency_config(cfg, job['id'])
     try:
-        if not job['segments']:
+        cfg = app.emergency_config(cfg, job['id'])
+        kitchen = job.get('kitchen')
+        if kitchen:
+            from banana_mv import film_kitchen
+            film_kitchen.prepare(job, cfg, originals)
+            check_cancelled(cfg)
+            app.write_state(job)
+            attempt = film_kitchen.latest(job)
+            serving = kitchen.get('serving')
+            active_segments = [] if serving else [job['segments'][i] for i in attempt['clips']]
+        else:
+            active_segments = job['segments']
+        if not kitchen and not job['segments']:
             job['status']='planning_story';app.write_state(job)
             plan=plan_film(cfg,job,originals)
             check_cancelled(cfg)
             job.update(segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'])
+            active_segments = job['segments']
             if not job['request'].get('project_name'):job['title']=plan['title']
             app.write_state(job)
         if job['request'].get('script_review') and not job.get('script_approved'):
             job.update(status='script_ready',script_revision=uuid.uuid4().hex)
             job['script_draft']=review_draft(job);app.write_state(job);return
         guide_source = None
-        for seg in job['segments']:
+        for seg in active_segments:
+            if 'kitchen_previous' in seg:
+                previous = seg['kitchen_previous']
+                guide_source = None
+                if previous is not None:
+                    earlier = job['segments'][previous]
+                    part = app.adopted_part(job, earlier)
+                    if not app.valid_part(part, earlier, job['size']):
+                        raise ValueError('上一道採用的毛片遺失。')
+                    guide_source = part
             if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
             i=seg['index'];part=app.adopted_part(job,seg);job['current']=i+1
             if seg.get('takes') and not part.is_file():raise ValueError('採用版片段遺失，請恢復該版本或另選版本。')
@@ -880,7 +925,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                 if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
                     raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
                 seg['motion_context']=receipt
-            if i and job['request']['mode']=='chain':
+            if guide_source is not None and job['request']['mode']=='chain':
                 tail=work/f'{i:02d}_opening.png'
                 app.last_frame(guide_source,tail)
                 opening_sha256=hashlib.sha256(tail.read_bytes()).hexdigest()
@@ -941,11 +986,20 @@ def worker(job,cfg,originals,song=None,drive=None):
             app.write_state(job)
             if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
         if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
+        if kitchen and not serving:
+            job['status'] = 'kitchen_ready'
+            for key in ('error', 'error_stage', 'resuming'):
+                job.pop(key, None)
+            app.write_state(job)
+            return
+        chosen = film_kitchen.adopted(job) if kitchen else list(range(len(job['segments'])))
         job['status']='assembling';app.write_state(job);masters.preserve_current(job,work)
         pending=work/'final_pending.mp4'
-        app.assemble([app.adopted_part(job,s) for s in job['segments']],None,pending,job['duration'],job['output_size'])
+        parts = [app.adopted_part(job, job['segments'][i]) for i in chosen]
+        app.assemble(parts,None,pending,job['duration'],job['output_size'])
         check_cancelled(cfg)
-        master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume')
+        choices = {i: job['segments'][i].get('selected_take','original') for i in chosen}
+        master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume',choices)
         pending.replace(work/'final.mp4');job['current_master']=master['version']
         try:app.export_finished_video(job,work/'final.mp4')
         except OSError as error:job['export_error']=str(error)

@@ -22,9 +22,12 @@ def archive(job,work,source,reason,choices=None):
     digest=hashlib.sha256()
     with target.open('rb') as stream:
         for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
+    take_choices = ({str(i): take for i, take in choices.items()}
+                    if job.get('kitchen') and choices is not None else
+                    {str(i): (choices or {}).get(i, s.get('selected_take', 'original'))
+                     for i, s in enumerate(job['segments'])})
     row={'version':version,'file':target.name,'created':time.time(),'reason':reason,
-         'sha256':digest.hexdigest(),'takes':{str(i):(choices or {}).get(i,s.get('selected_take','original'))
-                                             for i,s in enumerate(job['segments'])}}
+         'sha256':digest.hexdigest(),'takes':take_choices}
     job.setdefault('final_versions',[]).append(row)
     return row
 

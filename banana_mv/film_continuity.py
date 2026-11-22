@@ -16,7 +16,7 @@ CONTEXT_FRAMES = 5
 
 def motion_prefix(job, seg):
     return CONTEXT_FRAMES if (job['request'].get('production')=='film'
-        and job['request'].get('mode')=='chain5' and seg['index']>0) else 0
+        and job['request'].get('mode')=='chain5' and seg.get('kitchen_previous', seg['index'] - 1) not in (None, -1)) else 0
 
 
 def render_frames(delivered_frames):

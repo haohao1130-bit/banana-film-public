@@ -18,6 +18,10 @@ class Handler(app.Handler):
         path=urllib.parse.urlparse(self.path).path
         if path in ('/','/film','/mv'):return self.send_file(app.WEB/'film.html')
         if path in ('/film.js','/film_review.js','/kitchen.js'):return self.send_file(app.WEB/path.lstrip('/'))
+        if path=='/teppan':return self.send_file(app.WEB/'teppan.html')
+        if path in ('/teppan.html','/teppan.js','/teppan.css'):return self.send_file(app.WEB/path.lstrip('/'))
+        if path in ('/api/film/kitchen/projects', '/api/mv/projects'):
+            return self.send_json(app.projects(kitchen=(path == '/api/film/kitchen/projects')))
         if path=='/api/mv/status':
             job_id=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get('id',[''])[0]
             try:
@@ -42,6 +46,21 @@ class Handler(app.Handler):
                 finally:
                     app.GPU_LOCK.release()
             except Exception as error:return self.send_json({'error':str(error)},400)
+        if path.startswith('/api/film/kitchen/'):
+            try:
+                from banana_mv import film_kitchen
+                action = path.rsplit('/', 1)[-1]
+                body = self.body_json()
+                if action == 'start':
+                    defaults = {'sampling_steps': 6, 'rewriter_thinking': True, 'width': 854,
+                                'segment_seconds': 10, 'max_seconds': 10, 'mode': 'chain',
+                                'upscale_resolution': 1440}
+                    return self.send_json(film.start(defaults | body | {'kitchen_mode': True}))
+                if action in ('append', 'repeat', 'adopt', 'serve'):
+                    return self.send_json(film_kitchen.update(body, action))
+                return self.send_json({'error': '找不到此操作。'}, 404)
+            except Exception as error:
+                return self.send_json({'error': str(error)}, 400)
         if path in ('/api/film/start','/api/film/plan'):
             try:
                 body=self.body_json()
@@ -68,7 +87,7 @@ def main():
     app.backend.LIBRARY.mkdir(parents=True,exist_ok=True)
     for path in app.RUNS.glob('*/status.json'):
         job=json.loads(path.read_text(encoding='utf-8'))
-        if job['status'] not in ('done','error','cancelled','interrupted','script_ready'):
+        if job['status'] not in ('done','error','cancelled','interrupted','script_ready','kitchen_ready'):
             job.update(status='interrupted',error='執行階段重啟，已完成片段保留。');app.write_state(job)
     print(f'Banana Film Studio on http://127.0.0.1:{app.backend.PORT}',flush=True)
     ThreadingHTTPServer(('127.0.0.1',app.backend.PORT),Handler).serve_forever()

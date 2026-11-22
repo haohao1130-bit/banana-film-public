@@ -285,7 +285,7 @@ def stop_job(job_id):
     from banana_mv.comfy import active_prompt, interrupt_active
 
     job = read_state(job_id)
-    if (job.get('status') in ('done', 'error', 'cancelled', 'interrupted', 'script_ready')
+    if (job.get('status') in ('done', 'error', 'cancelled', 'interrupted', 'script_ready', 'kitchen_ready')
             and not active_prompt(job_id)):
         return {'ok': True, 'interruption': 'not_running', 'message': '目前沒有正在製作的任務。'}
     CANCEL.add(job_id)
@@ -686,12 +686,14 @@ def project_inputs(job, cfg):
     return originals,song,drive
 
 
-def projects():
+def projects(*, kitchen=None):
     rows=[]
     for path in RUNS.glob('*/status.json'):
         try:
             job=json.loads(path.read_text(encoding='utf-8'))
             job_dir(job['id'])
+            if kitchen is not None and bool(job.get('kitchen')) != kitchen:
+                continue
             rows.append({'id':job['id'],'title':job.get('title',job['id']),
                 'created':job.get('created',0),'updated':job.get('resumed',job.get('created',0)),'status':job['status'],'duration':job['duration'],
                 'completed':sum(s.get('status')=='done' for s in job['segments']),
@@ -777,7 +779,11 @@ def resume(job_id,rewrite_retries=None):
         repair_unstarted_timeline(job,song)
         restore_render_settings(job)
         missing=False
-        for seg in job['segments']:
+        segments = job['segments']
+        if job.get('kitchen'):
+            from banana_mv.film_kitchen import latest
+            segments = [] if job['kitchen'].get('serving') else [segments[i] for i in latest(job)['clips']]
+        for seg in segments:
             part=adopted_part(job,seg)
             usable=valid_part(part,seg,job['size'])
             if not usable and seg.get('takes'):raise ValueError('採用版片段遺失或損壞，請恢復該版本或另選版本。')
@@ -794,8 +800,9 @@ def resume(job_id,rewrite_retries=None):
             else:
                 seg['status']='done'
         if missing:
-            graph=build_workflow(job['images_comfy'],'preflight.wav',*job['size'],job['segments'][0]['model_frames'],'',
-                                 job['seed'],**graph_options(job['request'],job['segments'][0]['seconds']))
+            first_segment = segments[0]
+            graph=build_workflow(job['images_comfy'],'preflight.wav',*job['size'],first_segment['model_frames'],'',
+                                 job['seed'],**graph_options(job['request'],first_segment['seconds']))
             preflight(cfg,graph)
         job.update(status='running',resuming=True,resumed=time.time())
         job.pop('error',None);job.pop('video',None);CANCEL.discard(job_id)
