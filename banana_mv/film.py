@@ -519,6 +519,8 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
 
 
 _CAST_BINDING = re.compile(r'<Picture (\d+)>[ \t]*[=＝][ \t]*([^\s=＝，,。；;（(]+)')
+_CAST_ROLE = re.compile(_CAST_BINDING.pattern + r'[ \t]*[=＝][ \t]*(S[1-8])(?![0-9])', re.I)
+_ROLE_MENTION = re.compile(r'(?<![A-Za-z0-9])S[1-8](?![A-Za-z0-9])', re.I)
 _PICTURE_TAG = re.compile(r'<Picture (\d+)>')
 _ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:]?|[：:])')
 
@@ -528,6 +530,9 @@ def kitchen_absent_pictures(brief, fixed):
     roles = {int(n): name for n, name in _CAST_BINDING.findall(fixed or '')
              if not re.search(r'場景|環境|背景|場地', name)}
     mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}
+    mentioned_roles = {role.upper() for role in _ROLE_MENTION.findall(brief)}
+    mentioned.update(int(n) for n, _, role in _CAST_ROLE.findall(fixed or '')
+                     if role.upper() in mentioned_roles)
     present = {n for n, name in roles.items() if n in mentioned or name in brief}
     if not present and not _ONSCREEN.search(brief):
         return set()
@@ -833,8 +838,14 @@ def start(req):
         # Director mode: Python dispatches immutable ACT commissions and one
         # shared reference/world table. The 9B local WRITER alone converts each
         # commission into the six-field MiniMax H3 filming prompt.
-        acts = split_act_commissions(story)
-        clips = split_clip_commissions(story, float(chunk)) if acts is None else None
+        if req.get('kitchen_mode'):
+            from banana_mv.film_kitchen import authored_act_plan
+            manual_plan = authored_act_plan(req, menu, shared.strip(), len(rows),
+                                            req.get('project_name') or '新短片')
+            if manual_plan is not None:
+                req['authored_act_commissions'] = True
+        acts = split_act_commissions(story) if manual_plan is None else None
+        clips = split_clip_commissions(story, float(chunk)) if acts is None and manual_plan is None else None
         if acts is not None or clips is not None:
             if acts is not None:
                 shared, blocks = acts
@@ -928,7 +939,10 @@ def start(req):
             # reference table lives alongside local segment commissions.
             job['shared_setup']=manual_plan['shared_setup']
             job['title']=manual_plan['title']
-            job['timeline_source']='authored_clips' if req.get('authored_clip_commissions') else 'manual_native_h3'
+            if req.get('authored_act_commissions'):
+                job['timeline_source'] = 'authored_acts'
+            else:
+                job['timeline_source']='authored_clips' if req.get('authored_clip_commissions') else 'manual_native_h3'
             atomic_json(work/'director_plan.json',dict(manual_plan,
                          input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
         if req.get('kitchen_mode'):

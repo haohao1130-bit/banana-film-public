@@ -128,6 +128,7 @@ def estimate_menu(menu, cap=DEFAULT_CAP):
     """蕉彌估價：看菜單估秒數、段數、出餐時間。不呼叫 9B，不用 GPU。"""
     if not isinstance(menu, str) or not menu.strip():
         raise ValueError('請先寫菜單。')
+    menu = menu.replace('\r\n', '\n').replace('\r', '\n')
     native = native_h3_clips(menu, None, cap)
     if native:
         seconds = sum(s for s, _ in native)

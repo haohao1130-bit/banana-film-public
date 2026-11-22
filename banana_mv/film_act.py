@@ -315,6 +315,27 @@ def split_act_commissions(story):
     return shared, commissions
 
 
+def split_kitchen_act_commissions(menu, shared_setup):
+    """Keep the ACT windows and plain SHOT directions from a kitchen order."""
+    parsed = _act_blocks(menu)
+    if parsed is None:
+        return None
+    intro, blocks = parsed
+    if not shared_setup and _SHARED.search(intro) and all(
+            _field(body, 'H3 提示詞') or _field(body, 'H3提示詞') for _, body in blocks):
+        return split_act_commissions(menu)
+    if not shared_setup and (heading := _SHARED.search(intro)):
+        end = _STORY_START.search(intro, heading.end())
+        shared_setup = intro[heading.end():end.start() if end else len(intro)].strip()
+    commissions = []
+    for index, (seconds, body) in enumerate(blocks, 1):
+        body = re.sub(r'(?m)^[ \t]*[━─═]{3,}[ \t]*\n?', '', body).strip()
+        if index == len(blocks):
+            body = re.sub(r'(?i)(?:^|\n)[ \t]*END[ \t]*\Z', '', body).rstrip()
+        commissions.append((seconds, f'ACT {index:02d}｜{seconds:g}秒\n{body}'))
+    return shared_setup, commissions
+
+
 def split_act_native(story):
     """9B-off route: split independent, fully-authored native H3 ACT blocks.
 
