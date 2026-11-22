@@ -382,6 +382,9 @@ function videoNode(src) {
   node.src = src;
   return node;
 }
+function previewable(clip) {
+  return clip?.status === 'done' && Boolean(clip.preview);
+}
 function workingText() {
   const status = job.status;
   const clips = latestDish()?.attempts.at(-1).clips ?? [];
@@ -415,34 +418,39 @@ function buildMessages() {
         nodes.push(user);
 
         const clips = attempt.clips.map(index => job.segments[index]);
-        const ready = clips.length > 0 && clips.every(clip => clip?.preview);
+        const previews = clips.flatMap((clip, i) => previewable(clip) ? [{clip, i}] : []);
+        const ready = previews.length > 0 && previews.length === clips.length;
         const accepted = dish.selected === v;
         const canChoose = lastDish && dish.selected === undefined && job.status === 'kitchen_ready';
-        if (ready) {
+        if (previews.length) {
           const total = clips.reduce((sum, clip) => sum + (clip.seconds || 0), 0);
-          const head = accepted ? `${icon} 已採用這版「${fallback}」`
+          const head = !ready ? `已出菜 ${previews.length} / ${clips.length} 段，可以先試看：`
+            : accepted ? `${icon} 已採用這版「${fallback}」`
             : dish.selected !== undefined ? '這版沒有採用。'
             : `炒好了！${clips.length} 段、共 ${total.toFixed(1)} 秒` + (attempt.native_h3 ? '（H3 全咒直上）' : '') + '，先試試看：';
-          const grid = el('div', {className: 'clips'}, clips.map((clip, i) => {
+          const grid = el('div', {className: 'clips'}, previews.map(({clip, i}) => {
             const box = el('div', {className: 'clip'}, [videoNode(clip.preview), el('span', {className: 'meta', text: `片段 ${i + 1} · ${clip.seconds.toFixed(1)} 秒`})]);
             if (clip.prompt) box.append(el('details', {}, [el('summary', {text: 'H3 提示詞'}), el('pre', {text: clip.prompt})]));
             return box;
           }));
           const children = [para(head), grid];
-          if (canChoose && lastAttempt) {
+          if (ready && canChoose && lastAttempt) {
             children.push(el('div', {className: 'actions'}, [
               btn('採用', () => perform('adopt', {attempt: v}), true),
               btn('重炒', () => perform('repeat', {menu: attempt.menu, seconds: attempt.estimated ? 'auto' : attempt.seconds})),
               btn('改菜單再炒', () => editMenu(attempt))
             ]));
-          } else if (canChoose) {
+          } else if (ready && canChoose) {
             children.push(el('div', {className: 'actions'}, [btn('採用這版', () => perform('adopt', {attempt: v}))]));
           }
-          nodes.push(bubble('bot', children, 'wide'));
-        } else if (lastDish && lastAttempt && working && !job.kitchen?.serving) {
+          const preview = bubble('bot', children, 'wide');
+          preview.id = `dish-preview-${d}-${v}`;
+          nodes.push(preview);
+        }
+        if (!ready && lastDish && lastAttempt && working && !job.kitchen?.serving) {
           nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
             para(workingText())]));
-        } else if (lastDish && lastAttempt && paused.has(job.status) && !job.kitchen?.serving) {
+        } else if (!ready && lastDish && lastAttempt && paused.has(job.status) && !job.kitchen?.serving) {
           nodes.push(bubble('bot', [
             para(job.status === 'error' ? '鐵板出了點狀況，完成的毛片都保存了。' : '已停爐，完成的毛片都保存了。'),
             job.error ? para(job.error, 'meta') : null,
@@ -451,7 +459,7 @@ function buildMessages() {
               btn('改菜單再炒', () => editMenu(attempt))
             ])
           ], 'error'));
-        } else {
+        } else if (!previews.length) {
           nodes.push(bubble('bot', [para('這版沒有炒完。')]));
         }
       });
@@ -498,23 +506,28 @@ function renderChat() {
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
     pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().length]);
   if (signature === chatSignature) return;
-  chatSignature = signature;
   const chat = $('chat');
   const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
   const playing = [...$('messages').querySelectorAll('video')].some(video => !video.paused);
   if (playing && !idle.has(status ?? 'kitchen_ready')) return;   // 正在看毛片時不打斷，下一輪再更新
+  chatSignature = signature;
   $('messages').replaceChildren(...buildMessages());
   if (nearBottom) chat.scrollTop = chat.scrollHeight;
 }
 function renderTray() {
   const dishes = job?.kitchen?.dishes ?? [];
-  const adopted = dishes.map((dish, d) => [dish, d]).filter(([dish]) => dish.selected !== undefined);
-  $('tray-dishes').replaceChildren(...adopted.map(([, d]) => {
+  const available = dishes.flatMap((dish, d) => {
+    const v = dish.selected ?? dish.attempts.findLastIndex(attempt =>
+      attempt.clips.some(i => previewable(job.segments[i])));
+    return v < 0 ? [] : [{d, v}];
+  });
+  $('tray-dishes').replaceChildren(...available.map(({d, v}) => {
     const [icon, name] = dishTitle(d);
-    return el('button', {className: 'tray-dish', text: icon, attrs: {type: 'button', 'aria-label': `第 ${d + 1} 道 ${name}，跳到這道`},
-      onClick: () => $('dish-' + d)?.scrollIntoView({behavior: 'smooth', block: 'start'})});
+    return el('button', {className: 'tray-dish', text: icon, attrs: {type: 'button', 'aria-label': `第 ${d + 1} 道 ${name}，跳到試菜預覽`},
+      onClick: () => ($(`dish-preview-${d}-${v}`) ?? $('dish-' + d))
+        ?.scrollIntoView({behavior: 'smooth', block: 'start'})});
   }));
-  $('tray-empty').hidden = adopted.length > 0;
+  $('tray-empty').hidden = available.length > 0;
 }
 function renderComfyProgress(status, segment) {
   const panel = $('comfy-progress');
