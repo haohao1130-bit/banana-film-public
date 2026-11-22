@@ -170,7 +170,7 @@ def build_rewrite_graph(cfg, system, parts, job_id):
             'request says Python fills in or overwrites (seconds, soundscape, music). Props and set dressing are '
             'described inside the shots and need no <Subject> entry. As soon as the plan is settled, close </think>. '
             'Do not draft, count words, or write the final text inside <think>. After </think>, always write the '
-            'complete requested output.'
+            'complete requested output exactly once: no second or revised copy.'
         )
     temperature, top_p = float(rw['temperature']), float(rw['top_p'])
     presence = float(rw.get('presence_penalty', 0.0))

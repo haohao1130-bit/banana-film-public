@@ -26,6 +26,20 @@ H3_SECTIONS=('subject_definitions','summary','retention_analysis','detailed_desc
              'overall_soundscape','non_diegetic_music')
 
 
+def last_complete_h3(text):
+    """9B 有時在一份回覆裡把六欄全咒寫兩三遍（寫完又「修正版」重寫）。
+    只保留最後一份依序完整的六欄；只有一份或找不到完整一份時原樣回傳。"""
+    headers=list(re.finditer(r'^[ \t]*('+'|'.join(H3_SECTIONS)+r')[ \t]*:',text,re.M))
+    if len(headers)<=len(H3_SECTIONS):
+        return text
+    size=len(H3_SECTIONS)
+    for start in range(len(headers)-size,-1,-1):
+        if tuple(match[1] for match in headers[start:start+size])==H3_SECTIONS:
+            end=headers[start+size].start() if start+size<len(headers) else len(text)
+            return text[headers[start].start():end].strip()
+    return text
+
+
 def validate_h3_sections(text):
     """Check the native six-field contract, without interpreting the story."""
     headers=list(re.finditer(r'^\s*('+'|'.join(H3_SECTIONS)+r')\s*:',text,re.M))
