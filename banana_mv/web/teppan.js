@@ -1,182 +1,63 @@
+// 蕉彌鐵板燒：對話式點單。對話紀錄由專案狀態重建，所以重新整理或換手機都能往回捲。
 const $ = id => document.getElementById(id);
 const storageKey = 'banana_teppan_job';
+const pendingKey = 'banana_teppan_pending';
+const SLOT_COUNT = 8;
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
-let job = null, timer, pending = false, restoring = false, repeating = false;
-let reactionTimer;
+const paused = new Set(['error', 'cancelled', 'interrupted']);
+let job = null, timer, pending = false, restoring = false, reactionTimer;
+let localSlots = Array(SLOT_COUNT).fill(null);
 const localImageUrls = new Map();
+let pendingOrder = loadPending();
+let chatSignature = '';
 
-for (let index = 1; index <= 8; index++) {
-  const label = element('label', '@圖片' + index);
-  const input = element('input');
-  input.type = 'file';
-  input.accept = 'image/png,image/jpeg,image/webp';
-  label.append(input);
-  $('references').append(label);
-}
+const dishMenu = [
+  ['🍗', '宮保雞丁'], ['🍲', '三杯雞'], ['🍤', '鳳梨蝦球'], ['🐟', '清蒸石斑'],
+  ['🥟', '水晶蝦餃'], ['🍚', '櫻花蝦炒飯'], ['🦀', '避風塘炒蟹'], ['🍖', '糖醋排骨'],
+  ['🍜', '紅燒牛肉麵'], ['🥬', '開陽白菜'], ['🍲', '佛跳牆'], ['🦑', '三杯中卷'],
+  ['🥩', '黑椒牛柳'], ['🍳', '蟹黃豆腐'], ['🌶️', '麻辣鴨血'], ['🦐', '蒜蓉粉絲蝦'],
+  ['🍛', '獅子頭'], ['🍱', '蒲燒鰻魚']
+];
 
-function element(tag, text) {
+function el(tag, options = {}, children = []) {
   const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
+  if (options.text !== undefined) node.textContent = options.text;
+  if (options.className) node.className = options.className;
+  for (const [key, value] of Object.entries(options.attrs || {})) node.setAttribute(key, value);
+  if (options.onClick) node.addEventListener('click', options.onClick);
+  for (const child of children) if (child) node.append(child);
   return node;
 }
-
-function imageReferences() {
-  if (job) {
-    let image = 0;
-    return (job.request?.image_slots ?? []).flatMap((asset, index) => {
-      if (!asset) return [];
-      const query = new URLSearchParams({id: job.id, image: String(image++)});
-      return [{slot: index + 1, src: 'api/mv/reference?' + query}];
-    });
-  }
-  return [...$('references').querySelectorAll('input')].flatMap((input, index) => {
-    const file = input.files[0];
-    if (!file) return [];
-    if (!localImageUrls.has(file)) localImageUrls.set(file, URL.createObjectURL(file));
-    return [{slot: index + 1, src: localImageUrls.get(file), name: file.name}];
-  });
+function btn(label, handle, primary = false) {
+  return el('button', {text: label, className: 'btn' + (primary ? ' primary' : ''), attrs: {type: 'button'}, onClick: handle});
+}
+function bubble(role, children, extra = '') {
+  return el('div', {className: `msg ${role} ${extra}`.trim()}, children);
+}
+function para(text, className) {
+  return el('p', {text, className});
+}
+function loadPending() {
+  try { return JSON.parse(localStorage.getItem(pendingKey) || 'null'); } catch { return null; }
+}
+function savePending() {
+  try {
+    if (pendingOrder) localStorage.setItem(pendingKey, JSON.stringify(pendingOrder));
+    else localStorage.removeItem(pendingKey);
+  } catch { /* 私密瀏覽等情況可忽略 */ }
+}
+function showFeedback(message) {
+  $('feedback').textContent = message || '';
 }
 
-function clearLocalImageUrls() {
-  for (const url of localImageUrls.values()) URL.revokeObjectURL(url);
-  localImageUrls.clear();
-}
-
-function bindImageMentions(field, fieldLabel) {
-  const input = $(field);
-  const suggestions = $(field + '-image-suggestions');
-  const list = $(field + '-image-list');
-  const empty = $(field + '-image-empty');
-  const add = $(field + '-image-add');
-  let imageMention = null, composing = false;
-
-  function close() {
-    imageMention = null;
-    suggestions.hidden = true;
-    input.removeAttribute('aria-activedescendant');
-  }
-
-  function selectImageOption(index, scroll = false) {
-    const rows = [...list.children];
-    imageMention.index = index;
-    rows.forEach((row, i) => row.setAttribute('aria-selected', String(i === index)));
-    if (!rows[index]) {
-      input.removeAttribute('aria-activedescendant');
-      return;
-    }
-    input.setAttribute('aria-activedescendant', rows[index].id);
-    if (scroll) rows[index].scrollIntoView({block: 'nearest'});
-  }
-
-  function insertImageMention(slot) {
-    if (!imageMention) return;
-    const {start, end} = imageMention;
-    const text = '@圖片' + slot + (/\s/.test(input.value[end] ?? '') ? '' : ' ');
-    if (input.value.length - (end - start) + text.length > input.maxLength) {
-      showFeedback(fieldLabel + '已達字數上限。');
-      return;
-    }
-    input.setRangeText(text, start, end, 'end');
-    close();
-    input.focus({preventScroll: true});
-  }
-
-  function updateImageMention() {
-    if (composing || input.disabled || input.selectionStart !== input.selectionEnd) {
-      close();
-      return;
-    }
-    const end = input.selectionStart;
-    const before = input.value.slice(0, end);
-    const match = /[@＠](?:圖片?|图片?|image)?([1-8])?$/i.exec(before);
-    if (!match || (match.index > 0 && /[a-z0-9_.]/i.test(before[match.index - 1]))) {
-      close();
-      return;
-    }
-    const images = imageReferences();
-    const matches = images.filter(ref => !match[1] || ref.slot === Number(match[1]));
-    imageMention = {start: match.index, end, index: 0};
-    list.replaceChildren();
-    for (const ref of matches) {
-      const option = button('', () => insertImageMention(ref.slot));
-      option.id = field + '-ref-' + ref.slot;
-      option.className = 'menu-image-option';
-      option.setAttribute('role', 'option');
-      option.tabIndex = -1;
-      option.onpointerdown = event => event.preventDefault();
-      const image = element('img');
-      image.src = ref.src;
-      image.alt = '';
-      const label = element('span', '@圖片' + ref.slot);
-      if (ref.name) label.append(element('small', ref.name));
-      option.append(image, label);
-      list.append(option);
-    }
-    empty.hidden = matches.length > 0;
-    empty.textContent = images.length ? '找不到這個圖號。' : '這桌還沒有參考圖。';
-    add.hidden = Boolean(job) || images.length > 0;
-    suggestions.hidden = false;
-    selectImageOption(0);
-  }
-
-  input.addEventListener('input', event => {
-    if (!event.isComposing) updateImageMention();
-  });
-  input.addEventListener('click', updateImageMention);
-  input.addEventListener('compositionstart', () => {
-    composing = true;
-    close();
-  });
-  input.addEventListener('compositionend', () => {
-    composing = false;
-    updateImageMention();
-  });
-  input.addEventListener('blur', event => {
-    if (!suggestions.contains(event.relatedTarget)) close();
-  });
-  input.addEventListener('keydown', event => {
-    if (composing || event.isComposing || !imageMention) return;
-    const rows = list.children;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      close();
-    } else if (rows.length && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
-      event.preventDefault();
-      if (event.key === 'Enter') rows[imageMention.index].click();
-      else {
-        const step = event.key === 'ArrowUp' ? -1 : 1;
-        selectImageOption((imageMention.index + step + rows.length) % rows.length, true);
-      }
-    }
-  });
-  add.onclick = () => {
-    $('settings').open = true;
-    close();
-    $('references').querySelector('input')?.focus();
-  };
-  return close;
-}
-
-const closeMenuImageMention = bindImageMentions('menu', '菜單');
-const closeSharedImageMention = bindImageMentions('shared', '共同設定');
-
-function closeImageMentions() {
-  closeMenuImageMention();
-  closeSharedImageMention();
-}
-
-$('references').addEventListener('change', () => {
-  closeImageMentions();
-  clearLocalImageUrls();
-});
-
+/* ---------- 伺服器 ---------- */
 async function api(path, options, stage = '連線到一鍵短片') {
   let response, result;
   try {
     response = await fetch(path, options);
   } catch {
     const next = stage === '送出第一道菜' ? '。重新送出前，請先查看專案清單是否已建立' : '';
-    throw Error(stage + '失敗：手機沒有收到一鍵短片的回應。請確認電腦服務與手機連線' + next + '。');
+    throw Error(stage + '失敗：沒有收到一鍵短片的回應。請確認電腦服務與連線' + next + '。');
   }
   try {
     result = await response.json();
@@ -186,49 +67,251 @@ async function api(path, options, stage = '連線到一鍵短片') {
   if (!response.ok) throw Error(stage + '失敗：' + (result?.error || 'HTTP ' + response.status));
   return result;
 }
-
 function post(action, data, stage = '送出操作') {
   return api('api/' + action, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(data)
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
   }, stage);
 }
 
-function showFeedback(message) {
-  $('feedback').textContent = message;
+/* ---------- 參考圖 ---------- */
+function imageReferences() {
+  if (job) {
+    let image = 0;
+    return (job.request?.image_slots ?? []).flatMap((asset, index) => {
+      if (!asset) return [];
+      const query = new URLSearchParams({id: job.id, image: String(image++)});
+      return [{slot: index + 1, src: 'api/mv/reference?' + query}];
+    });
+  }
+  return localSlots.flatMap((file, index) => {
+    if (!file) return [];
+    if (!localImageUrls.has(file)) localImageUrls.set(file, URL.createObjectURL(file));
+    return [{slot: index + 1, src: localImageUrls.get(file), name: file.name}];
+  });
 }
-
-function latestDish() {
-  return job?.kitchen?.dishes.at(-1);
+function addImages(files) {
+  for (const file of files) {
+    const free = localSlots.indexOf(null);
+    if (free < 0) {
+      showFeedback('最多 8 張參考圖。');
+      break;
+    }
+    localSlots[free] = file;
+  }
+  renderReferences();
 }
-
-function button(label, handle, secondary = false) {
-  const node = element('button', label);
-  node.type = 'button';
-  if (secondary) node.className = 'quiet';
-  node.onclick = handle;
-  return node;
+function setSlot(index, file) {
+  const old = localSlots[index];
+  if (old && localImageUrls.has(old)) {
+    URL.revokeObjectURL(localImageUrls.get(old));
+    localImageUrls.delete(old);
+  }
+  localSlots[index] = file;
+  renderReferences();
 }
-
-function video(src) {
-  const node = element('video');
-  node.controls = true;
-  node.playsInline = true;
-  node.preload = 'metadata';
-  node.src = src;
-  return node;
+function renderReferences() {
+  const refs = imageReferences();
+  $('shared-count').textContent = String(refs.length);
+  const attachments = $('attachments');
+  attachments.replaceChildren(...refs.map(ref => el('div', {className: 'attachment'}, [
+    el('img', {attrs: {src: ref.src, alt: '圖片' + ref.slot}}), el('span', {text: '圖片' + ref.slot})
+  ])));
+  attachments.hidden = Boolean(job) || !refs.length;
+  const grid = $('references');
+  const bySlot = new Map(refs.map(ref => [ref.slot, ref]));
+  grid.replaceChildren();
+  for (let slot = 1; slot <= SLOT_COUNT; slot++) {
+    const ref = bySlot.get(slot);
+    const cell = el('div', {className: 'ref-cell'});
+    const tile = el('button', {
+      className: 'ref-slot' + (ref ? ' filled' : ''),
+      attrs: {type: 'button', 'aria-label': ref ? `圖片${slot}，點一下換圖` : `圖片${slot}，空格，點一下加圖`}
+    });
+    if (ref) tile.append(el('img', {attrs: {src: ref.src, alt: ''}}), el('span', {className: 'ref-label', text: '圖片' + slot}));
+    else tile.append(el('span', {text: '＋'}), el('span', {text: '圖片' + slot}));
+    if (job) tile.disabled = true;
+    else tile.onclick = () => pickInto(slot - 1);
+    cell.append(tile);
+    if (ref && !job) {
+      const clear = el('button', {className: 'ref-clear', text: '✕', attrs: {type: 'button', 'aria-label': `清除圖片${slot}`}});
+      clear.onclick = () => setSlot(slot - 1, null);
+      cell.append(clear);
+    }
+    grid.append(cell);
+  }
+  $('refs-locked').hidden = !job;
 }
+function pickInto(index) {
+  const picker = el('input', {attrs: {type: 'file', accept: 'image/png,image/jpeg,image/webp'}});
+  picker.onchange = () => { if (picker.files[0]) setSlot(index, picker.files[0]); };
+  picker.click();
+}
+$('add-image').onclick = () => $('image-picker').click();
+$('image-picker').onchange = () => {
+  addImages([...$('image-picker').files]);
+  $('image-picker').value = '';
+};
 
+/* ---------- @ 選圖 ---------- */
+function bindImageMentions(field, fieldLabel) {
+  const input = $(field);
+  const suggestions = $(field + '-image-suggestions');
+  const list = $(field + '-image-list');
+  const empty = $(field + '-image-empty');
+  const add = $(field + '-image-add');
+  let mention = null, composing = false;
+  function close() {
+    mention = null;
+    suggestions.hidden = true;
+    input.removeAttribute('aria-activedescendant');
+  }
+  function select(index, scroll = false) {
+    const rows = [...list.children];
+    mention.index = index;
+    rows.forEach((row, i) => row.setAttribute('aria-selected', String(i === index)));
+    if (!rows[index]) return input.removeAttribute('aria-activedescendant');
+    input.setAttribute('aria-activedescendant', rows[index].id);
+    if (scroll) rows[index].scrollIntoView({block: 'nearest'});
+  }
+  function insert(slot) {
+    if (!mention) return;
+    const {start, end} = mention;
+    const text = '@圖片' + slot + (/\s/.test(input.value[end] ?? '') ? '' : ' ');
+    if (input.value.length - (end - start) + text.length > input.maxLength) return showFeedback(fieldLabel + '已達字數上限。');
+    input.setRangeText(text, start, end, 'end');
+    close();
+    input.focus({preventScroll: true});
+    input.dispatchEvent(new Event('input'));
+  }
+  function update() {
+    if (composing || input.disabled || input.selectionStart !== input.selectionEnd) return close();
+    const end = input.selectionStart;
+    const before = input.value.slice(0, end);
+    const match = /[@＠](?:圖片?|图片?|image)?([1-8])?$/i.exec(before);
+    if (!match || (match.index > 0 && /[a-z0-9_.]/i.test(before[match.index - 1]))) return close();
+    const images = imageReferences();
+    const matches = images.filter(ref => !match[1] || ref.slot === Number(match[1]));
+    mention = {start: match.index, end, index: 0};
+    list.replaceChildren(...matches.map(ref => {
+      const option = el('button', {className: 'menu-image-option', attrs: {
+        type: 'button', id: field + '-ref-' + ref.slot, role: 'option', tabindex: '-1'}});
+      option.onpointerdown = event => event.preventDefault();
+      option.onclick = () => insert(ref.slot);
+      const label = el('span', {text: '@圖片' + ref.slot});
+      if (ref.name) label.append(el('small', {text: ref.name}));
+      option.append(el('img', {attrs: {src: ref.src, alt: ''}}), label);
+      return option;
+    }));
+    empty.hidden = matches.length > 0;
+    empty.textContent = images.length ? '找不到這個圖號。' : '這桌還沒有參考圖。';
+    add.hidden = Boolean(job) || images.length > 0;
+    suggestions.hidden = false;
+    select(0);
+  }
+  input.addEventListener('input', event => { if (!event.isComposing) update(); });
+  input.addEventListener('click', update);
+  input.addEventListener('compositionstart', () => { composing = true; close(); });
+  input.addEventListener('compositionend', () => { composing = false; update(); });
+  input.addEventListener('blur', event => { if (!suggestions.contains(event.relatedTarget)) close(); });
+  input.addEventListener('keydown', event => {
+    if (composing || event.isComposing || !mention) return;
+    const rows = list.children;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    } else if (rows.length && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === 'Enter') rows[mention.index].click();
+      else select((mention.index + (event.key === 'ArrowUp' ? -1 : 1) + rows.length) % rows.length, true);
+    }
+  });
+  add.onclick = () => { close(); $('image-picker').click(); };
+  return close;
+}
+const closeMenuMention = bindImageMentions('menu', '菜單');
+const closeSharedMention = bindImageMentions('shared', '共同設定');
+
+/* ---------- 底部面板與參數 ---------- */
+function openSheet(id) {
+  closeMenuMention();
+  for (const sheet of document.querySelectorAll('.sheet')) sheet.hidden = sheet.id !== id;
+  $('sheet-backdrop').hidden = false;
+  $(id).querySelector('button')?.focus();
+}
+function closeSheets() {
+  closeSharedMention();
+  for (const sheet of document.querySelectorAll('.sheet')) sheet.hidden = true;
+  $('sheet-backdrop').hidden = true;
+  render();
+}
+$('open-settings').onclick = () => openSheet('sheet-settings');
+$('open-shared').onclick = () => { renderReferences(); openSheet('sheet-shared'); };
+$('sheet-backdrop').onclick = closeSheets;
+for (const close of document.querySelectorAll('[data-close]')) close.onclick = closeSheets;
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !$('sheet-backdrop').hidden) closeSheets();
+});
+for (const group of document.querySelectorAll('.pills')) {
+  const target = $(group.dataset.target);
+  for (const option of group.querySelectorAll('button')) {
+    option.setAttribute('role', 'radio');
+    option.onclick = () => {
+      target.value = option.dataset.value;
+      syncPills();
+      scheduleEstimate();
+      render();
+    };
+  }
+}
+function syncPills() {
+  for (const group of document.querySelectorAll('.pills')) {
+    const value = $(group.dataset.target).value;
+    for (const option of group.querySelectorAll('button')) {
+      option.setAttribute('aria-checked', String(option.dataset.value === value));
+    }
+  }
+}
 function dishSeconds() {
   const value = $('seconds').value;
   return value === 'auto' ? 'auto' : Number(value);
 }
-let estimateTimer, estimateSerial = 0;
+function profileText() {
+  const request = job?.request;
+  const aspect = request?.aspect ?? $('aspect').value;
+  const resolution = request ? (request.width > 854 || (request.aspect !== '16:9' && request.width > 480) ? '720' : '480')
+    : $('resolution').value;
+  const steps = request?.sampling_steps ?? $('steps').value;
+  const seconds = $('seconds').value === 'auto' ? '蕉彌估' : $('seconds').value + '秒';
+  return `${aspect} · ${resolution}P · ${steps}步 · ${seconds}`;
+}
+
+/* ---------- 估價 ---------- */
+function clipWindows(total, cap = 10) {
+  const minimum = 124 / 24;
+  total = Math.max(total, minimum);
+  const count = Math.max(1, Math.ceil(total / cap - 1e-9));
+  if (count === 1) return [Math.min(total, cap)];
+  const tail = total - (count - 1) * cap;
+  if (tail >= minimum) return [...Array(count - 1).fill(cap), tail];
+  if (tail < 1.5) return Array(count - 1).fill(cap);
+  return [...Array(count - 2).fill(cap), (cap + tail) / 2, (cap + tail) / 2];
+}
 function formatWait(seconds) {
-  const minutes = Math.ceil(seconds / 60);
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
   return minutes >= 60 ? Math.floor(minutes / 60) + ' 小時 ' + (minutes % 60) + ' 分' : minutes + ' 分鐘';
 }
+function describeEstimate(result, chosen) {
+  if (result.native_h3) {
+    return `老闆，這是 H3 全咒，照你寫的 ${result.clips} 段（${result.windows.map(w => w.toFixed(1)).join('／')} 秒）直接上鐵板，不經 9B 改寫，約 ${formatWait(result.render_seconds)}出菜。`;
+  }
+  if (chosen === 'auto') {
+    const lead = result.source === 'declared' ? '菜單有寫長度，照寫的：' : '這道我看大概';
+    return `老闆，${lead} ${result.seconds.toFixed(1)} 秒，切 ${result.clips} 段（${result.windows.map(w => w.toFixed(1)).join('／')} 秒），約 ${formatWait(result.render_seconds)}出菜。`;
+  }
+  const windows = clipWindows(chosen);
+  return `老闆，這道照你選的 ${chosen} 秒，切 ${windows.length} 段（${windows.map(w => w.toFixed(1)).join('／')} 秒），約 ${formatWait(windows.length * 90)}出菜。我估這份菜單大概要 ${result.seconds.toFixed(0)} 秒。`;
+}
+let estimateTimer, estimateSerial = 0;
 function scheduleEstimate() {
   clearTimeout(estimateTimer);
   const menu = $('menu').value.trim();
@@ -240,167 +323,179 @@ function scheduleEstimate() {
     const serial = ++estimateSerial;
     try {
       const result = await post('film/kitchen/estimate', {menu}, '蕉彌估價');
-      if (serial !== estimateSerial) return;
-      const auto = $('seconds').value === 'auto';
-      const lead = result.native_h3 ? '老闆，這是 H3 全咒，照你寫的分段直接上鐵板，不經 9B 改寫。'
-        : result.source === 'declared' ? '老闆，菜單有寫長度，照寫的出菜。' : '老闆，這道菜我看大概';
-      const body = result.seconds.toFixed(1) + ' 秒，切 ' + result.clips + ' 段（' +
-        result.windows.map(w => w.toFixed(1)).join('／') + ' 秒），約 ' +
-        formatWait(result.render_seconds) + '出菜。';
-      $('estimate').textContent = lead + (result.native_h3 ? '共 ' : '') + body +
-        (auto || result.native_h3 ? '' : '（目前手選 ' + $('seconds').value + ' 秒，送出會照手選的）');
+      if (serial !== estimateSerial || $('menu').value.trim() !== menu) return;
+      $('estimate').textContent = describeEstimate(result, dishSeconds());
       $('estimate').hidden = false;
     } catch {
       if (serial === estimateSerial) $('estimate').hidden = true;
     }
   }, 450);
 }
-$('menu').addEventListener('input', scheduleEstimate);
-$('seconds').addEventListener('change', scheduleEstimate);
-function beginRepeat(attempt) {
-  repeating = true;
-  $('menu').value = attempt.menu;
-  if (attempt.estimated) $('seconds').value = 'auto';
-  else if ([...$('seconds').options].some(option => Number(option.value) === attempt.seconds)) {
-    $('seconds').value = String(attempt.seconds);
-  }
-  scheduleEstimate();
-  $('settings').open = true;
-  render();
-  $('menu').focus();
+$('menu').addEventListener('input', () => { scheduleEstimate(); autoGrow(); });
+function autoGrow() {
+  const menu = $('menu');
+  menu.style.height = 'auto';
+  menu.style.height = Math.min(menu.scrollHeight, window.innerHeight * 0.4) + 'px';
 }
 
-const dishMenu = [
-  ['🍗', '宮保雞丁'], ['🍲', '三杯雞'], ['🍤', '鳳梨蝦球'], ['🐟', '清蒸石斑'],
-  ['🥟', '水晶蝦餃'], ['🍚', '櫻花蝦炒飯'], ['🦀', '避風塘炒蟹'], ['🍖', '糖醋排骨'],
-  ['🍜', '紅燒牛肉麵'], ['🥬', '開陽白菜'], ['🍲', '佛跳牆'], ['🦑', '三杯中卷'],
-  ['🥩', '黑椒牛柳'], ['🍳', '蟹黃豆腐'], ['🌶️', '麻辣鴨血'], ['🦐', '蒜蓉粉絲蝦'],
-  ['🍛', '獅子頭'], ['🍱', '蒲燒鰻魚']
-];
-
-function dishName(dish, fallback) {
-  const menu = dish.attempts[0]?.menu ?? '';
-  const name = /^\s*(?:菜名|標題)[：:]\s*([^\r\n]+)/m.exec(menu);
-  return name?.[1].trim() || fallback;
+/* ---------- 對話 ---------- */
+function latestDish() {
+  return job?.kitchen?.dishes.at(-1);
 }
+function nextAction() {
+  if (!job) return 'start';
+  const dish = latestDish();
+  return dish && dish.selected === undefined ? 'repeat' : 'append';
+}
+function canOrder() {
+  if (pending || restoring) return false;
+  if (!job) return true;
+  const status = job.status;
+  if (job.kitchen?.serving || status === 'done') return false;
+  return status === 'kitchen_ready' || paused.has(status);
+}
+function dishTitle(index) {
+  return dishMenu[index % dishMenu.length];
+}
+function videoNode(src) {
+  const node = el('video', {attrs: {controls: '', playsinline: '', preload: 'metadata'}});
+  node.src = src;
+  return node;
+}
+function workingText() {
+  const status = job.status;
+  const clips = latestDish()?.attempts.at(-1).clips ?? [];
+  const done = clips.filter(index => job.segments[index]?.status === 'done').length;
+  if (status === 'planning_story') return '蕉彌正在讀菜單、分配每段要演什麼…';
+  if (status === 'running') return `蕉彌正在炒菜，${done} / ${clips.length} 段完成。`;
+  return '蕉彌正在準備鐵板…';
+}
+function buildMessages() {
+  const nodes = [];
+  nodes.push(bubble('bot', [para(job
+    ? '老闆歡迎回來！往上捲可以看這桌的點單紀錄。'
+    : '老闆歡迎光臨！先按 ＋ 丟角色圖，或直接跟我說想拍什麼。秒數、比例這些在下面的參數可以改。')]));
+  if (job) {
+    const dishes = job.kitchen?.dishes ?? [];
+    const working = !idle.has(job.status);
+    dishes.forEach((dish, d) => {
+      const [icon, fallback] = dishTitle(d);
+      const lastDish = d === dishes.length - 1;
+      dish.attempts.forEach((attempt, v) => {
+        const lastAttempt = v === dish.attempts.length - 1;
+        const user = bubble('user', [], '');
+        if (d === 0 && v === 0) {
+          const refs = imageReferences();
+          if (refs.length) user.append(el('div', {className: 'thumbs'}, refs.map(ref =>
+            el('img', {attrs: {src: ref.src, alt: '圖片' + ref.slot}}))));
+        }
+        user.append(el('span', {className: 'tag', text: `第 ${d + 1} 道` + (v ? `・重炒第 ${v + 1} 版` : '') +
+          (attempt.estimated ? '・蕉彌估秒' : `・${attempt.seconds} 秒`)}), para(attempt.menu));
+        if (lastAttempt && v === 0) user.id = 'dish-' + d;
+        nodes.push(user);
 
-function renderDishes() {
-  const list = $('dishes');
-  const project = job?.id ?? '';
-  if (list.dataset.project !== project) {
-    list.replaceChildren();
-    list.dataset.project = project;
-  }
-  const dishes = job?.kitchen?.dishes ?? [];
-  dishes.forEach((dish, index) => {
-    const accepted = dish.selected !== undefined;
-    const current = index === dishes.length - 1;
-    const canChoose = current && !accepted && job.status === 'kitchen_ready';
-    const versions = dish.attempts.map(attempt => attempt.clips.map(clip => job.segments[clip]));
-    const allReady = versions.at(-1)?.length && versions.at(-1).every(clip => clip?.preview);
-    const state = accepted ? '已採用' : allReady ? '可試菜' :
-      idle.has(job.status) ? '尚未完成' : '製作中';
-    const signature = JSON.stringify([dish, state, canChoose,
-      versions.map(clips => clips.map(clip => [clip?.preview, clip?.prompt]))]);
-    const existing = list.children[index];
-    if (existing?.dataset.signature === signature) return;
-    const card = element('details');
-    card.className = 'dish dish-card';
-    card.dataset.signature = signature;
-    card.open = existing?.open ?? false;
-    card.setAttribute('name', 'teppan-dishes');
-    const [icon, fallback] = dishMenu[index % dishMenu.length];
-    const plate = element('span', icon);
-    plate.className = 'dish-plate';
-    plate.setAttribute('aria-hidden', 'true');
-    const title = element('strong', dishName(dish, fallback));
-    title.className = 'dish-name';
-    const label = element('span', '第 ' + (index + 1) + ' 道 · ' + state);
-    label.className = 'dish-state';
-    const heading = element('span');
-    heading.className = 'dish-heading';
-    heading.append(label, title);
-    const summary = element('summary');
-    summary.append(plate, heading);
-    card.append(summary);
-    card.addEventListener('toggle', () => {
-      if (card.open) {
-        if (card.childElementCount === 1) appendVersions();
-      } else {
-        for (const video of card.querySelectorAll('video')) video.pause();
-      }
-    });
-    if (card.open) appendVersions();
-    if (existing) existing.replaceWith(card);
-    else list.append(card);
-
-    function appendVersions() {
-      const panel = element('div');
-      panel.className = 'dish-versions';
-      dish.attempts.forEach((attempt, version) => {
-        const clips = versions[version];
+        const clips = attempt.clips.map(index => job.segments[index]);
         const ready = clips.length > 0 && clips.every(clip => clip?.preview);
-        const entry = element('details');
-        entry.open = version === (accepted ? dish.selected : dish.attempts.length - 1);
-        const status = ready ? ' · 毛片' : ' · 尚未完成';
-        entry.append(element('summary', '第 ' + (version + 1) + ' 版' + status));
-        if (entry.open) appendAttempt();
-        else entry.addEventListener('toggle', () => {
-          if (entry.open && entry.childElementCount === 1) appendAttempt();
-        });
-        panel.append(entry);
-
-        function appendAttempt() {
-          entry.append(element('p', attempt.menu));
-          clips.forEach((clip, clipIndex) => {
-            if (!clip?.preview) return;
-            if (clips.length > 1) {
-              const shot = element('p', '片段 ' + (clipIndex + 1));
-              shot.className = 'shot-label';
-              entry.append(shot);
-            }
-            entry.append(video(clip.preview));
-            if (clip.prompt) {
-              const prompt = element('details');
-              prompt.append(element('summary', 'H3 使用的提示詞'), element('pre', clip.prompt));
-              entry.append(prompt);
-            }
-          });
-          if (ready && canChoose) {
-            const actions = element('div');
-            actions.className = 'dish-actions';
-            actions.append(
-              button('採用此道菜', () => perform('adopt', {attempt: version})),
-              button('此菜重炒', () => beginRepeat(attempt), true)
-            );
-            entry.append(actions);
+        const accepted = dish.selected === v;
+        const canChoose = lastDish && dish.selected === undefined && job.status === 'kitchen_ready';
+        if (ready) {
+          const total = clips.reduce((sum, clip) => sum + (clip.seconds || 0), 0);
+          const head = accepted ? `${icon} 已採用這版「${fallback}」`
+            : dish.selected !== undefined ? '這版沒有採用。'
+            : `炒好了！${clips.length} 段、共 ${total.toFixed(1)} 秒` + (attempt.native_h3 ? '（H3 全咒直上）' : '') + '，先試試看：';
+          const grid = el('div', {className: 'clips'}, clips.map((clip, i) => {
+            const box = el('div', {className: 'clip'}, [videoNode(clip.preview), el('span', {className: 'meta', text: `片段 ${i + 1} · ${clip.seconds.toFixed(1)} 秒`})]);
+            if (clip.prompt) box.append(el('details', {}, [el('summary', {text: 'H3 提示詞'}), el('pre', {text: clip.prompt})]));
+            return box;
+          }));
+          const children = [para(head), grid];
+          if (canChoose && lastAttempt) {
+            children.push(el('div', {className: 'actions'}, [
+              btn('採用', () => perform('adopt', {attempt: v}), true),
+              btn('重炒', () => perform('repeat', {menu: attempt.menu, seconds: attempt.estimated ? 'auto' : attempt.seconds})),
+              btn('改菜單再炒', () => editMenu(attempt))
+            ]));
+          } else if (canChoose) {
+            children.push(el('div', {className: 'actions'}, [btn('採用這版', () => perform('adopt', {attempt: v}))]));
           }
+          nodes.push(bubble('bot', children, 'wide'));
+        } else if (lastDish && lastAttempt && working && !job.kitchen?.serving) {
+          nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
+            para(workingText())]));
+        } else if (lastDish && lastAttempt && paused.has(job.status) && !job.kitchen?.serving) {
+          nodes.push(bubble('bot', [
+            para(job.status === 'error' ? '鐵板出了點狀況，完成的毛片都保存了。' : '已停爐，完成的毛片都保存了。'),
+            job.error ? para(job.error, 'meta') : null,
+            el('div', {className: 'actions'}, [
+              btn('繼續製作', () => perform('resume'), true),
+              btn('改菜單再炒', () => editMenu(attempt))
+            ])
+          ], 'error'));
+        } else {
+          nodes.push(bubble('bot', [para('這版沒有炒完。')]));
         }
       });
-      card.append(panel);
+    });
+    const dish = latestDish();
+    if (job.status === 'kitchen_ready' && dish?.selected !== undefined && !job.kitchen?.serving) {
+      nodes.push(bubble('bot', [
+        para(`第 ${dishes.length} 道上桌了！直接跟我說下一道想拍什麼，或現在上菜合成` +
+          ($('upscale').checked ? '（會升頻 2K）。' : '。')),
+        el('div', {className: 'actions'}, [btn('上菜', () => perform('serve', {upscale: $('upscale').checked}), true)])
+      ]));
     }
-  });
-}
-
-function renderFinal() {
-  const output = $('served');
-  output.hidden = !job?.video;
-  const upscale = job?.final_versions?.findLast(row => row.reason === 'upscale_1440p');
-  const src = upscale?.download || job?.video;
-  if (!src || output.dataset.src === src) return;
-  output.dataset.src = src;
-  const download = element('a', upscale ? '下載 2K 成片' : '下載成片');
-  download.href = src;
-  download.download = (job.title || 'BananaFilm') + '.mp4';
-  output.replaceChildren(element('h2', '已上菜'), video(src), download);
-  if (upscale && job.video) {
-    const master = element('a', '下載原尺寸母片');
-    master.href = job.video;
-    master.download = (job.title || 'BananaFilm') + '-母片.mp4';
-    output.append(element('p'), master);
+    if (job.kitchen?.serving && !job.video) {
+      if (working) nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
+        para(job.status === 'upscaling_1080p' ? '蕉彌正在大火收汁，升頻 2K 中…' : '蕉彌正在上菜，合成整部片中…')]));
+      else if (paused.has(job.status)) nodes.push(bubble('bot', [para('上菜時出了狀況。'), job.error ? para(job.error, 'meta') : null,
+        el('div', {className: 'actions'}, [btn('繼續上菜', () => perform('resume'), true)])], 'error'));
+    }
+    if (job.video) {
+      const upscale = job.final_versions?.findLast(row => row.reason === 'upscale_1440p');
+      const src = upscale?.download || job.video;
+      const links = [el('a', {className: 'btn primary', text: upscale ? '下載 2K 成片' : '下載成片',
+        attrs: {href: src, download: (job.title || 'BananaFilm') + '.mp4'}})];
+      if (upscale) links.push(el('a', {className: 'btn', text: '下載原尺寸母片', attrs: {href: job.video, download: (job.title || 'BananaFilm') + '-母片.mp4'}}));
+      nodes.push(bubble('bot', [para('滿漢全席上桌！整部片在這裡：'), videoNode(src), el('div', {className: 'actions'}, links),
+        job.upscale_error ? para('2K 升頻未完成，母片可下載。' + job.upscale_error, 'meta') : null], 'wide final'));
+    }
   }
+  if (pendingOrder && (!job || canOrder())) {
+    nodes.push(bubble('user', [el('span', {className: 'tag', text: pendingOrder.hung ? '掛單中' : '點單'}), para(pendingOrder.menu)]));
+    const actions = el('div', {className: 'actions'}, [
+      btn('開炒', () => cookPending(), true),
+      pendingOrder.hung ? null : btn('掛單', () => { pendingOrder.hung = true; savePending(); render(); }),
+      btn('收回改一下', () => { $('menu').value = pendingOrder.menu; pendingOrder = null; savePending(); autoGrow(); scheduleEstimate(); render(); $('menu').focus(); })
+    ]);
+    nodes.push(bubble('bot', [para(pendingOrder.hung ? '好，先掛單，鐵板不開火。想好了按開炒。' : (pendingOrder.estimate || '蕉彌估價中…')), actions]));
+  }
+  return nodes;
 }
-
+function renderChat() {
+  const status = job?.status;
+  const dishes = job?.kitchen?.dishes ?? [];
+  const signature = JSON.stringify([job?.id, status, job?.error, job?.video, job?.final_versions?.length, job?.kitchen,
+    dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
+    pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().length]);
+  if (signature === chatSignature) return;
+  chatSignature = signature;
+  const chat = $('chat');
+  const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
+  const playing = [...$('messages').querySelectorAll('video')].some(video => !video.paused);
+  if (playing && !idle.has(status ?? 'kitchen_ready')) return;   // 正在看毛片時不打斷，下一輪再更新
+  $('messages').replaceChildren(...buildMessages());
+  if (nearBottom) chat.scrollTop = chat.scrollHeight;
+}
+function renderTray() {
+  const dishes = job?.kitchen?.dishes ?? [];
+  const adopted = dishes.map((dish, d) => [dish, d]).filter(([dish]) => dish.selected !== undefined);
+  $('tray-dishes').replaceChildren(...adopted.map(([, d]) => {
+    const [icon, name] = dishTitle(d);
+    return el('button', {className: 'tray-dish', text: icon, attrs: {type: 'button', 'aria-label': `第 ${d + 1} 道 ${name}，跳到這道`},
+      onClick: () => $('dish-' + d)?.scrollIntoView({behavior: 'smooth', block: 'start'})});
+  }));
+  $('tray-empty').hidden = adopted.length > 0;
+}
 function renderComfyProgress(status, segment) {
   const panel = $('comfy-progress');
   panel.hidden = !['planning_story', 'running'].includes(status);
@@ -410,8 +505,7 @@ function renderComfyProgress(status, segment) {
   const sampling = ['SamplerCustomAdvanced', 'KSampler', 'KSamplerAdvanced'].includes(task?.node);
   const measured = task?.state === 'running' && (writing || sampling) && Number.isInteger(task.value) &&
     Number.isInteger(task.max) && task.max > 0 && task.value >= 0 && task.value <= task.max;
-  let label = status === 'planning_story' ? '9B 規劃菜單'
-    : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
+  let label = status === 'planning_story' ? '9B 規劃菜單' : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
   if (task?.state === 'queued') label += ' · 排隊中';
   else if (task?.state === 'finished') label = '正在整理生成結果';
   else if (task?.state === 'failed') label = 'ComfyUI 回報錯誤';
@@ -419,128 +513,122 @@ function renderComfyProgress(status, segment) {
   else if (sampling) label = 'H3 影片採樣';
   else if (/VAEDecode/i.test(task?.node ?? '')) label = 'H3 解碼影片';
   if (measured) label += ' · ' + task.value + ' / ' + task.max + (writing ? ' tokens' : ' 步');
-  if (measured && sampling && task.value < task.max &&
-      Number.isFinite(task.seconds_per_unit) && task.seconds_per_unit > 0) {
-    label += ' · 蕉彌預估採樣還要 ' + Math.ceil((task.max - task.value) * task.seconds_per_unit) + ' 秒';
+  if (measured && sampling && task.value < task.max && Number.isFinite(task.seconds_per_unit) && task.seconds_per_unit > 0) {
+    label += ' · 約 ' + Math.ceil((task.max - task.value) * task.seconds_per_unit) + ' 秒';
   }
-  const stage = $('comfy-stage'), bar = $('comfy-count');
-  if (stage.textContent !== label) stage.textContent = label;
+  if ($('comfy-stage').textContent !== label) $('comfy-stage').textContent = label;
+  const bar = $('comfy-count');
   bar.hidden = !measured;
-  if (measured) {
-    bar.max = task.max;
-    bar.value = task.value;
-  }
+  if (measured) { bar.max = task.max; bar.value = task.value; }
 }
-
 function render() {
-  const dish = latestDish();
   const status = job?.status;
   const working = pending || restoring || (Boolean(status) && !idle.has(status));
-  const ready = status === 'kitchen_ready';
-  const accepted = dish?.selected !== undefined;
-  const progress = $('progress');
+  const dish = latestDish();
   const clips = dish?.attempts.at(-1).clips ?? [];
   const count = clips.filter(index => job.segments[index]?.status === 'done').length;
   const segment = job?.segments?.[job.current - 1];
   const rewriting = segment?.status === 'rewriting';
   $('counter').dataset.phase = status === 'running' && !rewriting ? 'cooking' :
-    status === 'upscaling_1080p' ? 'finishing' : status === 'assembling' ? 'serving' :
-    working ? 'planning' : 'idle';
+    status === 'upscaling_1080p' ? 'finishing' : status === 'assembling' ? 'serving' : working ? 'planning' : 'idle';
   $('project-title').hidden = !job;
   $('project-title').textContent = job?.title ?? '';
   const messages = {
-    planning_story: '蕉彌正在讀菜單…',
-    running: (rewriting ? '蕉彌正在備料 · ' : '蕉彌正在炒菜 · ') + count + ' / ' + clips.length + ' 段完成',
-    kitchen_ready: accepted ? '這道已採用，可以繼續炒或上菜。' : '蕉彌炒好了，先看看毛片。',
-    assembling: '蕉彌正在上菜・合成影片中…',
-    upscaling_1080p: '蕉彌正在大火收汁・升頻 2K 中…',
-    done: '蕉彌上菜完成。',
-    error: '製作暫停，完成的毛片已保存。',
-    cancelled: '已停爐。',
-    interrupted: '製作中斷，可繼續製作。'
+    planning_story: '蕉彌正在讀菜單…', running: (rewriting ? '備料中 · ' : '炒菜中 · ') + count + ' / ' + clips.length + ' 段',
+    kitchen_ready: dish?.selected !== undefined ? '可以點下一道或上菜' : '炒好了，等你試菜',
+    assembling: '上菜中・合成影片', upscaling_1080p: '升頻 2K 中', done: '上菜完成',
+    error: '製作暫停', cancelled: '已停爐', interrupted: '製作中斷'
   };
-  $('status').textContent = messages[status] || (working ? '蕉彌正在準備鐵板…' : '鐵板就位，等你的第一道菜單。');
-  progress.hidden = status !== 'running' || !clips.length;
-  progress.max = clips.length || 1;
-  progress.value = count;
+  $('status').textContent = messages[status] || (working ? '準備鐵板中…' : '鐵板就位');
+  $('progress').hidden = status !== 'running' || !clips.length;
+  $('progress').max = clips.length || 1;
+  $('progress').value = count;
   renderComfyProgress(status, segment);
-  $('initial-settings').hidden = Boolean(job);
-  $('shared-setup').hidden = Boolean(job);
-  $('shared').disabled = working;
-  const paused = ['error', 'cancelled', 'interrupted'].includes(status);
-  const canEdit = paused && dish && !accepted && !job.kitchen.serving;
-  $('menu-label').textContent = !job ? '第一道菜單' : repeating || canEdit ? '這道菜單' : '下一道菜單';
-  const canCook = !job || (ready && (accepted || repeating)) || (canEdit && repeating);
-  $('cook').textContent = !job ? '開始炒菜' : repeating ? '重炒這道' : '繼續炒';
-  $('cook').disabled = working || !canCook;
-  $('menu').disabled = working || !canCook;
-  if ($('menu').disabled) closeImageMentions();
-  $('seconds').disabled = working;
+
+  const orderable = canOrder() && !(pendingOrder && !pendingOrder.hung);
+  $('menu').disabled = !orderable;
+  $('cook').disabled = !orderable;
+  $('menu').placeholder = !job ? '跟蕉彌說你想拍什麼…輸入 @ 選圖'
+    : status === 'done' ? '這桌已上菜，按右上「新開一桌」再點'
+    : !canOrder() ? '蕉彌忙著，等這道炒完…'
+    : nextAction() === 'repeat' ? '不滿意？直接寫新菜單重炒這道…' : '下一道想拍什麼？';
+  if ($('menu').disabled) closeMenuMention();
+  $('add-image').hidden = Boolean(job);
   $('stop').hidden = !job || idle.has(status);
   $('stop').disabled = pending;
-  $('edit-dish').hidden = !canEdit || repeating;
-  $('edit-dish').disabled = working;
-  $('resume').hidden = !paused || repeating;
-  $('resume').disabled = working;
-  $('service').hidden = !(ready && accepted);
-  $('serve').disabled = working;
-  $('menu-form').hidden = status === 'done';
   $('new-project').hidden = !job || working;
-  const request = job?.request;
-  const resolution = request ? (request.width > 854 || (request.aspect !== '16:9' && request.width > 480) ? '720' : '480') : $('resolution').value;
-  const steps = request?.sampling_steps ?? $('steps').value;
-  const thinking = request?.rewriter_thinking ?? $('thinking').checked;
-  const secondsLabel = $('seconds').value === 'auto' ? '蕉彌估秒' : $('seconds').value + ' 秒';
-  $('profile').textContent = resolution + 'P · ' + steps + ' 步 · ' + secondsLabel + (thinking ? ' · Thinking' : '');
-  renderDishes();
-  renderFinal();
-  if (status === 'error') showFeedback(job.error);
-  if (status === 'done' && job.upscale_error) showFeedback('2K 升頻未完成，母片可下載。' + job.upscale_error);
+  $('restore-wrap').hidden = Boolean(job) || $('restore-project').options.length <= 1;
+  $('profile').textContent = profileText();
+  $('sheet-settings').classList.toggle('locked', Boolean(job));
+  $('settings-locked').hidden = !job;
+  $('shared').disabled = Boolean(job);
+  if (job) $('shared').value = job.request?.kitchen_shared_setup ?? '';
+  renderReferences();
+  renderChat();
+  renderTray();
 }
 
-async function sync(id) {
-  clearTimeout(timer);
+/* ---------- 動作 ---------- */
+function editMenu(attempt) {
+  $('menu').value = attempt.menu;
+  $('seconds').value = attempt.estimated ? 'auto' : String(attempt.seconds);
+  syncPills();
+  autoGrow();
+  scheduleEstimate();
+  render();
+  $('menu').focus();
+}
+async function placeOrder(menu) {
+  pendingOrder = {menu, seconds: dishSeconds(), action: nextAction(), hung: false, estimate: ''};
+  savePending();
+  clearTimeout(estimateTimer);
+  estimateSerial++;
+  $('menu').value = '';
+  $('estimate').hidden = true;
+  autoGrow();
+  render();
   try {
-    const result = await api('api/mv/status?id=' + encodeURIComponent(id));
-    if (!result.kitchen) throw Error('這個專案不屬於蕉彌鐵板燒。');
-    job = result;
-    localStorage.setItem(storageKey, id);
-    $('restore-wrap').hidden = true;
-    if (!idle.has(result.status)) timer = setTimeout(() => sync(id), 1600);
+    const result = await post('film/kitchen/estimate', {menu}, '蕉彌估價');
+    if (pendingOrder?.menu === menu) {
+      pendingOrder.estimate = describeEstimate(result, pendingOrder.seconds);
+      savePending();
+    }
   } catch (error) {
-    showFeedback(error.message);
-    if (job?.id === id && !idle.has(job.status)) timer = setTimeout(() => sync(id), 5000);
-  } finally {
-    restoring = false;
+    if (pendingOrder?.menu === menu) pendingOrder.estimate = '老闆，我估不出來（' + error.message + '），可以直接開炒。';
+  }
+  render();
+}
+async function cookPending() {
+  if (!pendingOrder) return;
+  const order = pendingOrder;
+  const action = !job ? 'start' : nextAction();
+  const ok = await perform(action, {menu: order.menu, seconds: order.seconds});
+  if (ok) {
+    pendingOrder = null;
+    savePending();
     render();
   }
 }
-
 async function perform(action, fields = {}) {
-  if (pending || restoring) return;
+  if (pending || restoring) return false;
   pending = true;
   showFeedback('');
   render();
   try {
     let updated;
     if (action === 'start') {
-      const request = await firstRequest();
+      const request = await firstRequest(fields.menu, fields.seconds);
       showFeedback('正在送出第一道菜…');
       updated = await post('film/kitchen/start', request, '送出第一道菜');
     } else if (['stop', 'resume'].includes(action)) {
       updated = await post('mv/' + action, {id: job.id});
-    } else updated = await post('film/kitchen/' + action, {id: job.id, ...fields});
-    if (action === 'repeat') {
-      const counter = $('counter');
-      clearTimeout(reactionTimer);
-      counter.classList.add('is-surprised');
-      reactionTimer = setTimeout(() => counter.classList.remove('is-surprised'), 820);
+    } else {
+      updated = await post('film/kitchen/' + action, {id: job.id, ...fields});
     }
-    if (['start', 'append', 'repeat', 'adopt'].includes(action)) {
-      $('menu').value = '';
-      $('estimate').hidden = true;
-      $('settings').open = false;
-      repeating = false;
+    if (action === 'repeat') {
+      clearTimeout(reactionTimer);
+      $('counter').classList.add('is-surprised');
+      reactionTimer = setTimeout(() => $('counter').classList.remove('is-surprised'), 820);
     }
     const id = action === 'start' ? updated.id : job.id;
     if (updated.kitchen) {
@@ -549,35 +637,29 @@ async function perform(action, fields = {}) {
     }
     showFeedback('');
     await sync(id);
+    $('chat').scrollTop = $('chat').scrollHeight;
+    return true;
   } catch (error) {
     showFeedback(error.message);
+    return false;
   } finally {
     pending = false;
     render();
   }
 }
-
-async function firstRequest() {
-  const shared = $('shared').value.trim(), menu = $('menu').value.trim();
+async function firstRequest(menu, seconds) {
+  const shared = $('shared').value.trim();
   const prompt = [shared, menu].filter(Boolean).join('\n\n');
   if (Array.from(prompt).length > 30000) throw Error('共同設定和菜單合計最多 30000 字。');
   const slots = [];
-  for (const input of $('references').querySelectorAll('input')) {
-    const file = input.files[0];
-    if (!file) {
-      slots.push(null);
-      continue;
-    }
+  for (const file of localSlots) {
+    if (!file) { slots.push(null); continue; }
     const reference = '@圖片' + (slots.length + 1);
     const stage = '上傳 ' + reference;
     showFeedback('正在' + stage + '…');
     if (file.size > 256 * 1024 * 1024) throw Error(reference + ' 超過單檔上限 256 MiB。');
     let bytes;
-    try {
-      bytes = await file.arrayBuffer();
-    } catch {
-      throw Error('手機無法讀取 ' + reference + '。請重新選擇已下載到手機的圖片。');
-    }
+    try { bytes = await file.arrayBuffer(); } catch { throw Error('無法讀取 ' + reference + '，請重新選擇圖片。'); }
     if (!bytes.byteLength) throw Error(reference + ' 是空檔案，請重新選擇圖片。');
     const asset = await api('api/upload', {
       method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)}, body: bytes
@@ -590,36 +672,57 @@ async function firstRequest() {
   return {
     project_name: $('name').value.trim(), prompt, image_slots: slots,
     kitchen_menu: menu, kitchen_shared_setup: shared,
-    max_seconds: dishSeconds(), duration_preference: 'selector',
+    max_seconds: seconds, duration_preference: 'selector',
     segment_seconds: 10, mode: 'chain', sound_mode: $('sound').value, aspect,
     width: aspect === '16:9' ? (resolution === 480 ? 854 : 1280) : resolution,
     sampling_steps: Number($('steps').value), rewriter_thinking: $('thinking').checked,
     kitchen_attention: true, sparse_attention: false, motion_lora: false
   };
 }
-
+async function sync(id) {
+  clearTimeout(timer);
+  try {
+    const result = await api('api/mv/status?id=' + encodeURIComponent(id));
+    if (!result.kitchen) throw Error('這個專案不屬於蕉彌鐵板燒。');
+    job = result;
+    localStorage.setItem(storageKey, id);
+    if (!idle.has(result.status)) timer = setTimeout(() => sync(id), 1600);
+  } catch (error) {
+    showFeedback(error.message);
+    if (job?.id === id && !idle.has(job.status)) timer = setTimeout(() => sync(id), 5000);
+  } finally {
+    restoring = false;
+    render();
+  }
+}
 async function projects() {
   try {
     const rows = await api('api/film/kitchen/projects');
     const select = $('restore-project');
     select.replaceChildren(new Option('選擇專案', ''));
     for (const row of rows) select.add(new Option(row.title, row.id));
-    $('restore-wrap').hidden = Boolean(job) || !rows.length;
   } catch (error) {
     if (!job) showFeedback(error.message);
   }
+  render();
 }
 
 $('menu-form').onsubmit = event => {
   event.preventDefault();
   const menu = $('menu').value.trim();
-  if (!menu) return;
-  perform(!job ? 'start' : repeating ? 'repeat' : 'append', {menu, seconds: dishSeconds()});
+  if (!menu || !canOrder()) return;
+  placeOrder(menu);
 };
-$('serve').onclick = () => perform('serve', {upscale: $('upscale').checked});
-$('edit-dish').onclick = () => beginRepeat(latestDish().attempts.at(-1));
-$('resume').onclick = () => perform('resume');
+$('menu').addEventListener('keydown', event => {
+  // 電腦上 Enter 送出、Shift+Enter 換行；手機輸入法照常換行。
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && matchMedia('(pointer: fine)').matches &&
+      $('menu-image-suggestions').hidden) {
+    event.preventDefault();
+    $('menu-form').requestSubmit();
+  }
+});
 $('stop').onclick = () => perform('stop');
+$('upscale').onchange = render;
 $('restore-project').onchange = () => {
   const id = $('restore-project').value;
   if (id && !pending && !restoring && !job) {
@@ -628,29 +731,24 @@ $('restore-project').onchange = () => {
     sync(id);
   }
 };
-$('expand-menu').onclick = () => {
-  const expand = $('expand-menu').getAttribute('aria-expanded') !== 'true';
-  $('expand-menu').setAttribute('aria-expanded', String(expand));
-  $('expand-menu').textContent = expand ? '收起輸入框' : '拉開輸入框';
-  $('menu').style.removeProperty('height');
-  $('menu').classList.toggle('is-expanded', expand);
-};
 $('new-project').onclick = () => {
   clearTimeout(timer);
   localStorage.removeItem(storageKey);
   job = null;
-  repeating = false;
-  $('menu-form').reset();
-  closeImageMentions();
-  clearLocalImageUrls();
-  $('upscale').checked = true;
-  $('served').dataset.src = '';
-  $('served').replaceChildren();
+  pendingOrder = null;
+  savePending();
+  localSlots = Array(SLOT_COUNT).fill(null);
+  for (const url of localImageUrls.values()) URL.revokeObjectURL(url);
+  localImageUrls.clear();
+  $('menu').value = '';
+  $('shared').value = '';
+  chatSignature = '';
   showFeedback('');
   render();
   projects();
 };
-$('settings').onchange = render;
+
+syncPills();
 const saved = localStorage.getItem(storageKey);
 if (saved) {
   restoring = true;

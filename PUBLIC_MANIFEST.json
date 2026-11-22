@@ -4,7 +4,7 @@
   "files": [
     {
       "path": ".github/workflows/checks.yml",
-      "sha256": "4ee00ba57fdc159a0e56935ff42143ee052393d5c8e41b1d418c4c7887f81693"
+      "sha256": "7fdb253646bf588d8c04faeb04cc71de9be6f39c464f5891c0d1be1516ed3755"
     },
     {
       "path": ".github/workflows/film_handoff_regression.yml",
@@ -176,15 +176,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "434abd87f92cccc88b1719f98fb5ac282eea4c4f700ba1444b81b01f3acb7983"
+      "sha256": "0e0fa6fecc04e6fb6cfd765d89ad58ede21f3340f3168b0b24203ff945a5d154"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "aaf1b39c3ec0f07640e933872e4c6e59da6d28d14b6491f2abdd5cae8b223e4a"
+      "sha256": "d3676fd9be164cd48e4146b7df531356604e6e5a9d2518b5ad5b96e545c00150"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "51a04819f8efab11b6d4f2645bfa5900da65aa421e777b61b280bc68d78c441f"
+      "sha256": "0d89ab8545fb9008074d24ad798fba52bc1ee422b2e59ea448b13b4f1b537e68"
     },
     {
       "path": "docs/clip_review.md",
@@ -225,6 +225,10 @@
     {
       "path": "tests/check_film_ui.cjs",
       "sha256": "4ab3f4b2e8547e221ef2b20b28a7a6a6009fefb108d63529e976c7485ff60419"
+    },
+    {
+      "path": "tests/check_teppan_browser.cjs",
+      "sha256": "0d692e80e484e8acadb94df6d68a50a93e8485e93a2ed47704d1af2277634547"
     },
     {
       "path": "tests/check_ui.cjs",
