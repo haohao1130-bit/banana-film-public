@@ -47,7 +47,7 @@ def launch(ns,save_to_drive=True):
     from google.colab import output
     print('🎬 蕉宗映像製片所｜作品資料：',data)
     print('請先試拍 15 秒；不要與其他 MV 工作共用 ComfyUI 同時生成。')
-    output.serve_kernel_port_as_window(8191,anchor_text='🎬 打開蕉宗映像製片所')
+    output.serve_kernel_port_as_window(8191,anchor_text='🍳 打開蕉彌鐵板燒')
 
 
 show_shutdown_control=base.show_shutdown_control
