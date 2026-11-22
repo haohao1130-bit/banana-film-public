@@ -5,6 +5,7 @@ The guide occupies the generated prefix, not a reference-picture identity slot.
 """
 import hashlib
 import math
+import re
 from fractions import Fraction
 from pathlib import Path
 import shutil
@@ -14,13 +15,67 @@ from banana_mv.core import FPS, command, probe
 CONTEXT_FRAMES = 5
 
 
+def previous_clip_index(seg):
+    index = seg.get('kitchen_previous', seg['index'] - 1)
+    return index if index is not None and index >= 0 else None
+
+
+def _opening_field(brief, *labels):
+    names = '|'.join(map(re.escape, labels))
+    match = re.search(rf'(?m)^(?:{names})[：:][ \t]*\n?[ \t]*([^\n]+)', brief)
+    return match[1].strip() if match else ''
+
+
+def opens_with_cut(job, seg):
+    """Read a cut from the opening commission, never from a later shot."""
+    previous = previous_clip_index(seg)
+    req = job['request']
+    if previous is None or req.get('manual_h3') or req.get('mode') not in ('chain', 'chain5'):
+        return False
+    if seg.get('starts_with_cut'):
+        return True
+    brief = seg.get('director_plan', {}).get('event', '')
+    opening = _opening_field(brief, '當段開場狀態', '開場', '承接')
+    first_shot = re.search(
+        r'(?im)^(?:SHOT\s+0?1(?:[ \t]*[（(][^）)\n]*[）)])?'
+        r'|0(?:\.0+)?[ \t]*[–—-][^：:\n]+秒)[ \t]*[：:][ \t]*(.+)',
+        brief,
+    )
+    cut_pattern = (r'^(?:(?:稍後|翌日|隔天|次日|下一刻)[，、, ]*|'
+                   r'(?:開場|一開始|首鏡|第一鏡)(?:直接|就)?[：:，、, ]*)?'
+                   r'(?:硬切|跳切|切(?:到|至|回|入|往)|轉場(?:到|至|回|進|[：:])|'
+                   r'cut\s+to\b|hard\s+cut\b)')
+    inputs = [opening, first_shot[1] if first_shot else '', brief.lstrip().split('\n', 1)[0]]
+    if any(re.match(cut_pattern, line, re.I) for line in inputs):
+        return True
+    segments = job.get('segments', [])
+    if not opening or previous >= len(segments):
+        return False
+    preceding = segments[previous].get('director_plan', {}).get('event', '')
+    here = re.split(r'[，,：:。；;]', _opening_field(brief, '當段場景', '場景'))[0]
+    there = re.split(r'[，,：:。；;]', _opening_field(preceding, '當段場景', '場景'))[0]
+    if not here or not there or here in there or there in here:
+        return False
+    # An already-arrived character plus a new named location signals an edit;
+    # a new camera angle or a later instruction to walk there does not.
+    destination = re.match(r'^[^，。；！？]{0,16}?(?:坐到|回到|抵達|已(?:經)?(?:坐在|站在))([^，。；！？]+)', opening)
+    return bool(destination and len(here) >= 3 and here[:3] in destination[1] and here[:3] not in there)
+
+
 def motion_prefix(job, seg):
-    return CONTEXT_FRAMES if (job['request'].get('production')=='film'
-        and job['request'].get('mode')=='chain5' and seg.get('kitchen_previous', seg['index'] - 1) not in (None, -1)) else 0
+    return CONTEXT_FRAMES if (job['request'].get('production') == 'film'
+        and job['request'].get('mode') == 'chain5' and previous_clip_index(seg) is not None
+        and not opens_with_cut(job, seg)) else 0
 
 
-def render_frames(delivered_frames):
-    return 5+17*math.ceil((delivered_frames+CONTEXT_FRAMES-5)/17)
+def opening_render_frames(job, seg):
+    if job['request'].get('mode') == 'chain5' and opens_with_cut(job, seg):
+        return render_frames(seg['frames'], prefix_frames=0)
+    return seg['model_frames']
+
+
+def render_frames(delivered_frames, *, prefix_frames=CONTEXT_FRAMES):
+    return 5+17*math.ceil((delivered_frames+prefix_frames-5)/17)
 
 
 def prepare_motion_tail(source, destination, input_dir, stem):

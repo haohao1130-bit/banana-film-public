@@ -464,6 +464,7 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
 
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
     from banana_mv.direction_contract import authored_dialogue, validate_authored_dialogue
+    from banana_mv.film_continuity import motion_prefix, opens_with_cut, previous_clip_index
 
     req=job['request'];offset=int(bool(tail));brief=seg['director_plan']['event']
     brief=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',brief)
@@ -476,12 +477,22 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
           'current_clip_commission':brief}
     total=seg.get('segment_count') or len(job.get('segments',[])) or 1
     final=not job.get('kitchen') and seg['index']==total-1
-    first=seg.get('kitchen_previous', seg['index'] - 1) in (None, -1)
-    task['clip_opening']={'position':'first' if first else 'continuation',
-        'instruction':('Begin the commissioned film opening.' if first else
-                       'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
+    first = previous_clip_index(seg) is None
+    cut = opens_with_cut(job, seg)
+    task['clip_opening'] = {
+        'position': 'first' if first else 'cut' if cut else 'continuation',
+        'instruction': (
+            'Begin the commissioned film opening.' if first else
+            'Start Shot 1 in the commissioned new setting at the first frame. Begin with its local action, '
+            'without showing the previous shot, holding on the old setting, or inventing a transition.'
+            if cut else
+            'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, '
+            'reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time '
+            'and physical continuity are preserved; honor any explicit commissioned scene or time transition.'
+        ),
+    }
     authored_clip = seg.get('authored_clip_commission', req.get('authored_clip_commissions', False))
-    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip and not job.get('kitchen'):
+    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip and not job.get('kitchen') and not cut:
         previous = job['segments'][seg['index'] - 1]['director_plan']['event'].splitlines()[-1]
         task['already_established'] = re.sub(r'<Picture (\d+)>',
             lambda m:f'<Picture {int(m[1])+offset}>',previous)
@@ -501,7 +512,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
             'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
         )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
-    if req.get('mode')=='chain5' and not first:
+    if motion_prefix(job, seg):
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
     if tail:task['continuity_reference']='<Picture 1> is the previous last frame anchored at frame zero. Continue from its exact composition, poses, and eyelines; this image is not another actor.'
     if correction:task.update(original_prompt=base,local_correction=correction)
@@ -874,7 +885,9 @@ def worker(job,cfg,originals,song=None,drive=None):
     work=app.job_dir(job['id']);tail=None
     from banana_mv import face_refine
     from banana_mv.comfy import check_cancelled, track_prompt
-    from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
+    from banana_mv.film_continuity import (
+        add_motion_guide, motion_prefix, opening_render_frames, opens_with_cut, upload_motion_tail,
+    )
     try:
         cfg = app.emergency_config(cfg, job['id'])
         kitchen = job.get('kitchen')
@@ -901,10 +914,11 @@ def worker(job,cfg,originals,song=None,drive=None):
             job['script_draft']=review_draft(job);app.write_state(job);return
         guide_source = None
         for seg in active_segments:
+            cut = opens_with_cut(job, seg)
             if 'kitchen_previous' in seg:
                 previous = seg['kitchen_previous']
                 guide_source = None
-                if previous is not None:
+                if previous is not None and not cut:
                     earlier = job['segments'][previous]
                     part = app.adopted_part(job, earlier)
                     if not app.valid_part(part, earlier, job['size']):
@@ -917,6 +931,10 @@ def worker(job,cfg,originals,song=None,drive=None):
                 require_audio(part)
                 guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals, reuse=True)
                 continue
+            if cut and seg.get('opening_transition') != 'cut':
+                seg.update(opening_transition='cut', refresh_prompt=True)
+                for field in ('opening_sha256', 'motion_context', 'prompt_id'):
+                    seg.pop(field, None)
             tail=None;context_names=[];prefix=motion_prefix(job,seg)
             if prefix:
                 source=guide_source
@@ -925,7 +943,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                 if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
                     raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
                 seg['motion_context']=receipt
-            if guide_source is not None and job['request']['mode']=='chain':
+            if not cut and guide_source is not None and job['request']['mode']=='chain':
                 tail=work/f'{i:02d}_opening.png'
                 app.last_frame(guide_source,tail)
                 opening_sha256=hashlib.sha256(tail.read_bytes()).hexdigest()
@@ -962,7 +980,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             first=None
             if tail:
                 first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
-            graph=app.build_workflow(job['images_comfy'],None,*job['size'],seg['model_frames'],prompt,
+            graph=app.build_workflow(job['images_comfy'],None,*job['size'],opening_render_frames(job,seg),prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaFilm/{job["id"]}/{i:02d}_v1'

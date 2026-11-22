@@ -5,7 +5,7 @@ import threading
 
 from banana_mv import film, server as app
 from banana_mv.core import FPS
-from banana_mv.film_continuity import render_frames
+from banana_mv.film_continuity import opens_with_cut, render_frames
 
 
 def new_attempt(prompt, seconds):
@@ -73,6 +73,9 @@ def prepare(job, cfg, originals):
             segment['model_frames'] = render_frames(segment['frames'])
         if offset == 0:
             segment['kitchen_previous'] = previous[-1] if previous else None
+            menu_opening = dict(segment, director_plan={'event': attempt['menu']})
+            if opens_with_cut(job, menu_opening):
+                segment['starts_with_cut'] = True
         segment['authored_clip_commission'] = request['authored_clip_commissions']
         cursor += segment['frames']
     attempt['clips'] = list(range(first_index, first_index + len(plan['segments'])))

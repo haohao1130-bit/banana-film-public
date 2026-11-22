@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "c7f4db4ceb94e5e297edb7df0950f65a4846a902f6ac80f3cb51ca95dd296b7e"
+      "sha256": "2d38f9f29e1222b4ca308a243fb62b8534f41379dced9d1f71f4693f819a598d"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -68,11 +68,11 @@
     },
     {
       "path": "banana_mv/film_continuity.py",
-      "sha256": "a85ee027519a47daef65d901fd06f0cb96a88aacb36706e9006027c8fcbb1061"
+      "sha256": "d33157d4fe3f2b87decc3f03c3fc91619febe8b424e1b37e50f491a9d5e035df"
     },
     {
       "path": "banana_mv/film_kitchen.py",
-      "sha256": "32246fc2508eb2024757ee900da8017f0875ec34aea924e595c08092e8363f3d"
+      "sha256": "b908ff451ad827c696b50a32447ee18afeedee7f417c97f2d9a1ac757ba534d2"
     },
     {
       "path": "banana_mv/film_manual.py",
@@ -140,7 +140,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "c98933ec7c378f0a99bfb4793e6b36708341ca02784a887a683cfc17945416aa"
+      "sha256": "6d796130d4f0fe8e5ac5d3092d7dd87bc7e2d774fc54c16e7d43fddc5956b457"
     },
     {
       "path": "banana_mv/timed_slots.py",
