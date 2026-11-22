@@ -80,7 +80,7 @@
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "30692eb540089c56b599323b87a9b85c6a89763c9cbe23fce97c144d16d8074c"
+      "sha256": "d66b94eb9abbdea755c4dd86ffa95f81a42632910abc4c1c0a2f3aef46e7dd29"
     },
     {
       "path": "banana_mv/film_server.py",
@@ -247,6 +247,10 @@
       "sha256": "51daffdfc2451f479cee8ee0c3dbda185384de30df5656ddefdd08026a440e9a"
     },
     {
+      "path": "tests/test_chain5_audio.py",
+      "sha256": "2bc0753c9fcd6be4630b8ed8d3f66b8b46672c19b5d544523437bedae2120460"
+    },
+    {
       "path": "tests/test_clip_scope.py",
       "sha256": "84be6c62ca40805fb79e9e854c24572c35d7c5f0549ea8f4368bfd962d852e5e"
     },
@@ -296,7 +300,7 @@
     },
     {
       "path": "tests/test_film_shot_handoff.py",
-      "sha256": "45cb7772d99a4dd3415651eedd9fd176ac5265a5a6647f7574e057aa5f4d2422"
+      "sha256": "b2194911ca3ec94cf919c75be3869174b274c0a4ae1f6a6fe5c0cff4d05610ef"
     },
     {
       "path": "tests/test_h3_prompt.py",

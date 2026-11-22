@@ -557,7 +557,10 @@ class FilmShotHandoffTests(unittest.TestCase):
              patch.object(film_media,'command') as cmd, \
              patch.object(film_media,'probe',return_value={'streams':[{'codec_type':'video','nb_frames':175}]}):
             film_media.trim_native('source.mp4','part.mp4',175,prefix_frames=5)
-        args=cmd.call_args.args[0]
+        args=cmd.call_args_list[0].args[0]
+        lead=cmd.call_args_list[1].args[0]
+        self.assertIn('atrim=start=0:end=0.208333333',lead[lead.index('-af')+1])
+        self.assertEqual(str(lead[-1]),'part_lead.wav')
         self.assertIn('trim=start_frame=5:end_frame=180',args[args.index('-vf')+1])
         self.assertIn('atrim=start=0.208333333',args[args.index('-af')+1])
         self.assertIn('end=7.500000000',args[args.index('-af')+1])
