@@ -504,8 +504,8 @@ function buildMessages() {
       const upscale = job.final_versions?.findLast(row => row.reason === 'upscale_1440p');
       const src = upscale?.download || job.video;
       const links = [el('a', {className: 'btn primary', text: upscale ? '下載 2K 成片' : '下載成片',
-        attrs: {href: src, download: (job.title || 'BananaFilm') + '.mp4'}})];
-      if (upscale) links.push(el('a', {className: 'btn', text: '下載原尺寸母片', attrs: {href: job.video, download: (job.title || 'BananaFilm') + '-母片.mp4'}}));
+        attrs: {href: src, download: ''}})];
+      if (upscale) links.push(el('a', {className: 'btn', text: '下載原尺寸母片', attrs: {href: job.video, download: ''}}));
       nodes.push(bubble('bot', [para('滿漢全席上桌！整部片在這裡：'), videoNode(src), el('div', {className: 'actions'}, links),
         job.upscale_error ? para('2K 升頻未完成，母片可下載。' + job.upscale_error, 'meta') : null], 'wide final'));
     }

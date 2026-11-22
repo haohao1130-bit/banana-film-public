@@ -100,7 +100,7 @@
     },
     {
       "path": "banana_mv/http_server.py",
-      "sha256": "969341b4850a76ea5b19190d6a80db5d4e3b3002be5a4b2354f08fc66f891292"
+      "sha256": "52809e93dd2a48449279d36f9c7cf87bf851b0e37cedd21e1824abe0f94a701b"
     },
     {
       "path": "banana_mv/lyrics_reference.py",
@@ -128,7 +128,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "a4e900941e2f09a9d1f9bd1e568b55f0f4c01787aa87fe48bbfc35b43607202b"
+      "sha256": "a5fd2dbe00cd94bf7cb8f6fd7194521aca7299b93575821c6f9cd0b6f8216385"
     },
     {
       "path": "banana_mv/services.py",
@@ -168,11 +168,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "8147372d6c740d715ad10c620607da4448d2cfdc2b7c8a8486d23c6e9a820683"
+      "sha256": "1881b8134614d28a171c3c85deab5d08650d54742eafd7cd30827d9dfc885ccd"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "bf84589728c197832d7993f78e7db339c5c4a61d162cd462edcae8b6aa7aca14"
+      "sha256": "299c2654c0931beda5c1bb366dd5805271f9d1658dd925cd20d45f2a82f58c6d"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -180,7 +180,7 @@
     },
     {
       "path": "banana_mv/web/index.html",
-      "sha256": "6df4ca5df64acf1ed02425914d595866136d67c6bc54dd15eac0173d80e2cbbc"
+      "sha256": "395eaa85f47f0d628f29b45a3fc91b62fa91efeb61e63ece69e244db84849b5a"
     },
     {
       "path": "banana_mv/web/kitchen.js",
@@ -196,7 +196,7 @@
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "83663df015bc80076fede699c61d7666c2f5264f0d1fead7358b07dbc7b5d7d5"
+      "sha256": "005728e592535c2fcf8d67d68a1ad7c4982f0efdcf0ba856f8144219e113a848"
     },
     {
       "path": "docs/clip_review.md",
@@ -293,6 +293,10 @@
     {
       "path": "tests/test_director.py",
       "sha256": "1844383ec7d310c42f4c52ba0ae1f7cbfe0f2923971e9201cd46758fb6303d97"
+    },
+    {
+      "path": "tests/test_download_name.py",
+      "sha256": "b2a3522991573f808466ab3c1ba6662885ce43f1ae90c5ee8374f2fc4046dfad"
     },
     {
       "path": "tests/test_duplicate_h3.py",
