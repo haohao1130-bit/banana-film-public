@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=shared-image-mentions">
-  <script defer src="teppan.js?v=shared-image-mentions"></script>
+  <link rel="stylesheet" href="teppan.css?v=live-progress">
+  <script defer src="teppan.js?v=live-progress"></script>
 </head>
 <body>
   <header class="bar">
@@ -19,6 +19,10 @@
         <p id="project-title" hidden></p>
         <p id="status" role="status">鐵板就位，等你的第一道菜單。</p>
         <progress id="progress" aria-label="本次片段完成進度" hidden></progress>
+        <div id="comfy-progress" hidden>
+          <p id="comfy-stage" role="status"></p>
+          <progress id="comfy-count" aria-labelledby="comfy-stage" hidden></progress>
+        </div>
       </div>
       <div class="stage" aria-hidden="true">
         <svg viewBox="0 0 210 172" class="chef">

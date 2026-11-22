@@ -52,6 +52,8 @@ button:disabled { opacity: .5; cursor: default; }
 h1 { font-size: clamp(1.75rem, 6vw, 2.7rem); margin: 0 0 8px; line-height: 1.16; }
 .counter p { font-size: .9rem; margin: 5px 0; overflow-wrap: anywhere; color: #f8dec0; }
 #project-title { font-weight: 650; }
+#comfy-progress { margin-top: 7px; }
+.counter #comfy-stage { color: var(--gold); }
 .stage { width: min(100%, 360px); }
 .stage svg { display: block; width: 100%; height: auto; }
 .chef-motion, .spatula, .flames { transform-box: fill-box; }

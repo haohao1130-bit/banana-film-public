@@ -40,7 +40,7 @@
     },
     {
       "path": "banana_mv/comfy.py",
-      "sha256": "f624ae52d394e36ea879c63ede31863825dfc6a35fa08bd79807bb9bf2922f49"
+      "sha256": "452e07607018d47c315aa04e536da3c61520121b8b0c01bac01a0d94610522f3"
     },
     {
       "path": "banana_mv/core.py",
@@ -84,7 +84,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "aaca8af10f34e8e42dc814f600c54579e954b0c1ed257e05e380ae5966a6470d"
+      "sha256": "793d30562a36e01ae8cd02c832c39f9d590517c38fd14c8fe02652e437437ac3"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -172,15 +172,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "5e557505a3400a517245a2e024110865476aa592508b96e8b1cf6f897bb35093"
+      "sha256": "1fcbfee5d83cc7a989dfa87cf3a2dc890f8e85a34b3cc416f736707960a32f7d"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "8c3279fc3fc33a1c6b31f39120e33904ca9bfd3c81ffc635dd2f740f387192cf"
+      "sha256": "d7e393f6d38096649f456a86549f93a4e9f509671b6c0d92877e2beeb1059453"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "6b29c705bdec73972702e65dfc654fc9b19fb844855d699d850dfc02e226a0fe"
+      "sha256": "f5c7be3110dd96ffe66b9f4f181735f7c1b90546b567caf3bdef276173bb4944"
     },
     {
       "path": "docs/clip_review.md",

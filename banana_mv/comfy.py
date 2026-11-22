@@ -66,9 +66,10 @@ def release_prompt(cfg, prompt_id):
             _active.pop(job_id)
 
 
-def active_prompt(job_id):
+def active_prompt(job_id, prompt_id=None):
     with _active_lock:
-        return job_id in _active
+        row = _active.get(job_id)
+        return row is not None and (prompt_id is None or row[1] == prompt_id)
 
 
 def interrupt_active(job_id):

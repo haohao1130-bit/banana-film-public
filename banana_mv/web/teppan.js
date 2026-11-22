@@ -361,6 +361,33 @@ function renderFinal() {
   }
 }
 
+function renderComfyProgress(status, segment) {
+  const panel = $('comfy-progress');
+  panel.hidden = !['planning_story', 'running'].includes(status);
+  if (panel.hidden) return;
+  const task = job.comfy_progress;
+  const writing = task?.node === 'TextGenerate';
+  const sampling = ['SamplerCustomAdvanced', 'KSampler', 'KSamplerAdvanced'].includes(task?.node);
+  const measured = task?.state === 'running' && (writing || sampling) && Number.isInteger(task.value) &&
+    Number.isInteger(task.max) && task.max > 0 && task.value >= 0 && task.value <= task.max;
+  let label = status === 'planning_story' ? '9B 規劃菜單'
+    : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
+  if (task?.state === 'queued') label += ' · 排隊中';
+  else if (task?.state === 'finished') label = '正在整理生成結果';
+  else if (task?.state === 'failed') label = 'ComfyUI 回報錯誤';
+  else if (task?.state === 'interrupted') label = 'ComfyUI 已中斷';
+  else if (sampling) label = 'H3 影片採樣';
+  else if (/VAEDecode/i.test(task?.node ?? '')) label = 'H3 解碼影片';
+  if (measured) label += ' · ' + task.value + ' / ' + task.max + (writing ? ' tokens' : ' 步');
+  const stage = $('comfy-stage'), bar = $('comfy-count');
+  if (stage.textContent !== label) stage.textContent = label;
+  bar.hidden = !measured;
+  if (measured) {
+    bar.max = task.max;
+    bar.value = task.value;
+  }
+}
+
 function render() {
   const dish = latestDish();
   const status = job?.status;
@@ -370,7 +397,8 @@ function render() {
   const progress = $('progress');
   const clips = dish?.attempts.at(-1).clips ?? [];
   const count = clips.filter(index => job.segments[index]?.status === 'done').length;
-  const rewriting = job?.segments?.[job.current - 1]?.status === 'rewriting';
+  const segment = job?.segments?.[job.current - 1];
+  const rewriting = segment?.status === 'rewriting';
   $('counter').dataset.phase = status === 'running' && !rewriting ? 'cooking' :
     status === 'upscaling_1080p' ? 'finishing' : status === 'assembling' ? 'serving' :
     working ? 'planning' : 'idle';
@@ -391,6 +419,7 @@ function render() {
   progress.hidden = status !== 'running' || !clips.length;
   progress.max = clips.length || 1;
   progress.value = count;
+  renderComfyProgress(status, segment);
   $('initial-settings').hidden = Boolean(job);
   $('shared-setup').hidden = Boolean(job);
   $('shared').disabled = working;

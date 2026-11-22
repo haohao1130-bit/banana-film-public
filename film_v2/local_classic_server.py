@@ -63,6 +63,14 @@ LIVE_PROGRESS = LiveProgress()
 class Handler(colab.Handler):
     """Colab production routes remain inherited verbatim."""
 
+    def comfy_progress(self, job_id):
+        snapshot = LIVE_PROGRESS.snapshot()
+        prompt_id = snapshot.pop("prompt_id", None)
+        if (snapshot["connection"] == "connected" and prompt_id
+                and comfy_client.active_prompt(job_id, prompt_id)):
+            return snapshot
+        return None
+
     def do_POST(self):
         if self.path == '/api/5070/switch':
             from banana_mv.room_switch import switch

@@ -14,6 +14,9 @@ from banana_mv.takes import describe
 
 
 class Handler(app.Handler):
+    def comfy_progress(self, job_id):
+        return None
+
     def do_GET(self):
         path=urllib.parse.urlparse(self.path).path
         if path in ('/','/film','/mv'):return self.send_file(app.WEB/'film.html')
@@ -30,7 +33,10 @@ class Handler(app.Handler):
                 return self.send_json({'error':'找不到作品狀態','code':'film_state_missing'},404)
             except ValueError as error:
                 return self.send_json({'error':str(error)},400)
-            return self.send_json(describe(job))
+            view=describe(job)
+            if job.get('kitchen') and job['status'] in ('planning_story', 'running'):
+                view['comfy_progress']=self.comfy_progress(job_id)
+            return self.send_json(view)
         if path=='/api/health':return self.send_json({'service':'banana-film','standalone':True})
         return super().do_GET()
 
