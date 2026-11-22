@@ -65,6 +65,10 @@ progress { width: 100%; height: 6px; accent-color: var(--gold); margin-top: 4px;
 .msg .meta { color: var(--muted); font-size: .8rem; }
 .msg.user .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; justify-content: flex-end; }
 .msg.user .thumbs img { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; }
+.thumbs.cast { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.thumbs.cast figure { margin: 0; width: 92px; }
+.thumbs.cast img { width: 92px; height: 120px; object-fit: cover; border-radius: 10px; display: block; }
+.thumbs.cast figcaption { font-size: .72rem; color: var(--gold); margin-top: 4px; overflow-wrap: anywhere; }
 .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .clip { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .clip video { width: 100%; border-radius: 10px; background: #000; max-height: 360px; }
