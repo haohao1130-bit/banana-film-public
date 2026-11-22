@@ -2,8 +2,7 @@ const $ = id => document.getElementById(id);
 const storageKey = 'banana_teppan_job';
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
 let job = null, timer, pending = false, restoring = false, repeating = false;
-const menuInput = $('menu');
-let imageMention = null, composing = false, reactionTimer;
+let reactionTimer;
 const localImageUrls = new Map();
 
 for (let index = 1; index <= 8; index++) {
@@ -21,7 +20,7 @@ function element(tag, text) {
   return node;
 }
 
-function menuReferences() {
+function imageReferences() {
   if (job) {
     let image = 0;
     return (job.request?.image_slots ?? []).flatMap((asset, index) => {
@@ -43,113 +42,133 @@ function clearLocalImageUrls() {
   localImageUrls.clear();
 }
 
-function closeImageMention() {
-  imageMention = null;
-  $('menu-image-suggestions').hidden = true;
-  menuInput.removeAttribute('aria-activedescendant');
-}
+function bindImageMentions(field, fieldLabel) {
+  const input = $(field);
+  const suggestions = $(field + '-image-suggestions');
+  const list = $(field + '-image-list');
+  const empty = $(field + '-image-empty');
+  const add = $(field + '-image-add');
+  let imageMention = null, composing = false;
 
-function selectImageOption(index, scroll = false) {
-  const rows = [...$('menu-image-list').children];
-  imageMention.index = index;
-  rows.forEach((row, i) => row.setAttribute('aria-selected', String(i === index)));
-  if (!rows[index]) {
-    menuInput.removeAttribute('aria-activedescendant');
-    return;
+  function close() {
+    imageMention = null;
+    suggestions.hidden = true;
+    input.removeAttribute('aria-activedescendant');
   }
-  menuInput.setAttribute('aria-activedescendant', rows[index].id);
-  if (scroll) rows[index].scrollIntoView({block: 'nearest'});
-}
 
-function insertImageMention(slot) {
-  if (!imageMention) return;
-  const {start, end} = imageMention;
-  const text = '@圖片' + slot + (/\s/.test(menuInput.value[end] ?? '') ? '' : ' ');
-  if (menuInput.value.length - (end - start) + text.length > menuInput.maxLength) {
-    showFeedback('菜單已達字數上限。');
-    return;
-  }
-  menuInput.setRangeText(text, start, end, 'end');
-  closeImageMention();
-  menuInput.focus({preventScroll: true});
-}
-
-function updateImageMention() {
-  if (composing || menuInput.disabled || menuInput.selectionStart !== menuInput.selectionEnd) {
-    closeImageMention();
-    return;
-  }
-  const end = menuInput.selectionStart;
-  const before = menuInput.value.slice(0, end);
-  const match = /[@＠](?:圖片?|图片?|image)?([1-8])?$/i.exec(before);
-  if (!match || (match.index > 0 && /[a-z0-9_.]/i.test(before[match.index - 1]))) {
-    closeImageMention();
-    return;
-  }
-  const images = menuReferences();
-  const matches = images.filter(ref => !match[1] || ref.slot === Number(match[1]));
-  imageMention = {start: match.index, end, index: 0};
-  const list = $('menu-image-list');
-  list.replaceChildren();
-  for (const ref of matches) {
-    const option = button('', () => insertImageMention(ref.slot));
-    option.id = 'menu-ref-' + ref.slot;
-    option.className = 'menu-image-option';
-    option.setAttribute('role', 'option');
-    option.tabIndex = -1;
-    option.onpointerdown = event => event.preventDefault();
-    const image = element('img');
-    image.src = ref.src;
-    image.alt = '';
-    const label = element('span', '@圖片' + ref.slot);
-    if (ref.name) label.append(element('small', ref.name));
-    option.append(image, label);
-    list.append(option);
-  }
-  const empty = $('menu-image-empty');
-  empty.hidden = matches.length > 0;
-  empty.textContent = images.length ? '找不到這個圖號。' : '這桌還沒有參考圖。';
-  $('menu-image-add').hidden = Boolean(job) || images.length > 0;
-  $('menu-image-suggestions').hidden = false;
-  selectImageOption(0);
-}
-
-menuInput.addEventListener('input', event => {
-  if (!event.isComposing) updateImageMention();
-});
-menuInput.addEventListener('click', updateImageMention);
-menuInput.addEventListener('compositionstart', () => {
-  composing = true;
-  closeImageMention();
-});
-menuInput.addEventListener('compositionend', () => {
-  composing = false;
-  updateImageMention();
-});
-menuInput.addEventListener('blur', event => {
-  if (!$('menu-image-suggestions').contains(event.relatedTarget)) closeImageMention();
-});
-menuInput.addEventListener('keydown', event => {
-  if (composing || event.isComposing || !imageMention) return;
-  const rows = $('menu-image-list').children;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeImageMention();
-  } else if (rows.length && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
-    event.preventDefault();
-    if (event.key === 'Enter') rows[imageMention.index].click();
-    else {
-      const step = event.key === 'ArrowUp' ? -1 : 1;
-      selectImageOption((imageMention.index + step + rows.length) % rows.length, true);
+  function selectImageOption(index, scroll = false) {
+    const rows = [...list.children];
+    imageMention.index = index;
+    rows.forEach((row, i) => row.setAttribute('aria-selected', String(i === index)));
+    if (!rows[index]) {
+      input.removeAttribute('aria-activedescendant');
+      return;
     }
+    input.setAttribute('aria-activedescendant', rows[index].id);
+    if (scroll) rows[index].scrollIntoView({block: 'nearest'});
   }
+
+  function insertImageMention(slot) {
+    if (!imageMention) return;
+    const {start, end} = imageMention;
+    const text = '@圖片' + slot + (/\s/.test(input.value[end] ?? '') ? '' : ' ');
+    if (input.value.length - (end - start) + text.length > input.maxLength) {
+      showFeedback(fieldLabel + '已達字數上限。');
+      return;
+    }
+    input.setRangeText(text, start, end, 'end');
+    close();
+    input.focus({preventScroll: true});
+  }
+
+  function updateImageMention() {
+    if (composing || input.disabled || input.selectionStart !== input.selectionEnd) {
+      close();
+      return;
+    }
+    const end = input.selectionStart;
+    const before = input.value.slice(0, end);
+    const match = /[@＠](?:圖片?|图片?|image)?([1-8])?$/i.exec(before);
+    if (!match || (match.index > 0 && /[a-z0-9_.]/i.test(before[match.index - 1]))) {
+      close();
+      return;
+    }
+    const images = imageReferences();
+    const matches = images.filter(ref => !match[1] || ref.slot === Number(match[1]));
+    imageMention = {start: match.index, end, index: 0};
+    list.replaceChildren();
+    for (const ref of matches) {
+      const option = button('', () => insertImageMention(ref.slot));
+      option.id = field + '-ref-' + ref.slot;
+      option.className = 'menu-image-option';
+      option.setAttribute('role', 'option');
+      option.tabIndex = -1;
+      option.onpointerdown = event => event.preventDefault();
+      const image = element('img');
+      image.src = ref.src;
+      image.alt = '';
+      const label = element('span', '@圖片' + ref.slot);
+      if (ref.name) label.append(element('small', ref.name));
+      option.append(image, label);
+      list.append(option);
+    }
+    empty.hidden = matches.length > 0;
+    empty.textContent = images.length ? '找不到這個圖號。' : '這桌還沒有參考圖。';
+    add.hidden = Boolean(job) || images.length > 0;
+    suggestions.hidden = false;
+    selectImageOption(0);
+  }
+
+  input.addEventListener('input', event => {
+    if (!event.isComposing) updateImageMention();
+  });
+  input.addEventListener('click', updateImageMention);
+  input.addEventListener('compositionstart', () => {
+    composing = true;
+    close();
+  });
+  input.addEventListener('compositionend', () => {
+    composing = false;
+    updateImageMention();
+  });
+  input.addEventListener('blur', event => {
+    if (!suggestions.contains(event.relatedTarget)) close();
+  });
+  input.addEventListener('keydown', event => {
+    if (composing || event.isComposing || !imageMention) return;
+    const rows = list.children;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    } else if (rows.length && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === 'Enter') rows[imageMention.index].click();
+      else {
+        const step = event.key === 'ArrowUp' ? -1 : 1;
+        selectImageOption((imageMention.index + step + rows.length) % rows.length, true);
+      }
+    }
+  });
+  add.onclick = () => {
+    $('settings').open = true;
+    close();
+    $('references').querySelector('input')?.focus();
+  };
+  return close;
+}
+
+const closeMenuImageMention = bindImageMentions('menu', '菜單');
+const closeSharedImageMention = bindImageMentions('shared', '共同設定');
+
+function closeImageMentions() {
+  closeMenuImageMention();
+  closeSharedImageMention();
+}
+
+$('references').addEventListener('change', () => {
+  closeImageMentions();
+  clearLocalImageUrls();
 });
-$('menu-image-add').onclick = () => {
-  $('settings').open = true;
-  closeImageMention();
-  $('references').querySelector('input')?.focus();
-};
-$('references').addEventListener('change', clearLocalImageUrls);
 
 async function api(path, options, stage = '連線到一鍵短片') {
   let response, result;
@@ -380,7 +399,7 @@ function render() {
   $('cook').textContent = !job ? '開始炒菜' : repeating ? '重炒這道' : '繼續炒';
   $('cook').disabled = working || !canCook;
   $('menu').disabled = working || !canCook;
-  if ($('menu').disabled) closeImageMention();
+  if ($('menu').disabled) closeImageMentions();
   $('seconds').disabled = working;
   $('stop').hidden = !job || idle.has(status);
   $('stop').disabled = pending;
@@ -542,7 +561,7 @@ $('new-project').onclick = () => {
   job = null;
   repeating = false;
   $('menu-form').reset();
-  closeImageMention();
+  closeImageMentions();
   clearLocalImageUrls();
   $('upscale').checked = true;
   $('served').dataset.src = '';

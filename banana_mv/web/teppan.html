@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=mobile-header-inset">
-  <script defer src="teppan.js?v=upload-feedback"></script>
+  <link rel="stylesheet" href="teppan.css?v=shared-image-mentions">
+  <script defer src="teppan.js?v=shared-image-mentions"></script>
 </head>
 <body>
   <header class="bar">
@@ -76,7 +76,12 @@
     <form id="menu-form">
       <div id="shared-setup">
         <label for="shared">共同設定（選填）</label>
-        <textarea id="shared" rows="3" maxlength="12000" aria-describedby="shared-help" placeholder="角色、聲線與畫風。用 @圖片1 對應參考圖。"></textarea>
+        <textarea id="shared" rows="3" maxlength="12000" aria-describedby="shared-help" aria-controls="shared-image-list" aria-autocomplete="list" placeholder="角色、聲線與畫風。輸入 @ 選參考圖。"></textarea>
+        <div id="shared-image-suggestions" class="image-suggestions" hidden>
+          <div id="shared-image-list" class="image-list" role="listbox" aria-label="共同設定參考圖片"></div>
+          <p id="shared-image-empty" class="image-empty" role="status" hidden></p>
+          <button id="shared-image-add" class="quiet image-add" type="button" hidden>選擇參考圖</button>
+        </div>
         <p id="shared-help">開案時填一次，後續每道菜都會沿用。</p>
       </div>
       <details id="settings">
@@ -102,10 +107,10 @@
           <button id="expand-menu" class="quiet" type="button" aria-expanded="false" aria-controls="menu">拉開輸入框</button>
         </div>
         <textarea id="menu" rows="3" maxlength="30000" aria-controls="menu-image-list" aria-autocomplete="list" placeholder="寫下這一段要發生的事。輸入 @ 選參考圖。" required></textarea>
-        <div id="menu-image-suggestions" hidden>
-          <div id="menu-image-list" role="listbox" aria-label="參考圖片"></div>
-          <p id="menu-image-empty" role="status" hidden></p>
-          <button id="menu-image-add" class="quiet" type="button" hidden>選擇參考圖</button>
+        <div id="menu-image-suggestions" class="image-suggestions" hidden>
+          <div id="menu-image-list" class="image-list" role="listbox" aria-label="參考圖片"></div>
+          <p id="menu-image-empty" class="image-empty" role="status" hidden></p>
+          <button id="menu-image-add" class="quiet image-add" type="button" hidden>選擇參考圖</button>
         </div>
         <div class="composer-actions">
           <button id="resume" class="quiet" type="button" hidden>繼續製作</button>
