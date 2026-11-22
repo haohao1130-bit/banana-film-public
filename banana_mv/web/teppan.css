@@ -100,6 +100,25 @@ progress { width: 100%; accent-color: var(--gold); height: 7px; }
 #expand-menu { border: 0; background: transparent; color: var(--gold); padding-inline: 6px; font-size: .82rem; }
 #menu { border: 0; min-height: 88px; padding: 8px 2px; line-height: 1.55; }
 #menu.is-expanded { height: clamp(210px, 50dvh, 500px); }
+#menu-image-suggestions {
+  margin-block: 4px 6px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--panel); padding: 5px;
+}
+#menu-image-list { max-height: min(190px, 32dvh); overflow-y: auto; }
+.menu-image-option {
+  display: flex; align-items: center; gap: 9px; padding: 5px 8px; width: 100%;
+  background: transparent; color: #f8ebd5; text-align: start; min-width: 0;
+}
+.menu-image-option:is([aria-selected="true"], :hover) { background: #543726; }
+.menu-image-option img { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 5px; object-fit: cover; }
+.menu-image-option span { min-width: 0; }
+.menu-image-option small {
+  display: block; color: var(--muted); font-weight: 400;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#menu-image-empty { margin: 5px 8px; color: var(--muted); font-size: .85rem; }
+#menu-image-add { margin: 3px 8px; }
+
 input, select, textarea { color: #fff0dc; accent-color: var(--gold); }
 textarea, input:not([type="checkbox"]), select {
   display: block; width: 100%; min-width: 0; background: #1e1712;
