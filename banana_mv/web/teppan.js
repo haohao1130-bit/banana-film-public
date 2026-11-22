@@ -151,19 +151,29 @@ $('menu-image-add').onclick = () => {
 };
 $('references').addEventListener('change', clearLocalImageUrls);
 
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const result = await response.json();
-  if (!response.ok) throw Error(result.error || '請求失敗。');
+async function api(path, options, stage = '連線到一鍵短片') {
+  let response, result;
+  try {
+    response = await fetch(path, options);
+  } catch {
+    const next = stage === '送出第一道菜' ? '。重新送出前，請先查看專案清單是否已建立' : '';
+    throw Error(stage + '失敗：手機沒有收到一鍵短片的回應。請確認電腦服務與手機連線' + next + '。');
+  }
+  try {
+    result = await response.json();
+  } catch {
+    throw Error(stage + '失敗：未收到可讀取的回應（HTTP ' + response.status + '）。');
+  }
+  if (!response.ok) throw Error(stage + '失敗：' + (result?.error || 'HTTP ' + response.status));
   return result;
 }
 
-function post(action, data) {
+function post(action, data, stage = '送出操作') {
   return api('api/' + action, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
-  });
+  }, stage);
 }
 
 function showFeedback(message) {
@@ -363,6 +373,8 @@ function render() {
   progress.max = clips.length || 1;
   progress.value = count;
   $('initial-settings').hidden = Boolean(job);
+  $('shared-setup').hidden = Boolean(job);
+  $('shared').disabled = working;
   $('menu-label').textContent = !job ? '第一道菜單' : repeating ? '重炒菜單' : '下一道菜單';
   const canCook = !job || (ready && (accepted || repeating));
   $('cook').textContent = !job ? '開始炒菜' : repeating ? '重炒這道' : '繼續炒';
@@ -414,8 +426,11 @@ async function perform(action, fields = {}) {
   render();
   try {
     let updated;
-    if (action === 'start') updated = await post('film/kitchen/start', await firstRequest());
-    else if (['stop', 'resume'].includes(action)) {
+    if (action === 'start') {
+      const request = await firstRequest();
+      showFeedback('正在送出第一道菜…');
+      updated = await post('film/kitchen/start', request, '送出第一道菜');
+    } else if (['stop', 'resume'].includes(action)) {
       updated = await post('mv/' + action, {id: job.id});
     } else updated = await post('film/kitchen/' + action, {id: job.id, ...fields});
     if (action === 'repeat') {
@@ -434,6 +449,7 @@ async function perform(action, fields = {}) {
       job = updated;
       localStorage.setItem(storageKey, id);
     }
+    showFeedback('');
     await sync(id);
   } catch (error) {
     showFeedback(error.message);
@@ -444,19 +460,35 @@ async function perform(action, fields = {}) {
 }
 
 async function firstRequest() {
-  const slots = [];
-  for (const input of $('references').querySelectorAll('input')) {
-    const file = input.files[0];
-    const asset = file ? await api('api/upload', {
-      method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)}, body: file
-    }) : null;
-    slots.push(asset?.id ?? null);
-  }
-  slots.push(null);
-  const aspect = $('aspect').value, resolution = Number($('resolution').value);
   const shared = $('shared').value.trim(), menu = $('menu').value.trim();
   const prompt = [shared, menu].filter(Boolean).join('\n\n');
   if (Array.from(prompt).length > 30000) throw Error('共同設定和菜單合計最多 30000 字。');
+  const slots = [];
+  for (const input of $('references').querySelectorAll('input')) {
+    const file = input.files[0];
+    if (!file) {
+      slots.push(null);
+      continue;
+    }
+    const reference = '@圖片' + (slots.length + 1);
+    const stage = '上傳 ' + reference;
+    showFeedback('正在' + stage + '…');
+    if (file.size > 256 * 1024 * 1024) throw Error(reference + ' 超過單檔上限 256 MiB。');
+    let bytes;
+    try {
+      bytes = await file.arrayBuffer();
+    } catch {
+      throw Error('手機無法讀取 ' + reference + '。請重新選擇已下載到手機的圖片。');
+    }
+    if (!bytes.byteLength) throw Error(reference + ' 是空檔案，請重新選擇圖片。');
+    const asset = await api('api/upload', {
+      method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)}, body: bytes
+    }, stage);
+    if (!asset?.id) throw Error(stage + '失敗：伺服器未回傳圖片編號。');
+    slots.push(asset.id);
+  }
+  slots.push(null);
+  const aspect = $('aspect').value, resolution = Number($('resolution').value);
   return {
     project_name: $('name').value.trim(), prompt, image_slots: slots,
     kitchen_menu: menu, kitchen_shared_setup: shared,

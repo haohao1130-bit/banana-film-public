@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=dish-cards">
-  <script defer src="teppan.js?v=dish-cards"></script>
+  <link rel="stylesheet" href="teppan.css?v=shared-setup">
+  <script defer src="teppan.js?v=upload-feedback"></script>
 </head>
 <body>
   <header class="bar">
@@ -74,6 +74,11 @@
     </label>
 
     <form id="menu-form">
+      <div id="shared-setup">
+        <label for="shared">共同設定（選填）</label>
+        <textarea id="shared" rows="3" maxlength="12000" aria-describedby="shared-help" placeholder="角色、聲線與畫風。用 @圖片1 對應參考圖。"></textarea>
+        <p id="shared-help">開案時填一次，後續每道菜都會沿用。</p>
+      </div>
       <details id="settings">
         <summary>設定 <span id="profile">480P · 6 步 · 10 秒 · Thinking</span></summary>
         <div class="settings-body">
@@ -86,7 +91,6 @@
               <label>聲音<select id="sound"><option value="auto">依菜單</option><option value="dialogue">對白</option><option value="ambient">環境聲</option></select></label>
             </div>
             <label class="check"><input type="checkbox" id="thinking" checked> 9B Thinking（16K）</label>
-            <label>共同設定<textarea id="shared" rows="3" maxlength="12000" placeholder="角色、聲線與畫風。用 @圖片1 對應參考圖。"></textarea></label>
             <fieldset><legend>參考圖</legend><div id="references"></div></fieldset>
           </div>
           <label>這道菜的秒數<select id="seconds"><option value="6">6 秒</option><option value="10" selected>10 秒</option><option value="20">20 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label>
