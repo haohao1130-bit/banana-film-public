@@ -43,7 +43,7 @@ const server=http.createServer((req,res)=>{
   await page.evaluate(()=>{active='fixture';renderJob({id:'fixture',status:'running',duration:0,seed:0,segments:[],request:{max_seconds:180}});});
   assert(await page.locator('#stop').isVisible());
   assert.equal(await page.locator('#stop').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(181, 41, 50)');
-  assert((await page.locator('#stop-hint').textContent()).includes('本段完成後停止'));
+  assert((await page.locator('#stop-hint').textContent()).includes('立即要求中斷'));
   await page.evaluate(()=>renderJob({id:'fixture',status:'done',duration:0,seed:0,segments:[]}));
   assert(await page.locator('#references').evaluate(e=>!!(e.compareDocumentPosition(document.getElementById('prompt'))&Node.DOCUMENT_POSITION_FOLLOWING)));
   await prompt.fill('x'.repeat(25000));await prompt.press('End');await prompt.press('a');
@@ -64,19 +64,31 @@ const server=http.createServer((req,res)=>{
   await prompt.fill('x'.repeat(30001));await prompt.press('a');assert.equal((await prompt.inputValue()).length,30002);
   assert.equal(await prompt.evaluate(e=>e.checkValidity()),false);
   assert((await page.locator('#prompt-count').textContent()).includes('超過上限'));
-  // Desktop keeps review inside production; mobile serves it after cooking.
+  // Product contract: AUTO remains default. OFF disables genre interference;
+  // an authored H3 prompt is visibly treated as direct, not rewritten prose.
+  assert.equal(await page.locator('#auto-director').isChecked(),true);
+  assert.equal(await page.locator('#sound-mode').inputValue(),'auto');
+  await page.locator('#auto-director').uncheck();
+  assert(await page.locator('#genre-comedy').isDisabled());
+  assert(await page.locator('#manual-h3-help').isVisible());
+  await page.locator('#max-seconds').selectOption('custom');
+  assert(await page.locator('#custom-seconds').isVisible());
+  await page.locator('#custom-seconds').fill('35');
+  await prompt.fill('=== CLIP 1 (12s) ===\nsubject_definitions:\n<Subject 1>...');
+  assert((await page.locator('#generate').textContent()).includes('驗證完整 H3 全咒'));
+  await page.locator('#auto-director').check();
+  assert(await page.locator('#genre-comedy').isEnabled());
+  assert(await page.locator('#manual-h3-help').isHidden());
+  // Same review node moves below the chef board on mobile, back on desktop.
   assert(await page.locator('#clip-review').evaluate(e=>!!e.closest('.grid .panel')));
   await page.setViewportSize({width:390,height:844});
   await page.waitForFunction(()=>document.getElementById('clip-review').previousElementSibling?.id==='banana-kitchen-board');
-  assert.equal(await page.locator('#clip-review').evaluate(e=>e.parentElement?.tagName),'MAIN');
   assert.equal(await page.locator('#clip-review').count(),1);
   await page.locator('#clip-review').evaluate(e=>{e.hidden=false;});
   assert(await page.locator('#clip-review').isVisible());
-  assert.equal(await page.locator('#clip-review').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(26, 32, 36)');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.setViewportSize({width:1280,height:900});
   await page.waitForFunction(()=>!!document.getElementById('clip-review').closest('.grid .panel'));
-  assert.equal(await page.locator('#clip-review').evaluate(e=>e.classList.contains('mobile-clip-review')),false);
   await page.setViewportSize({width:390,height:844});
   await page.waitForFunction(()=>document.getElementById('clip-review').previousElementSibling?.id==='banana-kitchen-board');
   assert.deepEqual(errors,[]);

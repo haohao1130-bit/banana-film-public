@@ -1,0 +1,99 @@
+name: BANANA FILM 5070 F Drive Checks
+
+on:
+  push:
+    branches:
+      - film-v2-rtx5070-fdrive
+    paths:
+      - 'tools/start_film_v2_5070.ps1'
+      - 'tools/check_film_cuda13.py'
+      - 'tools/bootstrap_film_v2_5070.ps1'
+      - 'Start_BANANA_FILM_5070.cmd'
+      - 'Install_Desktop_Shortcut.cmd'
+      - 'Install_Shortcut.ps1'
+      - 'film_v2/**'
+      - 'tests/test_film_v2_*.py'
+      - 'docs/BANANA_FILM_5070_STUDIO_F_DRIVE.md'
+      - '.github/workflows/film_v2_5070_windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-v2-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install small offline dependency
+        run: python -m pip install Pillow
+      - name: Python source syntax
+        run: python -m compileall -q film_v2
+      - name: Python-Owned and F-drive wiring regressions
+        env:
+          BANANA_DATA: /tmp/banana-film-5070-ci
+        run: python -m unittest discover -s tests -p 'test_film_v2_*.py' -v
+      - name: Colab identical Film interface + local Git badge JS syntax
+        run: |
+          node --check banana_mv/web/film.js
+          node --check banana_mv/web/kitchen.js
+          node --check banana_mv/web/film_review.js
+          node --check film_v2/web/build_5070.js
+          node --check film_v2/web/app.js
+
+  windows-powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Windows PowerShell 5.1 parse of both launchers
+        shell: powershell
+        run: |
+          $files = @(
+            'tools/start_film_v2_5070.ps1',
+            'tools/bootstrap_film_v2_5070.ps1',
+            'Install_Shortcut.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw "PowerShell syntax invalid: $file"
+            }
+            Write-Host "Parsed: $file"
+          }
+      - name: Real Windows PowerShell 5.1 to Python CUDA probe invocation (mock GPU)
+        shell: powershell
+        run: |
+          $shim=Join-Path $env:RUNNER_TEMP 'film5070_fake_gpu'
+          New-Item -ItemType Directory -Force -Path $shim | Out-Null
+          @'
+          class _Cuda:
+              def is_available(self):
+                  return True
+              def get_device_name(self, index):
+                  return "Mock RTX 5070"
+          cuda = _Cuda()
+          class version:
+              cuda = "13.0"
+          '@ | Set-Content -LiteralPath (Join-Path $shim 'torch.py') -Encoding ascii
+          '' | Set-Content -LiteralPath (Join-Path $shim 'PIL.py') -Encoding ascii
+          '' | Set-Content -LiteralPath (Join-Path $shim 'numpy.py') -Encoding ascii
+          $env:PYTHONPATH=$shim
+          $python=(Get-Command python).Source
+          $probe=(Resolve-Path 'tools/check_film_cuda13.py').Path
+          # The invocation shape is identical to start_film_v2_5070.ps1.
+          & $python $probe --role comfy
+          if($LASTEXITCODE -ne 0) { throw "Windows CUDA13 Comfy probe failed: $LASTEXITCODE" }
+          & $python $probe --role backend
+          if($LASTEXITCODE -ne 0) { throw "Windows backend readiness failed: $LASTEXITCODE" }
+          Write-Host 'Windows PowerShell -> separate GPU and backend Python checks passed.'

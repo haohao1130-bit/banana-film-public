@@ -7,9 +7,11 @@ def md(text):return {'cell_type':'markdown','metadata':{},'source':text.splitlin
 def code(text):return {'cell_type':'code','metadata':{},'execution_count':None,'outputs':[],'source':text.splitlines(True)}
 
 clone=(ROOT/'tools/public_clone.py').read_text()
-cells=[md('''# 🍽️ 大乘蕉宗・蕉其林三星中餐廳
+cells=[md('''# 🍳 大乘蕉宗・蕉彌鐵板燒｜🍽️ 蕉其林三星中餐廳
 
-故事、角色圖、場景圖就是今天的食材。蕉彌備料，蕉大師掌勺。先用 9B 預覽或細修劇本，確認開拍後由 H3 生成原生影音。這是公開測試版，使用你自己的 Colab GPU，作品保存在自己的執行階段或 Drive。
+故事、角色圖、場景圖就是今天的食材。打開網頁先到**蕉彌鐵板燒**：像聊天一樣點菜，一道一道出鍋。想自己掌勺，點左上角「🥢 蕉其林」進中餐廳，可先用 9B 預覽或細修劇本，確認開拍後由 H3 生成原生影音。這是公開測試版，使用你自己的 Colab GPU，作品保存在自己的執行階段或 Drive。
+
+Colab 預設：720P、每段 10 秒、6 步、自動導演與 9B Thinking 開啟。Colab 沒有 RTX VSR，所以不提供 2K 升頻。
 
 **先試吃 15 秒。** Colab GPU 出片尚待實測。 執行階段選 G4 或 A100 GPU，依序執行①②③。模型與既有 MV 版本相同，9B 為必要元件。
 
@@ -40,13 +42,13 @@ SAVE_TO_DRIVE = True #@param {type:"boolean"}
 runtime.launch(globals(),save_to_drive=SAVE_TO_DRIVE)
 '''),md('''## 劇本確認、開拍與補拍
 
-九格獨立選圖（空格不遞補）、輸入故事，用 `@圖片1`、`@圖片2` 指定用途。選全片時間上限及風格，按「生成劇本」。預覽後可直接編輯或填意見按「請導演修這版」，最後按「確認劇本並開拍」。也可按「直接開拍」，規劃完成後直接生成影片。AUTO 以目標時間展開有因果的故事，最低 85%；取消則依原內容自然收尾。預設依劇情動態分段，每段最長 15 秒。
+九格獨立選圖（空格不遞補）、輸入故事，用 `@圖片1`、`@圖片2` 指定用途。選全片時間上限及風格，按「生成劇本」。預覽後可直接編輯或填意見按「請導演修這版」，最後按「確認劇本並開拍」。也可按「直接開拍」，規劃完成後直接生成影片。AUTO 以目標時間展開有因果的故事，最低 85%；取消則依原內容自然收尾。Colab 預設每段 10 秒，也可在中餐廳改為依劇情動態分段。
 
 毛片保留原生音訊，可直接播放驗收。局部修改只影響勾選片段；留空只換 Seed，成功後另存完整新版。開啟已存作品可續拍，不需重新上傳。
 
 作品獨立儲存在 `MyDrive/BananaFilmStudio/films/工作編號/final.mp4`；歷史版為 `final_v001.mp4` 等。未存 Drive 的資料可能隨 Colab 回收消失。
 
-末幀模式將上一段末幀加入參考圖，不是硬鎖首幀，也不繼承動作 latent。跨段聲線、環境音及音樂可能跳接，請看片驗收。不要與其他 MV 任務共用 ComfyUI 同時生成。
+末幀模式把上一段末幀鎖成下一段首幀（首尾幀接續），但不繼承動作 latent；末五幀模式另把最後五幀當動作參考。跨段聲線、環境音及音樂可能跳接，請看片驗收。不要與其他 MV 任務共用 ComfyUI 同時生成。
 '''),code('''#@title 🔍 診斷
 subprocess.run(['nvidia-smi'])
 for name in ('comfyui','banana_film'):

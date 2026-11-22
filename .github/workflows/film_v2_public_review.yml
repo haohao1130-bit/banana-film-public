@@ -1,0 +1,48 @@
+name: BANANA FILM V2 Public Review
+on:
+  push:
+    branches:
+      - film-v2-python-owned-public-20261112
+    paths:
+      - 'film_v2/**'
+      - 'tests/test_film_v2_*.py'
+      - 'tools/film_v2_runtime.py'
+      - 'BANANA_FILM_V2_PUBLIC_GEMINI_REVIEW_20261112.ipynb'
+      - '.github/workflows/film_v2_public_review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v2-offline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install Pillow
+      - name: Compile Python source
+        run: python -m compileall -q film_v2 tools/film_v2_runtime.py
+      - name: Python-owned engine and offline H3 integration tests
+        run: python -m unittest discover -s tests -p 'test_film_v2_*.py' -v
+        env:
+          BANANA_DATA: /tmp/banana-film-v2-public-ci
+      - name: Browser JavaScript syntax
+        run: node --check film_v2/web/app.js
+      - name: Validate unique public notebook pin
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          file = Path('BANANA_FILM_V2_PUBLIC_GEMINI_REVIEW_20261112.ipynb')
+          nb = json.loads(file.read_text(encoding='utf-8'))
+          code = '\n'.join(''.join(c['source']) for c in nb['cells'] if c['cell_type'] == 'code')
+          assert "BRANCH='film-v2-python-owned-public-20261112'" in code
+          assert 'banana-film-public.git' in code
+          assert 'banana-film-studio.git' not in code
+          assert len(nb['cells']) == 7
+          print('Public V2 notebook branch pin and format verified.')
+          PY

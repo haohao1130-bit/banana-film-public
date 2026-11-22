@@ -1,6 +1,7 @@
 """Story-first short films. One upstream plan, isolated native H3 shot writers."""
 import hashlib
 import json
+import logging
 import math
 from pathlib import Path
 import random
@@ -289,7 +290,12 @@ def validate_film_format(text,seconds,sound_mode):
 
 
 def normalize_prompt(text,count):
+    from banana_mv.direction_contract import last_complete_h3
     text=_text(text).strip()
+    kept=last_complete_h3(text)
+    if kept!=text:
+        logging.getLogger(__name__).warning('9B 把全咒寫了不只一份，只保留最後一份完整六欄（%d → %d 字）。',len(text),len(kept))
+        text=kept
     if not text:raise ValueError('短片提示詞為空。')
     if re.search(r'<\s*(?:Audio|Video)\s*\d+\s*>',text,re.I):
         raise ValueError('短片未連接參考音訊或影片，提示詞不可引用 Audio／Video 標籤。')
@@ -322,10 +328,12 @@ def validate_plan(raw,req,image_count):
         # than generating a longer utterance and chopping off its last syllable.
         requested=round(seconds*FPS)
         exact_ten=bool(req.get('ten_second_delivery_v2')) and req['segment_seconds']==10 and req.get('segment_policy')=='capped'
-        if exact_ten:
+        authored_clip=req.get('authored_clip_commissions',False)
+        if exact_ten or authored_clip:
             # The 10S selector means exact DELIVERY length (240 frames at
             # 24fps), not the shorter native 5+17*k rendering grid.
-            if i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8:
+            if (exact_ten and not authored_clip and not req.get('python_clip_windows')
+                    and i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8):
                 raise ValueError('10S 模式每個非最後片段都必須是完整 10 秒，僅短尾可縮短。')
             frames=requested
             from banana_mv.film_continuity import render_frames
@@ -334,7 +342,8 @@ def validate_plan(raw,req,image_count):
         else:
             frames=5+((requested-5)//17)*17
             model_frames=frames
-        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
+        minimum=(req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic'
+                 and not authored_clip and not req.get('python_clip_windows') else 124/FPS)
         if seconds<minimum-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<math.ceil(minimum*FPS):
             raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {minimum:.6f}–{req['segment_seconds']:g} 秒。"
                              '請拆分超限事件並保留因果、完整台詞與結束狀態；短鏡頭可放在同一生成段內。')
@@ -348,8 +357,11 @@ def validate_plan(raw,req,image_count):
         result.append({'index':i,'start_frame':start,'frames':frames,'start':start/FPS,
                        'seconds':frames/FPS,'model_frames':model_frames,'status':'waiting',
                        'director_mode':mode,'director_plan':{'index':i,'mode':mode,'event':brief}})
+        if req.get('kitchen_mode'):
+            result[-1]['absent_cast_pictures'] = sorted(kitchen_absent_pictures(brief, shared))
         start+=frames
-    if start>math.floor(req['max_seconds']*FPS):raise ValueError('導演規劃超過片長上限。')
+    if start>math.floor(req['max_seconds']*FPS):
+        raise ValueError(f'導演規劃 {start / FPS:.2f} 秒，超過片長上限 {req["max_seconds"]:g} 秒。')
     for seg in result:seg.update(song_seconds=start/FPS,segment_count=len(result),fixed_reference_settings=shared)
     return {'title':str(data.get('title') or '未命名短片')[:120],'duration':start/FPS,'segments':result,'shared_setup':shared}
 
@@ -378,13 +390,20 @@ def validate_planned_duration(plan,req):
     return None
 
 
-def plan_film(cfg,job,originals):
-    work=app.job_dir(job['id']);path=work/'director_plan.json';req=job['request']
+def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
+    work=work if work is not None else app.job_dir(job['id'])
+    path=work/'director_plan.json';req=job['request']
+    original_req = req
     source={'story':map_story(req,req['prompt'],len(originals)),
             'reference_count':len(originals),
             'max_seconds':req['max_seconds'],'max_clip_seconds':req['segment_seconds'],
             'style':req['visual_style'],'sound':req['sound_mode'],'intensity':req['intensity']}
     source.update(duration_contract(req))
+    if shared_setup is not None:
+        source['existing_shared_setup'] = shared_setup
+        source['continuation_instruction'] = (
+            'Plan only this menu as the next part of an existing film. Preserve the provided shared settings and character voices. '
+            'Open directly on the current event and leave room for another dish.')
     if req.get('planning_contract_version')==2:
         minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' else 124/FPS
         source.update(segment_policy=req.get('segment_policy','capped'),min_clip_seconds=minimum,
@@ -401,10 +420,37 @@ def plan_film(cfg,job,originals):
                               if req['auto_director'] else 'FAITHFUL: organize and stage only the supplied events and dialogue; do not invent new plot or lines.')
         source['genres']=[GENRES[g] for g in req.get('genres',[])]
         source['reference_slots']={f'@圖片{k}':f'<Picture {v}>' for k,v in slot_map(req).items()}
+    legacy_fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    dish_seconds = source.get('requested_seconds') if req.get('kitchen_mode') else None
+    single_dish = dish_seconds is not None and dish_seconds <= req['segment_seconds']
+    planner = PLANNER
+    windows = None
+    if dish_seconds is not None:
+        # 蕉彌（Python）決定生成窗；9B 只分配戲，填的秒數一律不採用。
+        from banana_mv.teppan_timing import clip_windows
+        windows = clip_windows(dish_seconds, req['segment_seconds'])
+        req = dict(req, max_seconds=sum(windows) + 1e-6, target_seconds=sum(windows),
+                   target_is_exact=False, timeline_tolerance=1.0, python_clip_windows=True)
+        source.update(max_seconds=dish_seconds, target_is_exact=True, fixed_dish_seconds=dish_seconds)
+        planner += (
+            f'\nTEPPANYAKI MENU: Python has already fixed this dish into {len(windows)} generation '
+            f'clip(s) of {windows} seconds. Return exactly {len(windows)} segments entries, in order; '
+            'Python overwrites every seconds value, so do not calculate durations. Give each entry only '
+            'the actions and complete lines that can be performed naturally inside its window. '
+            'Overlap reactions, ambience and ongoing actions where appropriate. Cut redundant coverage and '
+            'invent no additional events or lines. End at the last requested beat without adding a scene ending.'
+        )
+        if single_dish:
+            planner += (
+                ' Camera cuts and movement belong inside that single entry. Do not split this dish into multiple generation clips.'
+            )
     fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if path.exists():
         saved=json.loads(path.read_text(encoding='utf-8'))
-        if saved.get('input_sha256')!=fingerprint:raise ValueError('故事與已保存大綱不一致，請建立新作品。')
+        if saved.get('input_sha256') == legacy_fingerprint:
+            req = original_req
+        elif saved.get('input_sha256') != fingerprint:
+            raise ValueError('故事與已保存大綱不一致，請建立新作品。')
         verified=validate_plan(json.dumps({'title':saved['title'],'shared_setup':saved.get('shared_setup',''),'segments':[
             {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']}
             for s in saved['segments']]}),req,len(originals))
@@ -412,16 +458,34 @@ def plan_film(cfg,job,originals):
         return verified
     parts=[('text',json.dumps(source,ensure_ascii=False))]+_pictures(originals)
     original_parts=list(parts)
-    for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,PLANNER,parts,uuid.uuid4().hex[:8])
+    retries = min(req['rewrite_retries'], 2) if windows else req['rewrite_retries']
+    for attempt in range(retries+1):
+        attempt_cfg = cfg
+        if windows and attempt and cfg.get('rewriter', {}).get('thinking'):
+            # 重試只會是 JSON／格式問題，關掉 16K thinking 讓它快速交稿。
+            from banana_mv.services import DEFAULTS
+            attempt_cfg = dict(cfg, rewriter=dict(cfg['rewriter'], thinking=False,
+                                                  max_length=DEFAULTS['rewriter']['max_length']))
+        raw=app.backend.rewrite_local(attempt_cfg,planner,parts,uuid.uuid4().hex[:8])
         (work/f'director_attempt_{attempt:02d}.txt').write_text(raw,encoding='utf-8')
         try:
+            if shared_setup is not None or windows:
+                data = parse_object(_text(raw))
+                if shared_setup is not None:
+                    data['shared_setup'] = shared_setup
+                if windows:
+                    from banana_mv.teppan_timing import fit_segments
+                    data['segments'], fitted = fit_segments(data.get('segments'), windows,
+                                                            req['segment_seconds'])
+                    if fitted != windows:
+                        req = dict(req, max_seconds=sum(fitted) + 1e-6, target_seconds=sum(fitted))
+                raw = json.dumps(data, ensure_ascii=False)
             plan=validate_plan(raw,req,len(originals))
             validate_planned_duration(plan,req)
             atomic_json(path,dict(plan,input_sha256=fingerprint))
             return plan
         except (ValueError,TypeError,KeyError) as error:
-            if attempt==req['rewrite_retries']:raise
+            if attempt==retries:raise
             invalid=[];missing_bindings=[]
             try:
                 rejected=parse_object(_text(raw))
@@ -446,26 +510,113 @@ def plan_film(cfg,job,originals):
                                   + '共用設定 shared_setup 必須用標準 <Picture N> 標籤'
                                   '補齊 missing_reference_bindings 中所有已連接圖片的原始姓名／角色／用途對照；'
                                   '依使用者故事與圖片判斷，不得交換身分，也不要求所有參考角色每段都出場。'}
+            if windows:
+                repair['instruction'] = (
+                    f'這道菜已由 Python 切成 {len(windows)} 段（{windows} 秒），秒數不用你算。'
+                    '請回傳格式正確的完整 JSON，每段都要有 brief。重新安排原有動作、反應及完整台詞，'
+                    '能同時發生的就重疊安排。刪掉重複內容與自行添加的劇情，不要只改秒數或加快念台詞。'
+                    '保留固定角色綁定與共用設定，並回傳完整 JSON。'
+                )
+                if single_dish:
+                    repair['instruction'] += '只回傳一個 segments 項目；切鏡留在同一段裡，不要新增生成段。'
             parts=[*original_parts,('text','Previous rejected draft:\n'+raw),
                    ('text','Correct the delivery and return the complete JSON only. '+json.dumps(repair,ensure_ascii=False))]
 
 
+_CAST_BINDING = re.compile(r'<Picture (\d+)>[ \t]*[=＝][ \t]*([^\s=＝，,。；;（(]+)')
+_CAST_ROLE = re.compile(_CAST_BINDING.pattern + r'[ \t]*[=＝][ \t]*(S[1-8])(?![0-9])', re.I)
+_ROLE_MENTION = re.compile(r'(?<![A-Za-z0-9])S[1-8](?![A-Za-z0-9])', re.I)
+_ROLE_RANGE = re.compile(r'(?<![A-Za-z0-9])S([1-8])[ \t]*(?:到|至)[ \t]*S([1-8])(?![A-Za-z0-9])', re.I)
+_PICTURE_TAG = re.compile(r'<Picture (\d+)>')
+_ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:]?|[：:])')
+
+
+def kitchen_absent_pictures(brief, fixed):
+    """Scan the clip commission against the shared character bindings."""
+    roles = {int(n): name for n, name in _CAST_BINDING.findall(fixed or '')
+             if not re.search(r'場景|環境|背景|場地', name)}
+    mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}
+    mentioned_roles = {role.upper() for role in _ROLE_MENTION.findall(brief)}
+    for first, last in _ROLE_RANGE.findall(brief):
+        mentioned_roles.update(f'S{role}' for role in range(int(first), int(last) + 1))
+    mentioned.update(int(n) for n, _, role in _CAST_ROLE.findall(fixed or '')
+                     if role.upper() in mentioned_roles)
+    present = {n for n, name in roles.items() if n in mentioned or name in brief}
+    if not present and not _ONSCREEN.search(brief):
+        return set()
+    return roles.keys() - present
+
+
+def kitchen_workflow_refs(job, seg, prompt, first):
+    """Use dense picture numbers for H3 while keeping stored prompts editable."""
+    images = job['images_comfy']
+    if not job.get('kitchen') or seg.get('manual_h3_prompt'):
+        return images, prompt
+    offset = int(bool(first))
+    fixed = seg.get('fixed_reference_settings') or job.get('shared_setup', '')
+    planned_hidden = seg.get('absent_cast_pictures')
+    hidden = (set(planned_hidden) if planned_hidden is not None else
+              kitchen_absent_pictures(seg['director_plan']['event'], fixed))
+    referenced = {int(n) for n in _PICTURE_TAG.findall(prompt)}
+    # Saved legacy and manually overridden takes can still explicitly use these pictures.
+    if not hidden or any(n + offset in referenced for n in hidden):
+        return images, prompt
+    active = [(n, image) for n, image in enumerate(images, 1) if n not in hidden]
+    mapping = {old + offset: new + offset for new, (old, _) in enumerate(active, 1)}
+    prompt = _PICTURE_TAG.sub(lambda m: f'<Picture {mapping.get(int(m[1]), int(m[1]))}>', prompt)
+    return [image for _, image in active], prompt
+
+
 def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=None,artifact_prefix=""):
+    from banana_mv.direction_contract import authored_dialogue, validate_authored_dialogue
+    from banana_mv.film_continuity import motion_prefix, opens_with_cut, previous_clip_index
+
     req=job['request'];offset=int(bool(tail));brief=seg['director_plan']['event']
-    brief=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',brief)
     fixed=seg.get('fixed_reference_settings') or job.get('shared_setup','')
     if req.get('fixed_reference_version')==1 and not fixed:
         raise ValueError('當段缺少固定角色表與場景設定，請重新產生劇本。')
-    fixed=re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',fixed)
+    hidden = set()
+    if job.get('kitchen'):
+        planned_hidden = seg.get('absent_cast_pictures')
+        hidden = (set(planned_hidden) if planned_hidden is not None and not correction else
+                  kitchen_absent_pictures(brief + ('\n' + correction if correction else ''), fixed))
+        fixed = '\n'.join(line for line in fixed.splitlines()
+                         if not any(int(n) in hidden for n, _ in _CAST_BINDING.findall(line)))
+    brief = _PICTURE_TAG.sub(lambda m: f'<Picture {int(m[1])+offset}>', brief)
+    fixed = _PICTURE_TAG.sub(lambda m: f'<Picture {int(m[1])+offset}>', fixed)
     task={'seconds':seg['seconds'],'style':req['visual_style'],'sound_mode':req['sound_mode'],
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
+    if job.get('kitchen'):
+        task['cast_instruction'] = (
+            'Use only the actors commissioned for this segment. Shared settings identify assets, '
+            'and the previous frame is continuity only. Unavailable picture numbers must not '
+            'appear in the prompt. Characters visible only in the previous frame cannot become '
+            'new subjects or reappear in the commissioned shots.'
+        )
+        task['timing_instruction'] = (
+            f'All camera cuts, motion, performance and complete spoken lines must fit in the '
+            f'{seg["seconds"]:g}-second clip. Budget time for natural delivery and overlap simultaneous '
+            'actions when appropriate. Do not add setup, extra dialogue or an ending beyond the commission.'
+        )
     total=seg.get('segment_count') or len(job.get('segments',[])) or 1
-    final=seg['index']==total-1
-    task['clip_opening']={'position':'first' if seg['index']==0 else 'continuation',
-        'instruction':('Begin the commissioned film opening.' if seg['index']==0 else
-                       'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time and physical continuity are preserved; honor any explicit commissioned scene or time transition.')}
-    if seg['index'] > 0 and req.get('python_auto_handoff'):
+    final=not job.get('kitchen') and seg['index']==total-1
+    first = previous_clip_index(seg) is None
+    cut = opens_with_cut(job, seg)
+    task['clip_opening'] = {
+        'position': 'first' if first else 'cut' if cut else 'continuation',
+        'instruction': (
+            'Begin the commissioned film opening.' if first else
+            'Start Shot 1 in the commissioned new setting at the first frame. Begin with its local action, '
+            'without showing the previous shot, holding on the old setting, or inventing a transition.'
+            if cut else
+            'Start Shot 1 at the exact ongoing narrative state inherited from the prior segment. Do not re-establish, '
+            'reset actors or props, replay actions, or restart dialogue. Camera cuts are permitted when story time '
+            'and physical continuity are preserved; honor any explicit commissioned scene or time transition.'
+        ),
+    }
+    authored_clip = seg.get('authored_clip_commission', req.get('authored_clip_commissions', False))
+    if seg['index'] > 0 and req.get('python_auto_handoff') and not authored_clip and not job.get('kitchen') and not cut:
         previous = job['segments'][seg['index'] - 1]['director_plan']['event'].splitlines()[-1]
         task['already_established'] = re.sub(r'<Picture (\d+)>',
             lambda m:f'<Picture {int(m[1])+offset}>',previous)
@@ -475,8 +626,17 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                        'Preserve any pause or resolution explicitly required by the local commission.')}
     if fixed:task['fixed_reference_settings']=fixed
     task['adaptation']='cinematography only: freely choose shots, camera moves, coverage and lighting; current_clip_commission events, actors, dialogue and outgoing state are immutable'
+    locks = authored_dialogue(brief, fixed) if authored_clip and not correction and req['sound_mode'] != 'ambient' else []
+    if locks:
+        task['authored_dialogue'] = locks
+        task['dialogue_contract'] = (
+            'Each listed line must be spoken exactly once by its named speaker, never by the addressee. '
+            'In subject_definitions, bind each speaking <Subject N> to its exact reference <Picture N> on one line. '
+            'Use the native H3 speaker and dialogue tags, with natural shot prose. '
+            'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
+        )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
-    if req.get('mode')=='chain5' and seg['index']>0:
+    if motion_prefix(job, seg):
         task['motion_context']='The first five render frames continue the preceding clip and are trimmed before delivery. Continue its motion into this local event; do not replay the previous event. Context is not another actor or numbered Picture reference.'
     if tail:task['continuity_reference']='<Picture 1> is the previous last frame anchored at frame zero. Continue from its exact composition, poses, and eyelines; this image is not another actor.'
     if correction:task.update(original_prompt=base,local_correction=correction)
@@ -484,17 +644,39 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
     system=guide+'\n'+WRITER+'\n'+FILM_INTENSITY[req['intensity']]
     refs=([tail] if tail else [])+list(originals)
+    withheld = {n + offset for n in hidden}
+    pictures = _pictures(refs) if not withheld else []
+    if withheld:
+        for n, path in enumerate(refs, 1):
+            if n not in withheld:
+                pictures.extend([('text', f'<Picture {n}>:'), _pictures([path])[1]])
     if dest:atomic_json(Path(dest)/(artifact_prefix+'repair_request.json'),{'system':system,'user':text})
     for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,system,[('text',text)]+_pictures(refs),uuid.uuid4().hex[:8])
+        call_cfg=cfg
+        if attempt and cfg.get('rewriter',{}).get('thinking'):
+            # 退稿重寫只是補格式／台詞，不需要再想 16K：關掉思考，約 20 秒交稿。
+            from banana_mv.services import DEFAULTS
+            call_cfg=dict(cfg,rewriter=dict(cfg['rewriter'],thinking=False,
+                                            max_length=DEFAULTS['rewriter']['max_length']))
+        raw=app.backend.rewrite_local(call_cfg,system,[('text',text)]+pictures,uuid.uuid4().hex[:8])
         target=Path(dest) if dest else app.job_dir(job['id'])
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
         try:
             if req.get('h3_validation_version')==1:
                 from banana_mv.direction_contract import validate_h3_sections
                 validate_h3_sections(raw)
-            return validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+            prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
+            if withheld.intersection(int(n) for n in _PICTURE_TAG.findall(prompt)):
+                raise ValueError('Remove unavailable character reference pictures from the complete H3 prompt.')
+            try:
+                validate_authored_dialogue(prompt, locks)
+            except ValueError as warning:
+                logging.getLogger(__name__).warning('第 %d 段台詞提醒：%s', seg['index'] + 1, warning)
+            return prompt
         except ValueError as error:
+            # 記下退稿原因，才看得出為什麼一直重寫。
+            logging.getLogger(__name__).warning('第 %d 段第 %d 次稿被退：%s',seg['index']+1,attempt+1,error)
+            (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_rejected_{attempt:02d}.txt')).write_text(str(error),encoding='utf-8')
             if attempt==req['rewrite_retries']:raise
             text+='\nReturn corrected complete prompt. '+str(error)
 
@@ -539,6 +721,23 @@ def _total_from_complete_shot_timeline(story):
     return previous if 6 <= previous <= 300 else None
 
 
+def _strip_manual_duration_header(story):
+    """手動全咒上方只寫了「全片 20 秒」之類的長度說明時，切掉那行再交給分段器。"""
+    source=story.strip()
+    starts=[m.start() for m in re.finditer(r'(?im)^[ \t]*(?:subject_definitions:|===\s*CLIP\b|ACT\s*0*1\b)',source)]
+    if not starts or starts[0]==0:
+        return story
+    header=source[:starts[0]]
+    if len(header.strip())>60:
+        return story
+    try:
+        if declared_film_seconds(header) is None:
+            return story
+    except ValueError:
+        return story
+    return source[starts[0]:]
+
+
 def declared_film_seconds(story):
     """Detect an authored full runtime, never a standalone action timestamp."""
     declared=[float(m[1]) for m in _TOTAL_DURATION.finditer(story)]
@@ -564,6 +763,21 @@ def declared_film_seconds(story):
 
 def start(req):
     req=dict(req)
+    if req.get('kitchen_mode'):
+        shared = req.get('kitchen_shared_setup', '')
+        if not isinstance(shared, str) or len(shared) > 12000:
+            raise ValueError('共同設定最多 12000 字。')
+        menu = req.get('kitchen_menu', req.get('prompt', ''))
+        if not isinstance(menu, str) or not menu.strip():
+            raise ValueError('請填寫第一道菜單。')
+        req.update(auto_director=True, script_review=False, face_refine=False, upscale_1080p=False)
+        if req.get('max_seconds') == 'auto':
+            from banana_mv.teppan_timing import estimate_menu
+            req['max_seconds'] = estimate_menu(menu)['seconds']
+            req['kitchen_estimated'] = True
+    sampling_steps=req.get('sampling_steps',8)
+    if type(sampling_steps) is not int or sampling_steps not in (6,8):
+        raise ValueError('採樣步數僅支援 6 或 8。')
     story=req.get('prompt','')
     if not isinstance(story,str) or not 1<=len(story.strip())<=30000:raise ValueError('請填寫故事，最多 30000 字。')
     selected=req.get('max_seconds',300)
@@ -589,7 +803,7 @@ def start(req):
                max_seconds=min(300.0,float(maximum)+tolerance),segment_seconds=float(chunk),
                ten_second_delivery_v2=(float(chunk)==10.0),
                segment_policy='dynamic' if dynamic else 'capped',dynamic_min_seconds=10.0 if dynamic else 124/FPS,planning_contract_version=2,film_motion_version=2,
-               sampling_steps=8,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
+               sampling_steps=sampling_steps,visual_style=req.get('visual_style','真人電影'),sound_mode=req.get('sound_mode','ambient'),
                rewrite=True,story_plan=True,project_scope='full',director=req.get('director','auto'))
     if req.get('mode','chain5') not in ('independent','chain','chain5'):raise ValueError('未知連續性模式。')
     req.setdefault('mode','chain5');req.setdefault('intensity','normal')
@@ -623,59 +837,89 @@ def start(req):
     rows=[app.backend.asset(aid) for aid in ids]
     if any(r['kind']!='image' for r in rows):raise ValueError('角色／場景參考需為圖片。')
     originals=[app.backend.LIBRARY/r['file'] for r in rows]
+    if not isinstance(req.get('upscale_1080p', False), bool):
+        raise ValueError('升頻設定必須是布林值。')
+    if type(req.get('upscale_resolution', 1080)) is not int or req.get('upscale_resolution', 1080) not in (1080, 1440):
+        raise ValueError('升頻解析度必須為 1080P 或 1440P。')
     if not isinstance(req.get('face_refine', False), bool):
         raise ValueError('遠景救臉設定必須為布林值。')
     if req.get('face_refine'):
-        from banana_mv.face_refine import template
-        reference = req.get('face_refine_reference')
-        if type(reference) is not int or not 1 <= reference <= len(rows):
-            raise ValueError('請指定一張已上傳的臉部參考圖。')
-        template(app, cfg)
+        from banana_mv.face_refine import references, template
+        selected = references(req, len(rows))
+        template(app, cfg, dual=len(selected) == 2, distant_only=req.get('upscale_resolution') == 1440)
     map_story(req,story,len(rows))
     manual_plan=None
-    from banana_mv.film_act import split_act_commissions, split_act_native
+    from banana_mv.film_act import split_act_commissions, split_act_native, split_clip_commissions
     if req['auto_director']:
         req['manual_h3']=False  # Even a user-authored ACT outline MUST reach the 9B writer.
         # Director mode: Python dispatches immutable ACT commissions and one
         # shared reference/world table. The 9B local WRITER alone converts each
         # commission into the six-field MiniMax H3 filming prompt.
-        authored = split_act_commissions(story)
-        if authored is not None:
-            shared, acts = authored
-            authored_seconds = sum(seconds for seconds, _ in acts)
+        if req.get('kitchen_mode'):
+            from banana_mv.film_kitchen import authored_act_plan
+            manual_plan = authored_act_plan(req, menu, shared.strip(), len(rows),
+                                            req.get('project_name') or '新短片')
+            if manual_plan is not None:
+                req['authored_act_commissions'] = True
+        acts = split_act_commissions(story) if manual_plan is None else None
+        clips = split_clip_commissions(story, float(chunk)) if acts is None and manual_plan is None else None
+        if acts is not None or clips is not None:
+            if acts is not None:
+                shared, blocks = acts
+                commissions = [(seconds, 'story', brief) for seconds, brief in blocks]
+                authored_source = 'authored_acts'
+                req['authored_act_commissions'] = True
+            else:
+                shared, commissions = clips
+                authored_source = 'authored_clips'
+                req['authored_clip_commissions'] = True
+            authored_seconds = sum(seconds for seconds, _, _ in commissions)
             if preference=='prompt' and declaration is None:
                 req.update(target_seconds=authored_seconds,
                            max_seconds=min(300.,authored_seconds+1.5),
                            timeline_tolerance=1.5,target_is_exact=True,
-                           duration_source='authored_acts')
-            plan_data={'title':str(req.get('project_name') or 'ACT 自動導演'),
+                           duration_source=authored_source)
+            plan_data={'title':str(req.get('project_name') or ('ACT 自動導演' if acts else 'CLIP 自動導演')),
                        'shared_setup':shared,
-                       'segments':[{'seconds':seconds,'mode':'story','brief':brief}
-                                   for seconds,brief in acts]}
+                       'segments':[{'seconds':seconds,'mode':mode,'brief':brief}
+                                   for seconds,mode,brief in commissions]}
             manual_plan=validate_plan(json.dumps(plan_data,ensure_ascii=False),req,len(rows))
             validate_planned_duration(manual_plan,req)
-            req['authored_act_commissions']=True
     else:
         # Manual mode: Python slices ONLY existing full H3 prompts.
         # It may remap input Picture ordinals and native render frame counts,
         # but must not infer a shared_setup or compose/voice any H3 content.
         from banana_mv.film_manual import CLIP, split_native_h3, make_manual_plan
-        manual_clips = split_act_native(story)
+        manual_story = _strip_manual_duration_header(story)
+        manual_clips = split_act_native(manual_story)
         if manual_clips is None:
-            single_seconds=min(float(req['target_seconds']),float(req['segment_seconds']))
-            manual_clips=split_native_h3(story,single_seconds)
-            if not CLIP.search(story) and float(req['target_seconds']) > float(req['segment_seconds'])+1e-8:
-                raise ValueError('關閉 9B 的純提示詞模式不自動重寫／分配長篇劇本；請使用 === CLIP 1 (10s) === 或 ACT 01 時間標記，並在每段寫好完整 H3 六欄提示詞。')
+            ceiling = float(req['segment_seconds'])
+            has_clips = bool(CLIP.search(manual_story))
+            if not has_clips and req['target_is_exact'] and float(req['target_seconds']) > ceiling+1e-8:
+                raise ValueError(f'單段 H3 全咒最多 {ceiling:g} 秒（生成分段上限），但全片設定是 '
+                                 f'{float(req["target_seconds"]):g} 秒。請把全片改成 {ceiling:g} 秒以內，'
+                                 '或用 === CLIP 1 (10s) === 分段，每段各寫一份六欄全咒。')
+            # 沒指定全片長度時，單段全咒就是一段，長度取分段上限。
+            single_seconds=min(float(req['target_seconds']),ceiling)
+            manual_clips=split_native_h3(manual_story,single_seconds)
         for index,(seconds,h3_prompt) in enumerate(manual_clips,1):
             if not h3_prompt.lstrip().startswith('subject_definitions:'):
                 raise ValueError(f'純提示詞第 {index} 段必須是使用者完成的 MiniMax H3 六欄全咒；Python 不代填共同設定、鏡頭或台詞。')
             from banana_mv.direction_contract import validate_h3_sections
             validate_h3_sections(h3_prompt)
         authored=sum(seconds for seconds,_ in manual_clips)
-        if preference=='prompt' and declaration is None and (split_act_native(story) is not None or CLIP.search(story)):
-            if not 6<=authored<=300:raise ValueError('H3 全咒總長需在 6–300 秒。')
-            req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
-                       timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips')
+        if not 124/FPS-1e-8<=authored<=300:raise ValueError('H3 全咒總長需在 5.17–300 秒。')
+        if authored > float(req['target_seconds']) + float(req['timeline_tolerance']) + 1e-8:
+            raise ValueError(f'手動全咒總時長 {authored:.2f} 秒超過本次設定 {float(req["target_seconds"]):g} 秒。')
+        # 全片設定是「上限」：照使用者寫的分段秒數精確交付，短於上限也可以。
+        from banana_mv.film_continuity import render_frames
+        delivery=[round(seconds*FPS) for seconds,_ in manual_clips]
+        renders=[render_frames(f) if i and req['mode']=='chain5' else 5+17*math.ceil((f-5)/17)
+                 for i,f in enumerate(delivery)]
+        req.update(target_seconds=authored,max_seconds=min(300.,authored+1.5),
+                   timeline_tolerance=1.5,target_is_exact=True,duration_source='manual_clips',
+                   # 精確交付使用者寫的秒數（多渲染再裁掉）；超過 H3 安全影格數才退回網格對齊。
+                   authored_segment_master=max(renders)<=362)
         req['manual_h3']=True
         manual_plan=make_manual_plan(manual_clips,req,normalize_prompt,map_story,
                                      len(rows),validate_manual_sound,
@@ -700,6 +944,8 @@ def start(req):
         for i,p in enumerate(originals):
             target=source_dir/f'image_{i}{p.suffix.lower()}';shutil.copyfile(p,target);paths.append(str(target.relative_to(work)))
         job={'id':job_id,'status':'planning_story','created':time.time(),'request':req,
+             'face_refine_chain': bool(req.get('face_refine') and req['mode'] in ('chain', 'chain5')
+                                       and not (req.get('upscale_1080p') and req.get('upscale_resolution') == 1440)),
              'duration':manual_plan['duration'] if manual_plan else 0,
              'segments':manual_plan['segments'] if manual_plan else [],'size':size,'output_size':out,'seed':int(seed),'settings_version':2,
              'images_comfy':[r['comfy_name'] for r in rows],'sources':{'images':paths},
@@ -710,9 +956,17 @@ def start(req):
             # reference table lives alongside local segment commissions.
             job['shared_setup']=manual_plan['shared_setup']
             job['title']=manual_plan['title']
-            job['timeline_source']='manual_native_h3'
+            if req.get('authored_act_commissions'):
+                job['timeline_source'] = 'authored_acts'
+            else:
+                job['timeline_source']='authored_clips' if req.get('authored_clip_commissions') else 'manual_native_h3'
             atomic_json(work/'director_plan.json',dict(manual_plan,
                          input_sha256=hashlib.sha256(story.encode('utf-8')).hexdigest()))
+        if req.get('kitchen_mode'):
+            from banana_mv.film_kitchen import new_attempt
+            attempt = new_attempt(menu, maximum)
+            attempt['clips'] = list(range(len(job['segments'])))
+            job['kitchen'] = {'dishes': [{'attempts': [attempt]}]}
         app.write_state(job)
         threading.Thread(target=worker,args=(job,cfg,*inputs(job,cfg)),daemon=True).start()
         return job
@@ -781,7 +1035,8 @@ def revise_script(job_id,draft,revision,instruction):
             raise ValueError('原生 H3 手動模式不使用 9B 細修，請在劇本欄直接修改六段式全咒再儲存。')
         current=validate_plan(json.dumps(dict(draft,shared_setup=job.get('shared_setup','')),ensure_ascii=False),req,count)
         instruction=map_story(req,instruction,count)
-        cfg=app.backend.project_config(job['request']);originals,_,_=inputs(job,cfg)
+        cfg=app.emergency_config(app.backend.project_config(job['request']), job_id)
+        originals,_,_=inputs(job,cfg)
         source={'original_story':map_story(req,req['prompt'],count),
                 'fixed_reference_settings':current['shared_setup'],
                 'current_script':{'title':current['title'],'segments':[
@@ -807,38 +1062,75 @@ def revise_script(job_id,draft,revision,instruction):
         path=app.job_dir(job_id)/'director_plan.json';previous=json.loads(path.read_text(encoding='utf-8'))
         atomic_json(path,dict(plan,input_sha256=previous['input_sha256'],user_reviewed=True))
         app.write_state(job);return job
-    finally:app.GPU_LOCK.release()
+    finally:
+        app.CANCEL.discard(job_id)
+        app.GPU_LOCK.release()
 
 def worker(job,cfg,originals,song=None,drive=None):
     work=app.job_dir(job['id']);tail=None
-    from banana_mv.film_continuity import motion_prefix,upload_motion_tail,add_motion_guide
+    from banana_mv import face_refine
+    from banana_mv.comfy import check_cancelled, track_prompt
+    from banana_mv.film_continuity import (
+        add_motion_guide, motion_prefix, opening_render_frames, opens_with_cut, upload_motion_tail,
+    )
     try:
-        if not job['segments']:
+        cfg = app.emergency_config(cfg, job['id'])
+        kitchen = job.get('kitchen')
+        if kitchen:
+            from banana_mv import film_kitchen
+            film_kitchen.prepare(job, cfg, originals)
+            check_cancelled(cfg)
+            app.write_state(job)
+            attempt = film_kitchen.latest(job)
+            serving = kitchen.get('serving')
+            active_segments = [] if serving else [job['segments'][i] for i in attempt['clips']]
+        else:
+            active_segments = job['segments']
+        if not kitchen and not job['segments']:
             job['status']='planning_story';app.write_state(job)
             plan=plan_film(cfg,job,originals)
+            check_cancelled(cfg)
             job.update(segments=plan['segments'],duration=plan['duration'],shared_setup=plan['shared_setup'])
+            active_segments = job['segments']
             if not job['request'].get('project_name'):job['title']=plan['title']
             app.write_state(job)
         if job['request'].get('script_review') and not job.get('script_approved'):
             job.update(status='script_ready',script_revision=uuid.uuid4().hex)
             job['script_draft']=review_draft(job);app.write_state(job);return
-        for seg in job['segments']:
+        guide_source = None
+        for seg in active_segments:
+            cut = opens_with_cut(job, seg)
+            if 'kitchen_previous' in seg:
+                previous = seg['kitchen_previous']
+                guide_source = None
+                if previous is not None and not cut:
+                    earlier = job['segments'][previous]
+                    part = app.adopted_part(job, earlier)
+                    if not app.valid_part(part, earlier, job['size']):
+                        raise ValueError('上一道採用的毛片遺失。')
+                    guide_source = part
             if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
             i=seg['index'];part=app.adopted_part(job,seg);job['current']=i+1
             if seg.get('takes') and not part.is_file():raise ValueError('採用版片段遺失，請恢復該版本或另選版本。')
             if seg.get('status')=='done' and app.valid_part(part,seg,job['size']):
-                require_audio(part);continue
+                require_audio(part)
+                guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals, reuse=True)
+                continue
+            if cut and seg.get('opening_transition') != 'cut':
+                seg.update(opening_transition='cut', refresh_prompt=True)
+                for field in ('opening_sha256', 'motion_context', 'prompt_id'):
+                    seg.pop(field, None)
             tail=None;context_names=[];prefix=motion_prefix(job,seg)
             if prefix:
-                source=app.adopted_part(job,job['segments'][i-1])
+                source=guide_source
                 context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{i:02d}')
                 previous=seg.get('motion_context')
                 if previous and previous['source_sha256']!=receipt['source_sha256'] and seg.get('prompt_id'):
                     raise ValueError('前段版本已改變，不能沿用舊動作上下文佇列；請建立補拍候選。')
                 seg['motion_context']=receipt
-            if i and job['request']['mode']=='chain':
+            if not cut and guide_source is not None and job['request']['mode']=='chain':
                 tail=work/f'{i:02d}_opening.png'
-                app.last_frame(app.adopted_part(job,job['segments'][i-1]),tail)
+                app.last_frame(guide_source,tail)
                 opening_sha256=hashlib.sha256(tail.read_bytes()).hexdigest()
                 if seg.get('opening_sha256')!=opening_sha256:
                     seg.pop('prompt_id',None)
@@ -849,7 +1141,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             else:
                 prompt_file=work/f'{i:02d}_prompt_v1.txt'
                 job['status']='running';seg['status']='rewriting';app.write_state(job)
-                if job['request'].get('manual_h3'):
+                if job['request'].get('manual_h3') or seg.get('manual_h3_prompt'):
                     prompt=seg['manual_h3_prompt']
                     if seg.get('continuity_context'):
                         prompt=('Already established before this clip; continue from its result without replaying it: '
@@ -873,7 +1165,8 @@ def worker(job,cfg,originals,song=None,drive=None):
             first=None
             if tail:
                 first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
-            graph=app.build_workflow(job['images_comfy'],None,*job['size'],seg['model_frames'],prompt,
+            images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+            graph=app.build_workflow(images,None,*job['size'],opening_render_frames(job,seg),graph_prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
             graph['16']['inputs']['filename_prefix']=f'BananaFilm/{job["id"]}/{i:02d}_v1'
@@ -883,33 +1176,61 @@ def worker(job,cfg,originals,song=None,drive=None):
             if entry and entry.get('status',{}).get('status_str')=='error':entry=None;seg.pop('prompt_id',None)
             if not entry or not entry.get('status',{}).get('completed'):
                 if not seg.get('prompt_id'):seg['prompt_id']=app.backend.queue_prompt(cfg,graph);app.write_state(job)
+                else:track_prompt(cfg,seg['prompt_id'])
                 entry=app.wait_generation(cfg,seg['prompt_id'],job)
+            # 生成已完成：先存下這段，停爐要求在下一段開始前處理，不浪費已算好的 GPU 時間。
             app.backend.comfy_download(cfg,app.video_info(entry),work/f'{i:02d}_raw_v1.mp4')
             part=work/f'{i:02d}_part_v1.mp4'
             if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
             else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
-            seg['status']='done';app.write_state(job)
+            seg['status']='done'
+            guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
+            app.write_state(job)
             if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
         if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return
+        if kitchen and not serving:
+            job['status'] = 'kitchen_ready'
+            for key in ('error', 'error_stage', 'resuming'):
+                job.pop(key, None)
+            app.write_state(job)
+            return
+        chosen = film_kitchen.adopted(job) if kitchen else list(range(len(job['segments'])))
         job['status']='assembling';app.write_state(job);masters.preserve_current(job,work)
         pending=work/'final_pending.mp4'
-        app.assemble([app.adopted_part(job,s) for s in job['segments']],None,pending,job['duration'],job['output_size'])
-        master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume')
+        parts = [app.adopted_part(job, job['segments'][i]) for i in chosen]
+        app.assemble(parts,None,pending,job['duration'],job['output_size'])
+        check_cancelled(cfg)
+        choices = {i: job['segments'][i].get('selected_take','original') for i in chosen}
+        master=masters.archive(job,work,pending,'original' if not job.get('current_master') else 'resume',choices)
         pending.replace(work/'final.mp4');job['current_master']=master['version']
         try:app.export_finished_video(job,work/'final.mp4')
         except OSError as error:job['export_error']=str(error)
-        if job['request'].get('face_refine') and job['id'] not in app.CANCEL:
-            from banana_mv import face_refine
+        from banana_mv import nv_upscale
+        if (job['request'].get('face_refine') and job['id'] not in app.CANCEL
+                and not nv_upscale.face_after_upscale(job['request'])):
             try:
                 parts = [app.adopted_part(job, segment) for segment in job['segments']]
                 face_refine.render_version(app, cfg, job, parts, originals)
             except Exception as error:
                 job['face_refine_error'] = str(error)
+        if job['request'].get('upscale_1080p'):
+            nv_upscale.render_version(app, cfg, job)
+        check_cancelled(cfg)
         job.update(status='done',video=f'/api/mv/file?id={job["id"]}')
         job.pop('error',None);job.pop('error_stage',None);job.pop('resuming',None);app.write_state(job)
     except Exception as error:
-        traceback.print_exc()
-        job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}');app.write_state(job)
+        if isinstance(error, InterruptedError) or job['id'] in app.CANCEL:
+            current = job.get('current', 0)
+            if type(current) is int and 1 <= current <= len(job['segments']):
+                segment = job['segments'][current-1]
+                if segment.get('status') != 'done':
+                    segment['status'] = 'waiting'
+                    segment.pop('prompt_id', None)
+            job.update(status='cancelled', error=str(error))
+        else:
+            traceback.print_exc()
+            job.update(error_stage=job.get('status'),status='error',error=f'{type(error).__name__}: {error}')
+        app.write_state(job)
     finally:
         app.CANCEL.discard(job['id']);app.GPU_LOCK.release()
