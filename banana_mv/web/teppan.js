@@ -201,11 +201,18 @@ function beginRepeat(attempt) {
   $('menu').focus();
 }
 
-function dishName(dish, index) {
-  const lines = dish.attempts[0]?.menu?.trim().split(/\r?\n/) ?? [];
-  const named = lines.find(line => /^(?:菜名|標題)[：:]/.test(line.trim()));
-  const title = (named?.trim().replace(/^(?:菜名|標題)[：:]\s*/, '') || lines[0] || '').trim();
-  return title || '第 ' + (index + 1) + ' 道菜';
+const dishMenu = [
+  ['🍗', '宮保雞丁'], ['🍲', '三杯雞'], ['🍤', '鳳梨蝦球'], ['🐟', '清蒸石斑'],
+  ['🥟', '水晶蝦餃'], ['🍚', '櫻花蝦炒飯'], ['🦀', '避風塘炒蟹'], ['🍖', '糖醋排骨'],
+  ['🍜', '紅燒牛肉麵'], ['🥬', '開陽白菜'], ['🍲', '佛跳牆'], ['🦑', '三杯中卷'],
+  ['🥩', '黑椒牛柳'], ['🍳', '蟹黃豆腐'], ['🌶️', '麻辣鴨血'], ['🦐', '蒜蓉粉絲蝦'],
+  ['🍛', '獅子頭'], ['🍱', '蒲燒鰻魚']
+];
+
+function dishName(dish, fallback) {
+  const menu = dish.attempts[0]?.menu ?? '';
+  const name = /^\s*(?:菜名|標題)[：:]\s*([^\r\n]+)/m.exec(menu);
+  return name?.[1].trim() || fallback;
 }
 
 function renderDishes() {
@@ -232,17 +239,29 @@ function renderDishes() {
     card.className = 'dish dish-card';
     card.dataset.signature = signature;
     card.open = existing?.open ?? false;
-    const title = element('span', dishName(dish, index));
+    card.setAttribute('name', 'teppan-dishes');
+    const [icon, fallback] = dishMenu[index % dishMenu.length];
+    const plate = element('span', icon);
+    plate.className = 'dish-plate';
+    plate.setAttribute('aria-hidden', 'true');
+    const title = element('strong', dishName(dish, fallback));
     title.className = 'dish-name';
-    const label = element('span', state);
+    const label = element('span', '第 ' + (index + 1) + ' 道 · ' + state);
     label.className = 'dish-state';
+    const heading = element('span');
+    heading.className = 'dish-heading';
+    heading.append(label, title);
     const summary = element('summary');
-    summary.append(title, label);
+    summary.append(plate, heading);
     card.append(summary);
-    if (card.open) appendVersions();
-    else card.addEventListener('toggle', () => {
-      if (card.open && card.childElementCount === 1) appendVersions();
+    card.addEventListener('toggle', () => {
+      if (card.open) {
+        if (card.childElementCount === 1) appendVersions();
+      } else {
+        for (const video of card.querySelectorAll('video')) video.pause();
+      }
     });
+    if (card.open) appendVersions();
     if (existing) existing.replaceWith(card);
     else list.append(card);
 
