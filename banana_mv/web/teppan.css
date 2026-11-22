@@ -27,31 +27,79 @@ button:disabled { opacity: .5; cursor: default; }
 .quiet { background: #30231b; border-color: var(--line); color: #f3ddbf; }
 :focus-visible { outline: 2px solid #ffdf9e; outline-offset: 3px; }
 .counter {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(94px, 34%);
-  align-items: center; gap: 6px; padding: 8px 16px 8px 20px;
-  min-height: 155px; background: linear-gradient(112deg, #42291c, #694127);
-  border: 1px solid #8e5a35; border-radius: 15px; overflow: hidden;
+  display: grid;
+  justify-items: center;
+  padding: 20px 16px 4px;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 75%, #805132, #482d20 64%, #3a251a);
+  border: 1px solid #8e5a35;
+  border-radius: 15px;
+  overflow: hidden;
 }
-h1 { font-size: clamp(1.6rem, 6vw, 2.7rem); margin: 0 0 8px; line-height: 1.16; }
+.counter-copy { width: 100%; }
+h1 { font-size: clamp(1.75rem, 6vw, 2.7rem); margin: 0 0 8px; line-height: 1.16; }
 .counter p { font-size: .9rem; margin: 5px 0; overflow-wrap: anywhere; color: #f8dec0; }
 #project-title { font-weight: 650; }
-.stage svg { display: block; width: 100%; max-height: 160px; }
-.steam { opacity: 0; }
-.spatula { transform-origin: 37px 56px; }
-.counter[data-phase="cooking"] .spatula { animation: flip 1s ease-in-out infinite alternate; }
-.counter[data-phase="cooking"] .steam, .counter[data-phase="serving"] .steam {
-  animation: steam 1.7s ease-out infinite;
-}
+.stage { width: min(100%, 360px); }
+.stage svg { display: block; width: 100%; height: auto; }
+.chef-motion, .spatula, .flames { transform-box: fill-box; }
+.chef-motion, .flames { transform-origin: center bottom; }
+.spatula { transform-origin: 14% 65%; }
+.steam path, .ingredients > *, .flames { opacity: 0; }
 .counter[data-phase="planning"] .spatula { animation: flip 1.8s ease-in-out infinite alternate; }
+.counter[data-phase="cooking"] .chef-motion,
+.counter[data-phase="finishing"] .chef-motion { animation: lean 1.12s ease-in-out infinite; }
+.counter[data-phase="cooking"] .spatula,
+.counter[data-phase="finishing"] .spatula { animation: toss 1.12s ease-in-out infinite; }
+.counter[data-phase="cooking"] .ingredients > *,
+.counter[data-phase="finishing"] .ingredients > * { animation: food 1.12s ease-in-out infinite; }
+.counter .ingredients > :nth-child(2) { animation-delay: .045s; }
+.counter .ingredients > :nth-child(3) { animation-delay: .1s; }
+.counter:is([data-phase="cooking"], [data-phase="serving"], [data-phase="finishing"]) .steam path {
+  animation: steam 1.45s ease-out infinite;
+}
+.counter:is([data-phase="cooking"], [data-phase="serving"], [data-phase="finishing"]) .steam path:nth-child(2) { animation-delay: .25s; }
+.counter:is([data-phase="cooking"], [data-phase="serving"], [data-phase="finishing"]) .steam path:nth-child(3) { animation-delay: .5s; }
+.counter[data-phase="finishing"] .flames { animation: fire .34s ease-in-out infinite alternate; }
 @keyframes flip { from { transform: rotate(-6deg); } to { transform: rotate(15deg); } }
-@keyframes steam { 10% { opacity: .8; } to { transform: translateY(-16px); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .stage * { animation: none !important; } }
+@keyframes lean {
+  0%, 100% { transform: rotate(-2deg); }
+  42% { transform: translateY(-4px) rotate(4deg); }
+}
+@keyframes toss {
+  0%, 100% { transform: rotate(13deg); }
+  40%, 52% { transform: translateY(-4px) rotate(-37deg); }
+}
+@keyframes food {
+  0%, 24%, 100% { opacity: 0; transform: translate(0, 0); }
+  33% { opacity: 1; }
+  56% { opacity: 1; transform: translate(-11px, -35px) rotate(25deg); }
+  82% { opacity: 1; transform: translate(-21px, 0); }
+  90% { opacity: 0; }
+}
+@keyframes steam { 12% { opacity: .75; } to { transform: translateY(-20px); opacity: 0; } }
+@keyframes fire { from { transform: scaleY(.72); opacity: .7; } to { transform: scaleY(1.15); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .stage * { animation: none !important; }
+  .counter[data-phase="cooking"] .steam path, .counter[data-phase="finishing"] .flames { opacity: .75; }
+}
 progress { width: 100%; accent-color: var(--gold); height: 7px; }
 #menu-form, .dish, #service {
   border: 1px solid var(--line); border-radius: 13px; background: var(--panel);
   padding: 15px; margin-top: 13px; min-width: 0;
 }
-#menu-label { margin: 13px 0 6px; display: block; font-weight: 650; }
+#menu-label { font-weight: 650; min-width: 0; }
+.menu-composer {
+  margin-top: 10px;
+  padding: 6px 10px 10px;
+  border: 1px solid #785942;
+  border-radius: 12px;
+  background: #1e1712;
+}
+.composer-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#expand-menu { border: 0; background: transparent; color: var(--gold); padding-inline: 6px; font-size: .82rem; }
+#menu { border: 0; min-height: 88px; padding: 8px 2px; line-height: 1.55; }
+#menu.is-expanded { height: clamp(210px, 50dvh, 500px); }
 input, select, textarea { color: #fff0dc; accent-color: var(--gold); }
 textarea, input:not([type="checkbox"]), select {
   display: block; width: 100%; min-width: 0; background: #1e1712;
@@ -73,10 +121,37 @@ legend { color: var(--muted); }
 #references input { font-size: .79rem; }
 .composer-actions, #service, .dish-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 .composer-actions { margin-top: 9px; }
+#cook { margin-inline-start: auto; }
 #service { justify-content: space-between; }
-#feedback { min-height: 1.3em; overflow-wrap: anywhere; color: #ffc7a4; }
+#feedback { margin: 8px 0; overflow-wrap: anywhere; color: #ffc7a4; }
+#feedback:empty { display: none; }
 .restore { display: block; margin-top: 13px; color: var(--muted); font-size: .9rem; }
 .restore select { margin-top: 4px; }
+.dish-card { padding: 0; }
+.dish-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 10px 14px;
+  list-style: none;
+}
+.dish-card > summary::-webkit-details-marker { display: none; }
+.dish-card > summary::before { content: "▸"; }
+.dish-card[open] > summary::before { content: "▾"; }
+.dish-card > summary span { margin: 0; }
+.dish-card .dish-name {
+  color: #f8ebd5;
+  font-size: .97rem;
+  font-weight: 700;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dish-state { white-space: nowrap; }
+.dish-versions { padding: 0 14px 12px; border-top: 1px solid var(--line); }
 .dish h2 { font-size: 1rem; margin: 0 0 6px; }
 .dish p { margin: 6px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .dish video { width: 100%; max-height: 380px; display: block; background: #160e0a; border-radius: 8px; margin: 9px 0; }
@@ -84,8 +159,9 @@ legend { color: var(--muted); }
 .dish .shot-label { font-size: .85rem; color: var(--muted); }
 .dish-actions { margin-top: 9px; }
 @media (max-width: 420px) {
-  .counter { padding-inline: 12px 8px; min-height: 122px; }
+  .counter { padding: 16px 12px 4px; }
+  .stage { width: min(94%, 284px); }
   .counter p { font-size: .83rem; }
-  .composer-actions > button { flex: 1 1 auto; }
+  .composer-actions > button:not(#cook) { flex: 1 1 auto; }
   #references { grid-template-columns: 1fr; }
 }

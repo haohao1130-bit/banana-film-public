@@ -172,15 +172,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "78d489ea3edaf993d1a739dd5c4c480c9c104bd44b11d38ab35b29dc70649080"
+      "sha256": "13cae4b9c7f85dd79340cbdad76f07da991e511389675335dded368777022eb9"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "11cec2a7ded368d9cb59a569a159cb7ed9c4319e95d505c6482b1caae5e140bd"
+      "sha256": "0eb5e3c40bb7bdd57e6f2aeff0d5474af52692e39803be50d5e9031726cb51dd"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "1b7ee763044921edf56e74547dae63a925c9de4487b8f0cf5097319928ad8538"
+      "sha256": "25ef3b2104f8d8bf94ce1fb6621a2dac558f9e4511d32a15cb8b3fe0a465ac23"
     },
     {
       "path": "docs/clip_review.md",

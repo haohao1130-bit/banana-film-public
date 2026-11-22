@@ -2,7 +2,6 @@ const $ = id => document.getElementById(id);
 const storageKey = 'banana_teppan_job';
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
 let job = null, timer, pending = false, restoring = false, repeating = false;
-let renderedSignature = '';
 
 for (let index = 1; index <= 8; index++) {
   const label = element('label', '@圖片' + index);
@@ -69,59 +68,96 @@ function beginRepeat(attempt) {
   $('menu').focus();
 }
 
-function renderDishes() {
-  const dishes = job?.kitchen?.dishes ?? [];
-  const signature = JSON.stringify([job?.id, job?.status, dishes,
-    job?.segments?.map(segment => [segment.preview, segment.prompt])]);
-  if (signature === renderedSignature) return;
-  renderedSignature = signature;
-  $('dishes').replaceChildren();
-  dishes.forEach((dish, index) => {
-    const current = index === dishes.length - 1;
-    const card = element('article');
-    card.className = 'dish';
-    const accepted = dish.selected !== undefined;
-    card.append(element('h2', '第 ' + (index + 1) + ' 道菜' + (accepted ? ' · 已採用' : '')));
-    dish.attempts.forEach((attempt, version) => {
-      const clips = attempt.clips.map(clip => job.segments[clip]);
-      const ready = clips.length > 0 && clips.every(clip => clip?.preview);
-      const entry = element('details');
-      entry.open = version === (accepted ? dish.selected : dish.attempts.length - 1);
-      entry.append(element('summary', '第 ' + (version + 1) + ' 版' + (ready ? ' · 毛片' : ' · 製作中')));
-      if (entry.open) appendAttempt(entry);
-      else entry.addEventListener('toggle', () => {
-        if (entry.open && entry.childElementCount === 1) appendAttempt(entry);
-      });
-      card.append(entry);
+function dishName(dish, index) {
+  const lines = dish.attempts[0]?.menu?.trim().split(/\r?\n/) ?? [];
+  const named = lines.find(line => /^(?:菜名|標題)[：:]/.test(line.trim()));
+  const title = (named?.trim().replace(/^(?:菜名|標題)[：:]\s*/, '') || lines[0] || '').trim();
+  return title || '第 ' + (index + 1) + ' 道菜';
+}
 
-      function appendAttempt(target) {
-        target.append(element('p', attempt.menu));
-        clips.forEach((clip, clipIndex) => {
-          if (!clip.preview) return;
-          if (clips.length > 1) {
-            const label = element('p', '片段 ' + (clipIndex + 1));
-            label.className = 'shot-label';
-            target.append(label);
-          }
-          target.append(video(clip.preview));
-          if (clip.prompt) {
-            const prompt = element('details');
-            prompt.append(element('summary', 'H3 使用的提示詞'), element('pre', clip.prompt));
-            target.append(prompt);
-          }
-        });
-        if (ready && current && !accepted && job.status === 'kitchen_ready') {
-          const actions = element('div');
-          actions.className = 'dish-actions';
-          actions.append(
-            button('採用此道菜', () => perform('adopt', {attempt: version})),
-            button('此菜重炒', () => beginRepeat(attempt), true)
-          );
-          target.append(actions);
-        }
-      }
+function renderDishes() {
+  const list = $('dishes');
+  const project = job?.id ?? '';
+  if (list.dataset.project !== project) {
+    list.replaceChildren();
+    list.dataset.project = project;
+  }
+  const dishes = job?.kitchen?.dishes ?? [];
+  dishes.forEach((dish, index) => {
+    const accepted = dish.selected !== undefined;
+    const current = index === dishes.length - 1;
+    const canChoose = current && !accepted && job.status === 'kitchen_ready';
+    const versions = dish.attempts.map(attempt => attempt.clips.map(clip => job.segments[clip]));
+    const allReady = versions.at(-1)?.length && versions.at(-1).every(clip => clip?.preview);
+    const state = accepted ? '已採用' : allReady ? '可試菜' :
+      idle.has(job.status) ? '尚未完成' : '製作中';
+    const signature = JSON.stringify([dish, state, canChoose,
+      versions.map(clips => clips.map(clip => [clip?.preview, clip?.prompt]))]);
+    const existing = list.children[index];
+    if (existing?.dataset.signature === signature) return;
+    const card = element('details');
+    card.className = 'dish dish-card';
+    card.dataset.signature = signature;
+    card.open = existing?.open ?? false;
+    const title = element('span', dishName(dish, index));
+    title.className = 'dish-name';
+    const label = element('span', state);
+    label.className = 'dish-state';
+    const summary = element('summary');
+    summary.append(title, label);
+    card.append(summary);
+    if (card.open) appendVersions();
+    else card.addEventListener('toggle', () => {
+      if (card.open && card.childElementCount === 1) appendVersions();
     });
-    $('dishes').append(card);
+    if (existing) existing.replaceWith(card);
+    else list.append(card);
+
+    function appendVersions() {
+      const panel = element('div');
+      panel.className = 'dish-versions';
+      dish.attempts.forEach((attempt, version) => {
+        const clips = versions[version];
+        const ready = clips.length > 0 && clips.every(clip => clip?.preview);
+        const entry = element('details');
+        entry.open = version === (accepted ? dish.selected : dish.attempts.length - 1);
+        const status = ready ? ' · 毛片' : ' · 尚未完成';
+        entry.append(element('summary', '第 ' + (version + 1) + ' 版' + status));
+        if (entry.open) appendAttempt();
+        else entry.addEventListener('toggle', () => {
+          if (entry.open && entry.childElementCount === 1) appendAttempt();
+        });
+        panel.append(entry);
+
+        function appendAttempt() {
+          entry.append(element('p', attempt.menu));
+          clips.forEach((clip, clipIndex) => {
+            if (!clip?.preview) return;
+            if (clips.length > 1) {
+              const shot = element('p', '片段 ' + (clipIndex + 1));
+              shot.className = 'shot-label';
+              entry.append(shot);
+            }
+            entry.append(video(clip.preview));
+            if (clip.prompt) {
+              const prompt = element('details');
+              prompt.append(element('summary', 'H3 使用的提示詞'), element('pre', clip.prompt));
+              entry.append(prompt);
+            }
+          });
+          if (ready && canChoose) {
+            const actions = element('div');
+            actions.className = 'dish-actions';
+            actions.append(
+              button('採用此道菜', () => perform('adopt', {attempt: version})),
+              button('此菜重炒', () => beginRepeat(attempt), true)
+            );
+            entry.append(actions);
+          }
+        }
+      });
+      card.append(panel);
+    }
   });
 }
 
@@ -155,7 +191,7 @@ function render() {
   const count = clips.filter(index => job.segments[index]?.status === 'done').length;
   const rewriting = job?.segments?.[job.current - 1]?.status === 'rewriting';
   $('counter').dataset.phase = status === 'running' && !rewriting ? 'cooking' :
-    ['assembling', 'upscaling_1080p'].includes(status) ? 'serving' :
+    status === 'upscaling_1080p' ? 'finishing' : status === 'assembling' ? 'serving' :
     working ? 'planning' : 'idle';
   $('project-title').hidden = !job;
   $('project-title').textContent = job?.title ?? '';
@@ -301,6 +337,13 @@ $('restore-project').onchange = () => {
     render();
     sync(id);
   }
+};
+$('expand-menu').onclick = () => {
+  const expand = $('expand-menu').getAttribute('aria-expanded') !== 'true';
+  $('expand-menu').setAttribute('aria-expanded', String(expand));
+  $('expand-menu').textContent = expand ? '收起輸入框' : '拉開輸入框';
+  $('menu').style.removeProperty('height');
+  $('menu').classList.toggle('is-expanded', expand);
 };
 $('new-project').onclick = () => {
   clearTimeout(timer);

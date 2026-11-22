@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css">
-  <script defer src="teppan.js"></script>
+  <link rel="stylesheet" href="teppan.css?v=grill">
+  <script defer src="teppan.js?v=grill"></script>
 </head>
 <body>
   <header class="bar">
@@ -14,7 +14,7 @@
   </header>
   <main>
     <section class="counter" id="counter" data-phase="idle" aria-labelledby="title">
-      <div>
+      <div class="counter-copy">
         <h1 id="title">蕉彌鐵板燒</h1>
         <p id="project-title" hidden></p>
         <p id="status" role="status">鐵板就位，等你的第一道菜單。</p>
@@ -23,7 +23,7 @@
       <div class="stage" aria-hidden="true">
         <svg viewBox="0 0 210 172" class="chef">
           <ellipse cx="110" cy="149" rx="89" ry="13" fill="#46291e"/>
-          <g transform="translate(92 63)">
+          <g class="chef-motion"><g transform="translate(92 63)">
             <path d="M32 51q40 13 36-15" fill="none" stroke="#d6b75d" stroke-width="10" stroke-linecap="round"/>
             <path d="M62 35q-10-18 6-21 17 3 9 20Z" fill="#63754b"/>
             <path d="M-32 35Q-44 18-10-19q8-16 11-29l25 5q-3 31 12 62 17 28 4 59-34 15-68 0Z" fill="#f5cb62" stroke="#b37d35" stroke-width="2"/>
@@ -39,12 +39,23 @@
               <path d="m45 45 27 14" stroke="#593e34" stroke-width="5" stroke-linecap="round"/>
               <path d="m67 52 19 7 7 13-22-7Z" fill="#e0d3b5" stroke="#866f57" stroke-width="2"/>
             </g>
+          </g></g>
+          <g class="flames">
+            <path d="M108 137q-10-9-2-22 0 7 4 8 7-6 5-20 15 11 14 26 5-2 6-9 7 13-2 17Z" fill="#e36b34"/>
+            <path d="M122 137q-7-8-2-17 1 6 5 7 4-3 5-8 6 12 0 18Z" fill="#ffd47a"/>
           </g>
           <path d="M22 132h163l15 14H8Z" fill="#665344"/>
           <path d="M8 146h192v13H8Z" fill="#382e28"/>
           <path d="M18 145h170" stroke="#df9970" stroke-width="2"/>
+          <g class="ingredients">
+            <circle cx="118" cy="132" r="4" fill="#d87540"/>
+            <rect x="127" y="127" width="8" height="5" rx="2" fill="#aabe71"/>
+            <circle cx="141" cy="131" r="3" fill="#ffdc87"/>
+          </g>
           <g class="steam" fill="none" stroke="#fae5bf" stroke-width="3" stroke-linecap="round">
-            <path d="M136 129q-10-8-1-17t0-15m17 32q-8-6 1-15t0-15m15 30q-9-8 1-19"/>
+            <path d="M136 129q-10-8-1-17t0-15"/>
+            <path d="M153 129q-8-6 1-15t0-15"/>
+            <path d="M169 129q-9-8 1-19"/>
           </g>
         </svg>
       </div>
@@ -53,8 +64,6 @@
     <label id="restore-wrap" class="restore" hidden>繼續之前的專案
       <select id="restore-project"><option value="">選擇專案</option></select>
     </label>
-    <div id="dishes"></div>
-    <section id="served" class="dish" hidden aria-label="成片"></section>
 
     <form id="menu-form">
       <details id="settings">
@@ -75,19 +84,26 @@
           <label>這道菜的秒數<select id="seconds"><option value="6">6 秒</option><option value="10" selected>10 秒</option><option value="20">20 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label>
         </div>
       </details>
-      <label id="menu-label" for="menu">第一道菜單</label>
-      <textarea id="menu" rows="3" maxlength="30000" placeholder="寫下這一段要發生的事。" required></textarea>
-      <div class="composer-actions">
-        <button id="cook" type="submit">開始炒菜</button>
-        <button id="resume" class="quiet" type="button" hidden>繼續製作</button>
-        <button id="stop" class="quiet" type="button" hidden>緊急停爐</button>
+      <div class="menu-composer">
+        <div class="composer-header">
+          <label id="menu-label" for="menu">第一道菜單</label>
+          <button id="expand-menu" class="quiet" type="button" aria-expanded="false" aria-controls="menu">拉開輸入框</button>
+        </div>
+        <textarea id="menu" rows="3" maxlength="30000" placeholder="寫下這一段要發生的事。" required></textarea>
+        <div class="composer-actions">
+          <button id="resume" class="quiet" type="button" hidden>繼續製作</button>
+          <button id="stop" class="quiet" type="button" hidden>緊急停爐</button>
+          <button id="cook" type="submit">開始炒菜</button>
+        </div>
       </div>
     </form>
+    <p id="feedback" role="status"></p>
+    <div id="dishes"></div>
+    <section id="served" class="dish" hidden aria-label="成片"></section>
     <section id="service" hidden>
       <label class="check"><input id="upscale" type="checkbox" checked> 上菜後升頻至 2K</label>
       <button id="serve" type="button">上菜</button>
     </section>
-    <p id="feedback" role="status"></p>
   </main>
 </body>
 </html>
