@@ -290,7 +290,12 @@ def validate_film_format(text,seconds,sound_mode):
 
 
 def normalize_prompt(text,count):
+    from banana_mv.direction_contract import last_complete_h3
     text=_text(text).strip()
+    kept=last_complete_h3(text)
+    if kept!=text:
+        logging.getLogger(__name__).warning('9B 把全咒寫了不只一份，只保留最後一份完整六欄（%d → %d 字）。',len(text),len(kept))
+        text=kept
     if not text:raise ValueError('短片提示詞為空。')
     if re.search(r'<\s*(?:Audio|Video)\s*\d+\s*>',text,re.I):
         raise ValueError('短片未連接參考音訊或影片，提示詞不可引用 Audio／Video 標籤。')
@@ -647,7 +652,13 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                 pictures.extend([('text', f'<Picture {n}>:'), _pictures([path])[1]])
     if dest:atomic_json(Path(dest)/(artifact_prefix+'repair_request.json'),{'system':system,'user':text})
     for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,system,[('text',text)]+pictures,uuid.uuid4().hex[:8])
+        call_cfg=cfg
+        if attempt and cfg.get('rewriter',{}).get('thinking'):
+            # 退稿重寫只是補格式／台詞，不需要再想 16K：關掉思考，約 20 秒交稿。
+            from banana_mv.services import DEFAULTS
+            call_cfg=dict(cfg,rewriter=dict(cfg['rewriter'],thinking=False,
+                                            max_length=DEFAULTS['rewriter']['max_length']))
+        raw=app.backend.rewrite_local(call_cfg,system,[('text',text)]+pictures,uuid.uuid4().hex[:8])
         target=Path(dest) if dest else app.job_dir(job['id'])
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
         try:
@@ -663,6 +674,9 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
                 logging.getLogger(__name__).warning('第 %d 段台詞提醒：%s', seg['index'] + 1, warning)
             return prompt
         except ValueError as error:
+            # 記下退稿原因，才看得出為什麼一直重寫。
+            logging.getLogger(__name__).warning('第 %d 段第 %d 次稿被退：%s',seg['index']+1,attempt+1,error)
+            (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_rejected_{attempt:02d}.txt')).write_text(str(error),encoding='utf-8')
             if attempt==req['rewrite_retries']:raise
             text+='\nReturn corrected complete prompt. '+str(error)
 

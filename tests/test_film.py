@@ -197,6 +197,21 @@ class FilmTests(unittest.TestCase):
                 self.assertIn('anchored at frame zero',task['continuity_reference'])
                 self.assertIn('sound_mode',task);self.assertNotIn('<Audio',prompt)
 
+    def test_rejected_clip_retries_without_thinking_and_records_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            photo,work,req,job,cfg=self.fixture(Path(tmp))
+            with patch.object(app,'job_dir',return_value=work),patch.object(app.backend,'rewrite_local',return_value=json.dumps(draft())):
+                plan=film.plan_film(cfg,job,[photo])
+            job['segments']=plan['segments'];seg=job['segments'][1]
+            cfg=dict(cfg,rewriter=dict(cfg['rewriter'],thinking=True,max_length=16384))
+            replies=['', '[Shot 1] <Picture 2> looks up.\noverall_soundscape: Quiet room.']
+            with patch.object(app,'job_dir',return_value=work),patch.object(app.backend,'rewrite_local',side_effect=replies) as model:
+                film.write_prompt(cfg,job,seg,[photo],photo)
+            first,second=(call.args[0]['rewriter'] for call in model.call_args_list)
+            self.assertTrue(first['thinking']);self.assertEqual(first['max_length'],16384)
+            self.assertFalse(second['thinking']);self.assertLess(second['max_length'],16384)
+            self.assertTrue((work/'01_rewrite_rejected_00.txt').read_text(encoding='utf-8'))
+
     def test_worker_generates_and_assembles_native_audio_then_resume_reuses_parts(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo,work,req,job,cfg=self.fixture(Path(tmp));calls=[]
