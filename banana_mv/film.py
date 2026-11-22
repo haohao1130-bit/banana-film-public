@@ -351,7 +351,8 @@ def validate_plan(raw,req,image_count):
                        'seconds':frames/FPS,'model_frames':model_frames,'status':'waiting',
                        'director_mode':mode,'director_plan':{'index':i,'mode':mode,'event':brief}})
         start+=frames
-    if start>math.floor(req['max_seconds']*FPS):raise ValueError('導演規劃超過片長上限。')
+    if start>math.floor(req['max_seconds']*FPS):
+        raise ValueError(f'導演規劃 {start / FPS:.2f} 秒，超過片長上限 {req["max_seconds"]:g} 秒。')
     for seg in result:seg.update(song_seconds=start/FPS,segment_count=len(result),fixed_reference_settings=shared)
     return {'title':str(data.get('title') or '未命名短片')[:120],'duration':start/FPS,'segments':result,'shared_setup':shared}
 

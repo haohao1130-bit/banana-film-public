@@ -226,6 +226,7 @@ function beginRepeat(attempt) {
   if ([...$('seconds').options].some(option => Number(option.value) === attempt.seconds)) {
     $('seconds').value = String(attempt.seconds);
   }
+  $('settings').open = true;
   render();
   $('menu').focus();
 }
@@ -379,6 +380,10 @@ function renderComfyProgress(status, segment) {
   else if (sampling) label = 'H3 影片採樣';
   else if (/VAEDecode/i.test(task?.node ?? '')) label = 'H3 解碼影片';
   if (measured) label += ' · ' + task.value + ' / ' + task.max + (writing ? ' tokens' : ' 步');
+  if (measured && sampling && task.value < task.max &&
+      Number.isFinite(task.seconds_per_unit) && task.seconds_per_unit > 0) {
+    label += ' · 蕉彌預估採樣還要 ' + Math.ceil((task.max - task.value) * task.seconds_per_unit) + ' 秒';
+  }
   const stage = $('comfy-stage'), bar = $('comfy-count');
   if (stage.textContent !== label) stage.textContent = label;
   bar.hidden = !measured;
@@ -423,8 +428,10 @@ function render() {
   $('initial-settings').hidden = Boolean(job);
   $('shared-setup').hidden = Boolean(job);
   $('shared').disabled = working;
-  $('menu-label').textContent = !job ? '第一道菜單' : repeating ? '重炒菜單' : '下一道菜單';
-  const canCook = !job || (ready && (accepted || repeating));
+  const paused = ['error', 'cancelled', 'interrupted'].includes(status);
+  const canEdit = paused && dish && !accepted && !job.kitchen.serving;
+  $('menu-label').textContent = !job ? '第一道菜單' : repeating || canEdit ? '這道菜單' : '下一道菜單';
+  const canCook = !job || (ready && (accepted || repeating)) || (canEdit && repeating);
   $('cook').textContent = !job ? '開始炒菜' : repeating ? '重炒這道' : '繼續炒';
   $('cook').disabled = working || !canCook;
   $('menu').disabled = working || !canCook;
@@ -432,7 +439,9 @@ function render() {
   $('seconds').disabled = working;
   $('stop').hidden = !job || idle.has(status);
   $('stop').disabled = pending;
-  $('resume').hidden = !['error', 'cancelled', 'interrupted'].includes(status);
+  $('edit-dish').hidden = !canEdit || repeating;
+  $('edit-dish').disabled = working;
+  $('resume').hidden = !paused || repeating;
   $('resume').disabled = working;
   $('service').hidden = !(ready && accepted);
   $('serve').disabled = working;
@@ -567,6 +576,7 @@ $('menu-form').onsubmit = event => {
   perform(!job ? 'start' : repeating ? 'repeat' : 'append', {menu, seconds: Number($('seconds').value)});
 };
 $('serve').onclick = () => perform('serve', {upscale: $('upscale').checked});
+$('edit-dish').onclick = () => beginRepeat(latestDish().attempts.at(-1));
 $('resume').onclick = () => perform('resume');
 $('stop').onclick = () => perform('stop');
 $('restore-project').onchange = () => {

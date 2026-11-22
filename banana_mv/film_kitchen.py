@@ -27,14 +27,29 @@ def prepare(job, cfg, originals):
     attempt = latest(job)
     if kitchen.get('serving') or attempt['clips']:
         return
+    attempts = kitchen['dishes'][-1]['attempts']
+    request = job['request']
+    work = app.job_dir(job['id'])
+    if job['segments'] or len(attempts) > 1:
+        seconds = attempt['seconds']
+        request = dict(request, prompt=attempt['menu'], target_seconds=seconds,
+                       max_seconds=min(300., seconds + 1.5), timeline_tolerance=1.5,
+                       target_is_exact=True, duration_source='selector', authored_clip_commissions=False,
+                       authored_act_commissions=False)
+        work = work / 'kitchen' / str(len(job['segments']))
+        if len(attempts) > 1:
+            work = work.with_name(f'{work.name}-take-{len(attempts)}')
+        work.mkdir(parents=True, exist_ok=True)
     if not job['segments']:
         shared = job['request'].get('kitchen_shared_setup', '').strip()
+        if len(attempts) > 1:
+            request['prompt'] = '\n\n'.join(filter(None, (shared, attempt['menu'])))
         if shared:
             shared = film.map_story(job['request'], shared, len(originals))
             if not all(f'<Picture {index}>' in shared for index in range(1, len(originals) + 1)):
                 # Preserve explicit settings and let the planner fill omitted image bindings.
                 shared = None
-        plan = film.plan_film(cfg, job, originals, shared_setup=shared or None)
+        plan = film.plan_film(cfg, dict(job, request=request), originals, work=work, shared_setup=shared or None)
         job.update(segments=plan['segments'], shared_setup=plan['shared_setup'], duration=plan['duration'])
         if not job['request'].get('project_name'):
             job['title'] = plan['title']
@@ -42,10 +57,6 @@ def prepare(job, cfg, originals):
         return
 
     from banana_mv.film_act import split_clip_commissions
-    request = dict(job['request'], prompt=attempt['menu'], target_seconds=attempt['seconds'],
-                   max_seconds=attempt['seconds'] + 1.5, timeline_tolerance=1.5,
-                   target_is_exact=True, duration_source='selector', authored_clip_commissions=False,
-                   authored_act_commissions=False)
     explicit = split_clip_commissions(attempt['menu'], request['segment_seconds'])
     if explicit:
         request['authored_clip_commissions'] = True
@@ -57,8 +68,6 @@ def prepare(job, cfg, originals):
         }, ensure_ascii=False), request, len(originals))
         film.validate_planned_duration(plan, request)
     else:
-        work = app.job_dir(job['id']) / 'kitchen' / str(len(job['segments']))
-        work.mkdir(parents=True, exist_ok=True)
         plan = film.plan_film(cfg, dict(job, request=request), originals,
                               work=work, shared_setup=job['shared_setup'])
     previous = adopted(job)
@@ -90,7 +99,9 @@ def update(body, action):
     try:
         job = app.read_state(body['id'])
         kitchen = job.get('kitchen')
-        if not kitchen or job['status'] != 'kitchen_ready':
+        paused_repeat = (action == 'repeat' and job['status'] in ('error', 'cancelled', 'interrupted')
+                         and kitchen and not kitchen.get('serving'))
+        if not kitchen or (job['status'] != 'kitchen_ready' and not paused_repeat):
             raise ValueError('請從待試菜或待上菜的鐵板燒專案操作。')
         dishes = kitchen['dishes']
         current = dishes[-1]
@@ -143,6 +154,9 @@ def update(body, action):
         job.update(status='assembling' if serving else 'planning_story')
         job.pop('error', None)
         job.pop('error_stage', None)
+        job.pop('resuming', None)
+        if not serving:
+            job.pop('current', None)
         app.write_state(job)
         threading.Thread(target=film.worker, args=(job, cfg, originals), daemon=True).start()
         started = True
