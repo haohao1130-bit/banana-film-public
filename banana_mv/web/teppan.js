@@ -164,7 +164,7 @@ function render() {
     running: (rewriting ? '9B 正在備料 · ' : '鐵板加熱中 · ') + count + ' / ' + clips.length + ' 段完成',
     kitchen_ready: accepted ? '這道已採用，可以繼續炒或上菜。' : '出鍋了，先看看毛片。',
     assembling: '正在上菜，合成已採用的毛片…',
-    upscaling_1080p: '成片正在升頻至 2K…',
+    upscaling_1080p: '大火收汁・升頻 2K 中…',
     done: '上菜完成。',
     error: '製作暫停，完成的毛片已保存。',
     cancelled: '已停爐。',
