@@ -235,3 +235,12 @@ legend { color: var(--muted); }
   .composer-actions > button:not(#cook) { flex: 1 1 auto; }
   #references { grid-template-columns: 1fr; }
 }
+
+.estimate {
+  margin: .4rem 0 0;
+  padding: .5rem .7rem;
+  border-left: 3px solid #e9bf72;
+  background: rgba(233, 191, 114, .1);
+  border-radius: 6px;
+  font-size: .92rem;
+}

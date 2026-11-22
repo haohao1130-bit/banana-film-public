@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "308b3f91d68a0ec3c4417862fc96e232d27652849178ba985b4cf9a17203d198"
+      "sha256": "355c1460dfa033c0266426d23a71dde5931fdf67e0ce2486b3f2e9fca4ad67c9"
     },
     {
       "path": "banana_mv/film_actor_state.py",
@@ -72,7 +72,7 @@
     },
     {
       "path": "banana_mv/film_kitchen.py",
-      "sha256": "6602581c0e5dea242fc65be27a52c2c7254f793962a6ccbc025744441d783cb3"
+      "sha256": "b7bae2fff0065be3f9be35bf8b2ce7a37585d984dd6b47d7d3533936107e5f02"
     },
     {
       "path": "banana_mv/film_manual.py",
@@ -84,7 +84,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "793d30562a36e01ae8cd02c832c39f9d590517c38fd14c8fe02652e437437ac3"
+      "sha256": "b5ec33b0c89863bdc1e55836b76e285bc5967e9d2969f658b8a7b87072004205"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -143,6 +143,10 @@
       "sha256": "6d796130d4f0fe8e5ac5d3092d7dd87bc7e2d774fc54c16e7d43fddc5956b457"
     },
     {
+      "path": "banana_mv/teppan_timing.py",
+      "sha256": "1eade36e093f69cc5d5d5f44ae4a46d802af916908cc1c56afea72c47f5e5236"
+    },
+    {
       "path": "banana_mv/timed_slots.py",
       "sha256": "f7f3e9871ffb8c0c2d7173f4a0405e10666d0fa1d27807d5fb347ca3390299bc"
     },
@@ -172,15 +176,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "1fcbfee5d83cc7a989dfa87cf3a2dc890f8e85a34b3cc416f736707960a32f7d"
+      "sha256": "7f358a5aeea788d2e08300b56450f3ea9c9cbae27b8c14a95e3d620054555034"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "561c8a31b2d1f558b56a80118157aa533b8a31816321ceccfad2c13e4bf63eb5"
+      "sha256": "065108599b3c2ee9bcd0ea8c120ccc78b23da1b690e44ba6a09e031721570816"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "2cc4cc7ea65985f0085c62b14b176e5eb2ca113aee092f10ea79669a391fd618"
+      "sha256": "51a04819f8efab11b6d4f2645bfa5900da65aa421e777b61b280bc68d78c441f"
     },
     {
       "path": "docs/clip_review.md",
@@ -361,6 +365,10 @@
     {
       "path": "tests/test_takes.py",
       "sha256": "d63fc2e31ab5b89a47fed2c1262b3c7e3fda4693d7cbf6327cf229b1bf5e5495"
+    },
+    {
+      "path": "tests/test_teppan_timing.py",
+      "sha256": "6d0fe04a81a4bbfcd4e9ff748bc9a0d6cfdcc4c4b48f01b3aa141736a0bf0f66"
     },
     {
       "path": "tests/test_unified_direction.py",

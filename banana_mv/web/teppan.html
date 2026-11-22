@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=live-progress">
-  <script defer src="teppan.js?v=edit-failed-dish"></script>
+  <link rel="stylesheet" href="teppan.css?v=jiaomi-estimate">
+  <script defer src="teppan.js?v=jiaomi-estimate"></script>
 </head>
 <body>
   <header class="bar">
@@ -102,7 +102,7 @@
             <label class="check"><input type="checkbox" id="thinking" checked> 9B Thinking（16K）</label>
             <fieldset><legend>參考圖</legend><div id="references"></div></fieldset>
           </div>
-          <label>這道菜的秒數<select id="seconds"><option value="6">6 秒</option><option value="10" selected>10 秒</option><option value="20">20 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label>
+          <label>這道菜的秒數<select id="seconds"><option value="auto" selected>蕉彌估算</option><option value="6">6 秒</option><option value="10">10 秒</option><option value="20">20 秒</option><option value="30">30 秒</option><option value="60">60 秒</option></select></label>
         </div>
       </details>
       <div class="menu-composer">
@@ -116,6 +116,7 @@
           <p id="menu-image-empty" class="image-empty" role="status" hidden></p>
           <button id="menu-image-add" class="quiet image-add" type="button" hidden>選擇參考圖</button>
         </div>
+        <p id="estimate" class="estimate" role="status" aria-live="polite" hidden></p>
         <div class="composer-actions">
           <button id="edit-dish" class="quiet" type="button" hidden>修改這道菜</button>
           <button id="resume" class="quiet" type="button" hidden>繼續製作</button>

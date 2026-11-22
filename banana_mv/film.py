@@ -327,7 +327,8 @@ def validate_plan(raw,req,image_count):
         if exact_ten or authored_clip:
             # The 10S selector means exact DELIVERY length (240 frames at
             # 24fps), not the shorter native 5+17*k rendering grid.
-            if exact_ten and not authored_clip and i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8:
+            if (exact_ten and not authored_clip and not req.get('python_clip_windows')
+                    and i < len(rows)-1 and abs(seconds-10.0)>1/FPS+1e-8):
                 raise ValueError('10S 模式每個非最後片段都必須是完整 10 秒，僅短尾可縮短。')
             frames=requested
             from banana_mv.film_continuity import render_frames
@@ -336,7 +337,8 @@ def validate_plan(raw,req,image_count):
         else:
             frames=5+((requested-5)//17)*17
             model_frames=frames
-        minimum=req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic' and not authored_clip else 124/FPS
+        minimum=(req.get('dynamic_min_seconds',124/FPS) if req.get('segment_policy')=='dynamic'
+                 and not authored_clip and not req.get('python_clip_windows') else 124/FPS)
         if seconds<minimum-1e-8 or seconds>req['segment_seconds']+1e-8 or frames<math.ceil(minimum*FPS):
             raise ValueError(f"第 {i+1} 段排了 {seconds:g} 秒；合法範圍是 {minimum:.6f}–{req['segment_seconds']:g} 秒。"
                              '請拆分超限事件並保留因果、完整台詞與結束狀態；短鏡頭可放在同一生成段內。')
@@ -415,19 +417,25 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
     dish_seconds = source.get('requested_seconds') if req.get('kitchen_mode') else None
     single_dish = dish_seconds is not None and dish_seconds <= req['segment_seconds']
     planner = PLANNER
+    windows = None
     if dish_seconds is not None:
-        req = dict(req, max_seconds=dish_seconds, target_is_exact=True, timeline_tolerance=0)
+        # 蕉彌（Python）決定生成窗；9B 只分配戲，填的秒數一律不採用。
+        from banana_mv.teppan_timing import clip_windows
+        windows = clip_windows(dish_seconds, req['segment_seconds'])
+        req = dict(req, max_seconds=sum(windows) + 1e-6, target_seconds=sum(windows),
+                   target_is_exact=False, timeline_tolerance=1.0, python_clip_windows=True)
         source.update(max_seconds=dish_seconds, target_is_exact=True, fixed_dish_seconds=dish_seconds)
         planner += (
-            f'\nTEPPANYAKI MENU: The entire current dish has exactly {dish_seconds:g} seconds. '
-            'Use that duration as a hard filming budget. Stage the requested actions and lines with natural timing. '
+            f'\nTEPPANYAKI MENU: Python has already fixed this dish into {len(windows)} generation '
+            f'clip(s) of {windows} seconds. Return exactly {len(windows)} segments entries, in order; '
+            'Python overwrites every seconds value, so do not calculate durations. Give each entry only '
+            'the actions and complete lines that can be performed naturally inside its window. '
             'Overlap reactions, ambience and ongoing actions where appropriate. Cut redundant coverage and '
             'invent no additional events or lines. End at the last requested beat without adding a scene ending.'
         )
         if single_dish:
             planner += (
-                f' Return exactly one segments entry with seconds={dish_seconds:g}. '
-                'Camera cuts and movement belong inside that entry. Do not split this dish into multiple generation clips.'
+                ' Camera cuts and movement belong inside that single entry. Do not split this dish into multiple generation clips.'
             )
     fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if path.exists():
@@ -443,20 +451,34 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
         return verified
     parts=[('text',json.dumps(source,ensure_ascii=False))]+_pictures(originals)
     original_parts=list(parts)
-    for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,planner,parts,uuid.uuid4().hex[:8])
+    retries = min(req['rewrite_retries'], 2) if windows else req['rewrite_retries']
+    for attempt in range(retries+1):
+        attempt_cfg = cfg
+        if windows and attempt and cfg.get('rewriter', {}).get('thinking'):
+            # 重試只會是 JSON／格式問題，關掉 16K thinking 讓它快速交稿。
+            from banana_mv.services import DEFAULTS
+            attempt_cfg = dict(cfg, rewriter=dict(cfg['rewriter'], thinking=False,
+                                                  max_length=DEFAULTS['rewriter']['max_length']))
+        raw=app.backend.rewrite_local(attempt_cfg,planner,parts,uuid.uuid4().hex[:8])
         (work/f'director_attempt_{attempt:02d}.txt').write_text(raw,encoding='utf-8')
         try:
-            if shared_setup is not None:
+            if shared_setup is not None or windows:
                 data = parse_object(_text(raw))
-                data['shared_setup'] = shared_setup
+                if shared_setup is not None:
+                    data['shared_setup'] = shared_setup
+                if windows:
+                    from banana_mv.teppan_timing import fit_segments
+                    data['segments'], fitted = fit_segments(data.get('segments'), windows,
+                                                            req['segment_seconds'])
+                    if fitted != windows:
+                        req = dict(req, max_seconds=sum(fitted) + 1e-6, target_seconds=sum(fitted))
                 raw = json.dumps(data, ensure_ascii=False)
             plan=validate_plan(raw,req,len(originals))
             validate_planned_duration(plan,req)
             atomic_json(path,dict(plan,input_sha256=fingerprint))
             return plan
         except (ValueError,TypeError,KeyError) as error:
-            if attempt==req['rewrite_retries']:raise
+            if attempt==retries:raise
             invalid=[];missing_bindings=[]
             try:
                 rejected=parse_object(_text(raw))
@@ -481,17 +503,15 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
                                   + '共用設定 shared_setup 必須用標準 <Picture N> 標籤'
                                   '補齊 missing_reference_bindings 中所有已連接圖片的原始姓名／角色／用途對照；'
                                   '依使用者故事與圖片判斷，不得交換身分，也不要求所有參考角色每段都出場。'}
-            if dish_seconds is not None:
+            if windows:
                 repair['instruction'] = (
-                    f'整道菜固定 {dish_seconds:g} 秒。重新安排原有動作、反應及完整台詞，'
+                    f'這道菜已由 Python 切成 {len(windows)} 段（{windows} 秒），秒數不用你算。'
+                    '請回傳格式正確的完整 JSON，每段都要有 brief。重新安排原有動作、反應及完整台詞，'
                     '能同時發生的就重疊安排。刪掉重複內容與自行添加的劇情，不要只改秒數或加快念台詞。'
                     '保留固定角色綁定與共用設定，並回傳完整 JSON。'
                 )
                 if single_dish:
-                    repair['instruction'] += (
-                        f'只回傳一個 segments 項目，其 seconds 必須是 {dish_seconds:g}；'
-                        '切鏡留在同一段裡，不要新增生成段。'
-                    )
+                    repair['instruction'] += '只回傳一個 segments 項目；切鏡留在同一段裡，不要新增生成段。'
             parts=[*original_parts,('text','Previous rejected draft:\n'+raw),
                    ('text','Correct the delivery and return the complete JSON only. '+json.dumps(repair,ensure_ascii=False))]
 
@@ -653,6 +673,10 @@ def start(req):
         if not isinstance(menu, str) or not menu.strip():
             raise ValueError('請填寫第一道菜單。')
         req.update(auto_director=True, script_review=False, face_refine=False, upscale_1080p=False)
+        if req.get('max_seconds') == 'auto':
+            from banana_mv.teppan_timing import estimate_menu
+            req['max_seconds'] = estimate_menu(menu)['seconds']
+            req['kitchen_estimated'] = True
     sampling_steps=req.get('sampling_steps',8)
     if type(sampling_steps) is not int or sampling_steps not in (6,8):
         raise ValueError('採樣步數僅支援 6 或 8。')
@@ -996,7 +1020,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             else:
                 prompt_file=work/f'{i:02d}_prompt_v1.txt'
                 job['status']='running';seg['status']='rewriting';app.write_state(job)
-                if job['request'].get('manual_h3'):
+                if job['request'].get('manual_h3') or seg.get('manual_h3_prompt'):
                     prompt=seg['manual_h3_prompt']
                     if seg.get('continuity_context'):
                         prompt=('Already established before this clip; continue from its result without replaying it: '

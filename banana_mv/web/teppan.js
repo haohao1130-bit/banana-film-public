@@ -220,12 +220,51 @@ function video(src) {
   return node;
 }
 
+function dishSeconds() {
+  const value = $('seconds').value;
+  return value === 'auto' ? 'auto' : Number(value);
+}
+let estimateTimer, estimateSerial = 0;
+function formatWait(seconds) {
+  const minutes = Math.ceil(seconds / 60);
+  return minutes >= 60 ? Math.floor(minutes / 60) + ' 小時 ' + (minutes % 60) + ' 分' : minutes + ' 分鐘';
+}
+function scheduleEstimate() {
+  clearTimeout(estimateTimer);
+  const menu = $('menu').value.trim();
+  if (!menu || $('menu').disabled) {
+    $('estimate').hidden = true;
+    return;
+  }
+  estimateTimer = setTimeout(async () => {
+    const serial = ++estimateSerial;
+    try {
+      const result = await post('film/kitchen/estimate', {menu}, '蕉彌估價');
+      if (serial !== estimateSerial) return;
+      const auto = $('seconds').value === 'auto';
+      const lead = result.native_h3 ? '老闆，這是 H3 全咒，照你寫的分段直接上鐵板，不經 9B 改寫。'
+        : result.source === 'declared' ? '老闆，菜單有寫長度，照寫的出菜。' : '老闆，這道菜我看大概';
+      const body = result.seconds.toFixed(1) + ' 秒，切 ' + result.clips + ' 段（' +
+        result.windows.map(w => w.toFixed(1)).join('／') + ' 秒），約 ' +
+        formatWait(result.render_seconds) + '出菜。';
+      $('estimate').textContent = lead + (result.native_h3 ? '共 ' : '') + body +
+        (auto || result.native_h3 ? '' : '（目前手選 ' + $('seconds').value + ' 秒，送出會照手選的）');
+      $('estimate').hidden = false;
+    } catch {
+      if (serial === estimateSerial) $('estimate').hidden = true;
+    }
+  }, 450);
+}
+$('menu').addEventListener('input', scheduleEstimate);
+$('seconds').addEventListener('change', scheduleEstimate);
 function beginRepeat(attempt) {
   repeating = true;
   $('menu').value = attempt.menu;
-  if ([...$('seconds').options].some(option => Number(option.value) === attempt.seconds)) {
+  if (attempt.estimated) $('seconds').value = 'auto';
+  else if ([...$('seconds').options].some(option => Number(option.value) === attempt.seconds)) {
     $('seconds').value = String(attempt.seconds);
   }
+  scheduleEstimate();
   $('settings').open = true;
   render();
   $('menu').focus();
@@ -451,7 +490,8 @@ function render() {
   const resolution = request ? (request.width > 854 || (request.aspect !== '16:9' && request.width > 480) ? '720' : '480') : $('resolution').value;
   const steps = request?.sampling_steps ?? $('steps').value;
   const thinking = request?.rewriter_thinking ?? $('thinking').checked;
-  $('profile').textContent = resolution + 'P · ' + steps + ' 步 · ' + $('seconds').value + ' 秒' + (thinking ? ' · Thinking' : '');
+  const secondsLabel = $('seconds').value === 'auto' ? '蕉彌估秒' : $('seconds').value + ' 秒';
+  $('profile').textContent = resolution + 'P · ' + steps + ' 步 · ' + secondsLabel + (thinking ? ' · Thinking' : '');
   renderDishes();
   renderFinal();
   if (status === 'error') showFeedback(job.error);
@@ -498,6 +538,7 @@ async function perform(action, fields = {}) {
     }
     if (['start', 'append', 'repeat', 'adopt'].includes(action)) {
       $('menu').value = '';
+      $('estimate').hidden = true;
       $('settings').open = false;
       repeating = false;
     }
@@ -549,7 +590,7 @@ async function firstRequest() {
   return {
     project_name: $('name').value.trim(), prompt, image_slots: slots,
     kitchen_menu: menu, kitchen_shared_setup: shared,
-    max_seconds: Number($('seconds').value), duration_preference: 'selector',
+    max_seconds: dishSeconds(), duration_preference: 'selector',
     segment_seconds: 10, mode: 'chain', sound_mode: $('sound').value, aspect,
     width: aspect === '16:9' ? (resolution === 480 ? 854 : 1280) : resolution,
     sampling_steps: Number($('steps').value), rewriter_thinking: $('thinking').checked,
@@ -573,7 +614,7 @@ $('menu-form').onsubmit = event => {
   event.preventDefault();
   const menu = $('menu').value.trim();
   if (!menu) return;
-  perform(!job ? 'start' : repeating ? 'repeat' : 'append', {menu, seconds: Number($('seconds').value)});
+  perform(!job ? 'start' : repeating ? 'repeat' : 'append', {menu, seconds: dishSeconds()});
 };
 $('serve').onclick = () => perform('serve', {upscale: $('upscale').checked});
 $('edit-dish').onclick = () => beginRepeat(latestDish().attempts.at(-1));

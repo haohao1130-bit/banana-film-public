@@ -61,6 +61,9 @@ class Handler(app.Handler):
                 from banana_mv import film_kitchen
                 action = path.rsplit('/', 1)[-1]
                 body = self.body_json()
+                if action == 'estimate':
+                    from banana_mv.teppan_timing import estimate_menu
+                    return self.send_json(estimate_menu(body.get('menu')))
                 if action == 'start':
                     defaults = {'sampling_steps': 6, 'rewriter_thinking': True, 'width': 854,
                                 'segment_seconds': 10, 'max_seconds': 10, 'mode': 'chain',

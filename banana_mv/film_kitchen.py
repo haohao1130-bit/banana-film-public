@@ -21,6 +21,30 @@ def adopted(job):
             for index in dish['attempts'][dish['selected']]['clips']]
 
 
+def resolve_seconds(menu, seconds):
+    """'auto' 交給蕉彌估算；其餘照使用者選的秒數。回傳 (秒數, 是否估算)。"""
+    if seconds == 'auto':
+        from banana_mv.teppan_timing import estimate_menu
+        return estimate_menu(menu)['seconds'], True
+    return seconds, False
+
+
+def native_plan(job, request, clips, originals, title):
+    """使用者直接貼 MiniMax H3 六欄全咒：Python 只切段對時，不經 9B 改寫。"""
+    from banana_mv.direction_contract import validate_h3_sections
+    from banana_mv.film_manual import make_manual_plan
+    for index, (_, text) in enumerate(clips, 1):
+        try:
+            validate_h3_sections(text)
+        except ValueError as error:
+            raise ValueError(f'看起來是 H3 全咒，但第 {index} 段格式不完整：{error}') from None
+    total = sum(seconds for seconds, _ in clips)
+    manual = dict(request, target_seconds=total, max_seconds=min(300., total + 1.5),
+                  timeline_tolerance=1.5, target_is_exact=False)
+    return make_manual_plan(clips, manual, film.normalize_prompt, film.map_story,
+                            len(originals), film.validate_manual_sound, title=title)
+
+
 def prepare(job, cfg, originals):
     """Append an audition without rewriting existing clip indices or files."""
     kitchen = job['kitchen']
@@ -40,6 +64,17 @@ def prepare(job, cfg, originals):
         if len(attempts) > 1:
             work = work.with_name(f'{work.name}-take-{len(attempts)}')
         work.mkdir(parents=True, exist_ok=True)
+    from banana_mv.teppan_timing import native_h3_clips
+    native = native_h3_clips(attempt['menu'], attempt['seconds'], request['segment_seconds'])
+    if not job['segments'] and native:
+        plan = native_plan(job, request, native, originals, job['title'])
+        shared = job['request'].get('kitchen_shared_setup', '').strip()
+        shared = film.map_story(job['request'], shared, len(originals)) if shared else ''
+        job.update(segments=plan['segments'], shared_setup=shared or plan['shared_setup'],
+                   duration=plan['duration'])
+        attempt['clips'] = list(range(len(job['segments'])))
+        attempt['native_h3'] = True
+        return
     if not job['segments']:
         shared = job['request'].get('kitchen_shared_setup', '').strip()
         if len(attempts) > 1:
@@ -57,8 +92,11 @@ def prepare(job, cfg, originals):
         return
 
     from banana_mv.film_act import split_clip_commissions
-    explicit = split_clip_commissions(attempt['menu'], request['segment_seconds'])
-    if explicit:
+    explicit = None if native else split_clip_commissions(attempt['menu'], request['segment_seconds'])
+    if native:
+        plan = native_plan(job, request, native, originals, job['title'])
+        attempt['native_h3'] = True
+    elif explicit:
         request['authored_clip_commissions'] = True
         _, scenes = explicit
         plan = film.validate_plan(json.dumps({
@@ -136,9 +174,12 @@ def update(body, action):
             seconds = body.get('seconds')
             if not isinstance(text, str) or not 1 <= len(text.strip()) <= 30000:
                 raise ValueError('請輸入菜單，最多 30000 字。')
+            seconds, estimated = resolve_seconds(text, seconds)
             if type(seconds) not in (float, int) or not math.isfinite(seconds) or not 6 <= seconds <= 300:
                 raise ValueError('每道菜長度需介於 6–300 秒。')
             attempt = new_attempt(text.strip(), seconds)
+            if estimated:
+                attempt['estimated'] = True
             if action == 'repeat':
                 current['attempts'].append(attempt)
             else:
