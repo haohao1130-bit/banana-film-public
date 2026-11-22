@@ -60,7 +60,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "7f6ec29f76131287b74b27e48f512fa2d465213e0939180987147deb08bc84a1"
+      "sha256": "308b3f91d68a0ec3c4417862fc96e232d27652849178ba985b4cf9a17203d198"
     },
     {
       "path": "banana_mv/film_actor_state.py",

@@ -384,6 +384,7 @@ def validate_planned_duration(plan,req):
 def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
     work=work if work is not None else app.job_dir(job['id'])
     path=work/'director_plan.json';req=job['request']
+    original_req = req
     source={'story':map_story(req,req['prompt'],len(originals)),
             'reference_count':len(originals),
             'max_seconds':req['max_seconds'],'max_clip_seconds':req['segment_seconds'],
@@ -410,10 +411,31 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
                               if req['auto_director'] else 'FAITHFUL: organize and stage only the supplied events and dialogue; do not invent new plot or lines.')
         source['genres']=[GENRES[g] for g in req.get('genres',[])]
         source['reference_slots']={f'@圖片{k}':f'<Picture {v}>' for k,v in slot_map(req).items()}
+    legacy_fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    dish_seconds = source.get('requested_seconds') if req.get('kitchen_mode') else None
+    single_dish = dish_seconds is not None and dish_seconds <= req['segment_seconds']
+    planner = PLANNER
+    if dish_seconds is not None:
+        req = dict(req, max_seconds=dish_seconds, target_is_exact=True, timeline_tolerance=0)
+        source.update(max_seconds=dish_seconds, target_is_exact=True, fixed_dish_seconds=dish_seconds)
+        planner += (
+            f'\nTEPPANYAKI MENU: The entire current dish has exactly {dish_seconds:g} seconds. '
+            'Use that duration as a hard filming budget. Stage the requested actions and lines with natural timing. '
+            'Overlap reactions, ambience and ongoing actions where appropriate. Cut redundant coverage and '
+            'invent no additional events or lines. End at the last requested beat without adding a scene ending.'
+        )
+        if single_dish:
+            planner += (
+                f' Return exactly one segments entry with seconds={dish_seconds:g}. '
+                'Camera cuts and movement belong inside that entry. Do not split this dish into multiple generation clips.'
+            )
     fingerprint=hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if path.exists():
         saved=json.loads(path.read_text(encoding='utf-8'))
-        if saved.get('input_sha256')!=fingerprint:raise ValueError('故事與已保存大綱不一致，請建立新作品。')
+        if saved.get('input_sha256') == legacy_fingerprint:
+            req = original_req
+        elif saved.get('input_sha256') != fingerprint:
+            raise ValueError('故事與已保存大綱不一致，請建立新作品。')
         verified=validate_plan(json.dumps({'title':saved['title'],'shared_setup':saved.get('shared_setup',''),'segments':[
             {'seconds':s['seconds'],'mode':s['director_mode'],'brief':s['director_plan']['event']}
             for s in saved['segments']]}),req,len(originals))
@@ -422,7 +444,7 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
     parts=[('text',json.dumps(source,ensure_ascii=False))]+_pictures(originals)
     original_parts=list(parts)
     for attempt in range(req['rewrite_retries']+1):
-        raw=app.backend.rewrite_local(cfg,PLANNER,parts,uuid.uuid4().hex[:8])
+        raw=app.backend.rewrite_local(cfg,planner,parts,uuid.uuid4().hex[:8])
         (work/f'director_attempt_{attempt:02d}.txt').write_text(raw,encoding='utf-8')
         try:
             if shared_setup is not None:
@@ -459,6 +481,17 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
                                   + '共用設定 shared_setup 必須用標準 <Picture N> 標籤'
                                   '補齊 missing_reference_bindings 中所有已連接圖片的原始姓名／角色／用途對照；'
                                   '依使用者故事與圖片判斷，不得交換身分，也不要求所有參考角色每段都出場。'}
+            if dish_seconds is not None:
+                repair['instruction'] = (
+                    f'整道菜固定 {dish_seconds:g} 秒。重新安排原有動作、反應及完整台詞，'
+                    '能同時發生的就重疊安排。刪掉重複內容與自行添加的劇情，不要只改秒數或加快念台詞。'
+                    '保留固定角色綁定與共用設定，並回傳完整 JSON。'
+                )
+                if single_dish:
+                    repair['instruction'] += (
+                        f'只回傳一個 segments 項目，其 seconds 必須是 {dish_seconds:g}；'
+                        '切鏡留在同一段裡，不要新增生成段。'
+                    )
             parts=[*original_parts,('text','Previous rejected draft:\n'+raw),
                    ('text','Correct the delivery and return the complete JSON only. '+json.dumps(repair,ensure_ascii=False))]
 
@@ -476,6 +509,12 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     task={'seconds':seg['seconds'],'style':req['visual_style'],'sound_mode':req['sound_mode'],
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
+    if job.get('kitchen'):
+        task['timing_instruction'] = (
+            f'All camera cuts, motion, performance and complete spoken lines must fit in the '
+            f'{seg["seconds"]:g}-second clip. Budget time for natural delivery and overlap simultaneous '
+            'actions when appropriate. Do not add setup, extra dialogue or an ending beyond the commission.'
+        )
     total=seg.get('segment_count') or len(job.get('segments',[])) or 1
     final=not job.get('kitchen') and seg['index']==total-1
     first = previous_clip_index(seg) is None
