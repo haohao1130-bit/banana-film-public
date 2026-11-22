@@ -90,6 +90,7 @@ function imageReferences() {
   });
 }
 function addImages(files) {
+  if (files.length) showFeedback('');
   for (const file of files) {
     const free = localSlots.indexOf(null);
     if (free < 0) {
@@ -141,16 +142,32 @@ function renderReferences() {
   }
   $('refs-locked').hidden = !job;
 }
-function pickInto(index) {
-  const picker = el('input', {attrs: {type: 'file', accept: 'image/png,image/jpeg,image/webp'}});
-  picker.onchange = () => { if (picker.files[0]) setSlot(index, picker.files[0]); };
+// 只用一個固定掛在頁面上的選檔元件：手機開相簿要好幾秒，臨時建立的元件可能被回收，選完圖就沒反應。
+let pickTarget = null;
+function openPicker(index = null) {
+  const picker = $('image-picker');
+  pickTarget = index;
+  picker.multiple = index === null;
+  picker.value = '';
   picker.click();
 }
-$('add-image').onclick = () => $('image-picker').click();
-$('image-picker').onchange = () => {
-  addImages([...$('image-picker').files]);
-  $('image-picker').value = '';
-};
+function pickInto(index) {
+  openPicker(index);
+}
+function takePicked() {
+  const picker = $('image-picker');
+  const files = [...picker.files];
+  if (!files.length) return;
+  const images = files.filter(file => /^image\/(png|jpeg|webp)$/i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name));
+  if (images.length < files.length) showFeedback('只支援 PNG、JPG、WebP 圖片；其他格式已略過。');
+  if (pickTarget !== null && images[0]) setSlot(pickTarget, images[0]);
+  else addImages(images);
+  pickTarget = null;
+  picker.value = '';
+}
+$('add-image').onclick = () => openPicker();
+$('image-picker').addEventListener('change', takePicked);
+$('image-picker').addEventListener('input', takePicked);
 
 /* ---------- @ 選圖 ---------- */
 function bindImageMentions(field, fieldLabel) {
@@ -225,7 +242,7 @@ function bindImageMentions(field, fieldLabel) {
       else select((mention.index + (event.key === 'ArrowUp' ? -1 : 1) + rows.length) % rows.length, true);
     }
   });
-  add.onclick = () => { close(); $('image-picker').click(); };
+  add.onclick = () => { close(); openPicker(); };
   return close;
 }
 const closeMenuMention = bindImageMentions('menu', '菜單');
