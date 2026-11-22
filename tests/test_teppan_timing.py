@@ -41,6 +41,18 @@ def authored_act_menu():
     return '\r\n'.join(lines)
 
 
+def numbered_menu():
+    lines = ['《投胎前的最後一頓晚餐》精簡版', '總長 4 分鐘，共 24 段，每段 10 秒',
+             '角色代號：', 'S1 小巫（店主）／S6 白髮老人']
+    for i in range(1, 25):
+        lines.extend(['==============================', f'第{i:02d}段：料理第 {i} 幕',
+                      '==============================', '[0-4秒] S1停下工作望向來客。',
+                      '[4-7秒] S6輕輕抬頭。', '[7-10秒] 鏡頭推近。',
+                      'S6（低聲）：「我們想在投胎前，吃頓晚飯。」'])
+    lines.append('END')
+    return '\r\n'.join(lines)
+
+
 class ClipWindowTests(unittest.TestCase):
     def test_every_window_is_legal_and_never_over_ten(self):
         for total in [6, 9.5, 10, 10.4, 12, 15, 20, 21, 25, 33.3, 60, 299]:
@@ -62,6 +74,15 @@ class EstimateTests(unittest.TestCase):
         self.assertEqual((result['seconds'], result['source']), (240.0, 'timecode'))
         self.assertEqual(result['windows'], [10.0] * 24)
 
+    def test_numbered_menu_reads_local_windows_even_without_declared_total(self):
+        menu = numbered_menu().replace('總長 4 分鐘，共 24 段，每段 10 秒', '')
+        result = estimate_menu(menu)
+        self.assertEqual((result['seconds'], result['clips'], result['source']), (240.0, 24, 'timecode'))
+        self.assertEqual(result['windows'], [10.0] * 24)
+        with self.assertRaisesRegex(ValueError, '第 01 段'):
+            estimate_menu(menu.replace('[4-7秒]', '[5-7秒]', 1))
+        with self.assertRaisesRegex(ValueError, '第 01 段'):
+            estimate_menu(menu.replace('[7-10秒]', '[7-11秒]', 1))
     def test_dialogue_and_actions_raise_estimate(self):
         short = estimate_menu('蕉彌翻炒牛排。')
         long = estimate_menu('蕉彌翻炒牛排。蕉大師走進店裡坐下。蕉彌抬頭。'
@@ -225,6 +246,22 @@ class KitchenPlanTests(unittest.TestCase):
             self.assertNotIn('ACT 02', first)
             self.assertNotIn('━', last)
             self.assertNotIn('END', last)
+
+    def test_numbered_menu_keeps_local_shot_clock_and_cast(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, _, job, _ = self.fixture(Path(tmp), 240)
+        plan = film_kitchen.authored_act_plan(job['request'], numbered_menu(), '', 0, 't')
+        self.assertEqual([s['seconds'] for s in plan['segments']], [10.0] * 24)
+        self.assertIn('S6 白髮老人', plan['shared_setup'])
+        brief = plan['segments'][0]['director_plan']['event']
+        self.assertIn('[7-10秒]', brief)
+        self.assertIn('S6（低聲）：「我們想在投胎前，吃頓晚飯。」', brief)
+        self.assertNotIn('第 2 幕', brief)
+        self.assertNotIn('====', brief)
+
+    def test_cast_scan_includes_roles_in_a_range(self):
+        shared = '\n'.join(f'<Picture {i}> = 角色{i} = S{i}' for i in range(1, 9))
+        self.assertEqual(film.kitchen_absent_pictures('S1到S5五人站在門口。', shared), {6, 7, 8})
 
 
 if __name__ == '__main__':

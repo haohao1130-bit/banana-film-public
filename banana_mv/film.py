@@ -521,6 +521,7 @@ def plan_film(cfg,job,originals,*,work=None,shared_setup=None):
 _CAST_BINDING = re.compile(r'<Picture (\d+)>[ \t]*[=＝][ \t]*([^\s=＝，,。；;（(]+)')
 _CAST_ROLE = re.compile(_CAST_BINDING.pattern + r'[ \t]*[=＝][ \t]*(S[1-8])(?![0-9])', re.I)
 _ROLE_MENTION = re.compile(r'(?<![A-Za-z0-9])S[1-8](?![A-Za-z0-9])', re.I)
+_ROLE_RANGE = re.compile(r'(?<![A-Za-z0-9])S([1-8])[ \t]*(?:到|至)[ \t]*S([1-8])(?![A-Za-z0-9])', re.I)
 _PICTURE_TAG = re.compile(r'<Picture (\d+)>')
 _ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:]?|[：:])')
 
@@ -531,6 +532,8 @@ def kitchen_absent_pictures(brief, fixed):
              if not re.search(r'場景|環境|背景|場地', name)}
     mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}
     mentioned_roles = {role.upper() for role in _ROLE_MENTION.findall(brief)}
+    for first, last in _ROLE_RANGE.findall(brief):
+        mentioned_roles.update(f'S{role}' for role in range(int(first), int(last) + 1))
     mentioned.update(int(n) for n, _, role in _CAST_ROLE.findall(fixed or '')
                      if role.upper() in mentioned_roles)
     present = {n for n, name in roles.items() if n in mentioned or name in brief}
