@@ -38,13 +38,17 @@ class Handler(app.Handler):
         path=urllib.parse.urlparse(self.path).path
         if path=='/api/upload':
             try:
+                # Consume the incoming body before a busy response so mobile
+                # clients can receive the JSON instead of a closed connection.
+                body=self.read_body()
                 if not app.GPU_LOCK.acquire(blocking=False):
                     raise ValueError('短片執行中，請完成後再上傳參考圖。')
                 try:
                     filename=urllib.parse.unquote(self.headers.get('X-Filename',''))
-                    return self.send_json(app.backend.add_asset(app.backend.load_config(),filename,self.read_body(),image_only=True))
+                    asset=app.backend.add_asset(app.backend.load_config(),filename,body,image_only=True)
                 finally:
                     app.GPU_LOCK.release()
+                return self.send_json(asset)
             except Exception as error:return self.send_json({'error':str(error)},400)
         if path.startswith('/api/film/kitchen/'):
             try:
