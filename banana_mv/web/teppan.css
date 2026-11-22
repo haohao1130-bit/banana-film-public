@@ -244,3 +244,15 @@ legend { color: var(--muted); }
   border-radius: 6px;
   font-size: .92rem;
 }
+
+/* 蕉彌：平常合掌待客，開工換成拿鍋鏟 */
+.gassho, .work-pose { transition: opacity .25s ease; }
+.work-pose { opacity: 0; }
+.counter:not([data-phase="idle"]) .gassho,
+.counter.is-surprised .gassho { opacity: 0; }
+.counter:not([data-phase="idle"]) .work-pose,
+.counter.is-surprised .work-pose { opacity: 1; }
+.tail { transform-box: fill-box; transform-origin: 0% 100%; }
+.counter[data-phase="idle"] .tail { animation: tail-sway 2.6s ease-in-out infinite alternate; }
+@keyframes tail-sway { from { transform: rotate(-4deg); } to { transform: rotate(5deg); } }
+@media (prefers-reduced-motion: reduce) { .counter .tail { animation: none; } }

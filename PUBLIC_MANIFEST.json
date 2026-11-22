@@ -176,11 +176,11 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "7f358a5aeea788d2e08300b56450f3ea9c9cbae27b8c14a95e3d620054555034"
+      "sha256": "434abd87f92cccc88b1719f98fb5ac282eea4c4f700ba1444b81b01f3acb7983"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "065108599b3c2ee9bcd0ea8c120ccc78b23da1b690e44ba6a09e031721570816"
+      "sha256": "aaf1b39c3ec0f07640e933872e4c6e59da6d28d14b6491f2abdd5cae8b223e4a"
     },
     {
       "path": "banana_mv/web/teppan.js",
