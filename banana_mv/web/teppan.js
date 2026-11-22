@@ -752,6 +752,12 @@ function renderPresets() {
     return el('div', {className: 'preset' + (preset.name === activePreset ? ' active' : '')}, [load, remove]);
   }));
   $('preset-empty').hidden = presets.length > 0;
+  updateSaveLabel();
+}
+function updateSaveLabel() {
+  const name = $('preset-name').value.trim();
+  const existing = presets.some(preset => preset.name === name);
+  $('save-preset').textContent = existing ? `更新「${name}」` : '存成新組合';
 }
 function loadPreset(preset) {
   if (job) return;
@@ -791,6 +797,7 @@ async function savePreset() {
   }
 }
 $('save-preset').onclick = savePreset;
+$('preset-name').addEventListener('input', updateSaveLabel);
 $('preset-name').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); savePreset(); }
 });

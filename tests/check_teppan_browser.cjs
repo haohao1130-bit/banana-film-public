@@ -89,6 +89,9 @@ const server = http.createServer((req, res) => {
   await page.click('.preset-load:has-text("異世界食堂")');
   assert.equal(await page.inputValue('#shared'), '@圖片1=小巫=S1，S1=溫柔甜美女聲。');
   assert.equal(await page.locator('.ref-slot.filled').count(), 1);
+  assert.equal(await page.locator('#save-preset').textContent(), '更新「異世界食堂」');
+  await page.fill('#preset-name', '異世界食堂 第二季');
+  assert.equal(await page.locator('#save-preset').textContent(), '存成新組合');
   await page.click('#sheet-shared [data-close]');
   await page.setInputFiles('#image-picker', png);
   await page.waitForFunction(() => document.getElementById('shared-count').textContent === '2');
