@@ -191,6 +191,20 @@ function updateFilmControls(){
 $('auto-director').addEventListener('change',updateFilmControls);
 $('max-seconds').addEventListener('change',updateFilmControls);
 updateFilmControls();
+// 執行環境預設（Colab：720P・10 秒・6 步・自動導演＋Thinking，沒有 RTX VSR 所以不顯示 2K 升頻）。
+(async()=>{
+ let d;try{d=await api('api/film/defaults',{cache:'no-store'});}catch{return;}
+ if(d.resolution)$('resolution').value=d.resolution+'p';
+ if(d.sampling_steps)$('sampling_steps').value=String(d.sampling_steps);
+ if(d.segment_seconds)$('segment').value=String(d.segment_seconds);
+ if(typeof d.auto_director==='boolean')$('auto-director').checked=d.auto_director;
+ if(typeof d.rewriter_thinking==='boolean')$('rewriter_thinking').checked=d.rewriter_thinking;
+ if(d.upscale_available===false){
+  const box=$('upscale_1080p'),label=box.closest('label');box.checked=false;label.hidden=true;
+  const help=label.nextElementSibling;if(help?.classList.contains('muted'))help.hidden=true;
+ }
+ updateFilmControls();
+})();
 
 // The 5070 backend exposes a new instance ID on every real furnace restart.
 // Browser localStorage survives process restarts, so reattach an old job only

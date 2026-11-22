@@ -17,6 +17,7 @@ from http.server import ThreadingHTTPServer
 
 os.environ.setdefault("BANANA_DATA", r"F:\BANANA_FILM_5070_STUDIO\Media")
 os.environ.setdefault("BANANA_PORT", "8193")
+os.environ.setdefault("BANANA_FILM_PROFILE", "5070")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from banana_mv import film_server as colab, server as app

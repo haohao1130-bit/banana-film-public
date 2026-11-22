@@ -884,8 +884,25 @@ $('new-project').onclick = () => {
   projects();
 };
 
+// 執行環境預設（Colab：720P、沒有 2K 升頻；5070：照網頁原本的 480P＋升頻）。
+async function applyProfileDefaults() {
+  let defaults;
+  try { defaults = await (await fetch('api/film/defaults', {cache: 'no-store'})).json(); } catch { return; }
+  if (!defaults || typeof defaults !== 'object') return;
+  if (defaults.resolution) $('resolution').value = String(defaults.resolution);
+  if (defaults.sampling_steps) $('steps').value = String(defaults.sampling_steps);
+  if (typeof defaults.rewriter_thinking === 'boolean') $('thinking').checked = defaults.rewriter_thinking;
+  if (defaults.upscale_available === false) {
+    $('upscale').checked = false;
+    $('upscale').closest('label').hidden = true;
+  }
+  syncPills();
+  render();
+}
+
 syncPills();
 fetchPresets();
+applyProfileDefaults();
 const saved = localStorage.getItem(storageKey);
 if (saved) {
   restoring = true;

@@ -13,6 +13,20 @@ from banana_mv import server as app, film
 from banana_mv.takes import describe
 
 
+# 同一份網頁給 Colab 與 5070 用；各環境的預設值由伺服器告訴網頁。
+# Colab：沒有 RTX VSR（不能升頻 2K），所以直接 720P 生成。
+PROFILE_DEFAULTS = {
+    'colab': {'profile': 'colab', 'resolution': 720, 'sampling_steps': 6, 'segment_seconds': 10,
+              'auto_director': True, 'rewriter_thinking': True, 'upscale_available': False},
+    '5070': {'profile': '5070', 'upscale_available': True},
+}
+
+
+def profile_defaults():
+    profile = os.environ.get('BANANA_FILM_PROFILE', 'colab')
+    return dict(PROFILE_DEFAULTS.get(profile, PROFILE_DEFAULTS['colab']))
+
+
 class Handler(app.Handler):
     def comfy_progress(self, job_id):
         return None
@@ -49,6 +63,7 @@ class Handler(app.Handler):
             except (ValueError,OSError) as error:
                 return self.send_json({'error':str(error)},404)
         if path=='/api/health':return self.send_json({'service':'banana-film','standalone':True})
+        if path=='/api/film/defaults':return self.send_json(profile_defaults())
         return super().do_GET()
 
     def do_POST(self):

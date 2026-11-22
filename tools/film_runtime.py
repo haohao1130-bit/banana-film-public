@@ -40,7 +40,7 @@ def launch(ns,save_to_drive=True):
     except urllib.error.HTTPError:raise RuntimeError('8191 已有其他前端，請用新的執行階段。') from None
     except urllib.error.URLError:
         base.launch_once(ns,'banana_film_frontend_process',[sys.executable,'-m','banana_mv.film_server'],cwd=ROOT,
-                         env=dict(os.environ,BANANA_DATA=str(data),BANANA_PORT='8191'),log_path='/content/banana_film.log')
+                         env=dict(os.environ,BANANA_DATA=str(data),BANANA_PORT='8191',BANANA_FILM_PROFILE='colab'),log_path='/content/banana_film.log')
     base.wait_http(health_url,timeout=180,process=ns.get('banana_film_frontend_process'),label='映像製片所',log_path='/content/banana_film.log')
     with urllib.request.urlopen(health_url,timeout=5) as response:health=json.load(response)
     if health.get('service')!='banana-film':raise RuntimeError('短片服務辨識失敗。')

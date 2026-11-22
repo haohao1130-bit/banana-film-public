@@ -88,7 +88,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "747de6c3897c2c9d7df10a404615b5ab9b47e550a7aed175c6973c272b111394"
+      "sha256": "1d8c33f9d3ae3ac7bfd12c2200e63c6256f13b9197ff23412ceb2124707da979"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -164,11 +164,11 @@
     },
     {
       "path": "banana_mv/web/film.html",
-      "sha256": "904b2b4415ca973d47c4535bafdfaafb31b21be1063ad9edaf958c15fdc5cf1b"
+      "sha256": "8147372d6c740d715ad10c620607da4448d2cfdc2b7c8a8486d23c6e9a820683"
     },
     {
       "path": "banana_mv/web/film.js",
-      "sha256": "ab2d62caae26c83246d78886c0517c15dea359644e893af33857b1accc770d51"
+      "sha256": "bf84589728c197832d7993f78e7db339c5c4a61d162cd462edcae8b6aa7aca14"
     },
     {
       "path": "banana_mv/web/film_review.js",
@@ -188,11 +188,11 @@
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "a41457e47ac441d365d793aa845eb914a85416b3e75abf603ba9b7617739d87c"
+      "sha256": "7bd381416d9f301645d1eb6e550c75b7bb0161df07b6b71b1d57d0c5dfa0d6b2"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "fd10cbd8c084db1382bf6c805679c182949ccca5d8fbe566c4ff95ef788cecb4"
+      "sha256": "f7e6bb5e4781e6da639daf6068c6f5b506711a270c3e6bcdaf7372b035952987"
     },
     {
       "path": "docs/clip_review.md",
@@ -343,6 +343,10 @@
       "sha256": "a94f733a8023a665ac22c891451e491ae8fab7a2a9f433e91e9b4b0f92735153"
     },
     {
+      "path": "tests/test_profile_defaults.py",
+      "sha256": "8a5b1f38cfb99f2a5e524699b18a35ed1e7daf22643286a175d6d2901247635a"
+    },
+    {
       "path": "tests/test_prompt_quality.py",
       "sha256": "766523f7081aa1b5b996b700c205d825234f05643648388b6579c38eace2ccec"
     },
@@ -416,7 +420,7 @@
     },
     {
       "path": "tools/film_runtime.py",
-      "sha256": "68f784f7a14e9a6e298ce01fcbe8ce2965b6bb74a0c17f8c515ee588b843e810"
+      "sha256": "9c16d62275ce6205b699d71f18c638271d9fe8073ba5bed99ab10c37cdc52acc"
     },
     {
       "path": "tools/public_clone.py",
