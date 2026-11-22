@@ -84,7 +84,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "b5ec33b0c89863bdc1e55836b76e285bc5967e9d2969f658b8a7b87072004205"
+      "sha256": "6512d0c22634d99c3573d947e625876c53f7567ee4af716fcf711e957a03e82b"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -143,6 +143,10 @@
       "sha256": "05871c29255299cfa70dbef260f073b57934b591fb1858306f54577a33db441a"
     },
     {
+      "path": "banana_mv/teppan_presets.py",
+      "sha256": "17c87251409d9b132b56743798b138d09be3ea7e73b32c5ab25b7aee5eac7228"
+    },
+    {
       "path": "banana_mv/teppan_timing.py",
       "sha256": "1eade36e093f69cc5d5d5f44ae4a46d802af916908cc1c56afea72c47f5e5236"
     },
@@ -176,15 +180,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "0e0fa6fecc04e6fb6cfd765d89ad58ede21f3340f3168b0b24203ff945a5d154"
+      "sha256": "5576346bc01fb592d183b1b2423eaa572f6e14ac91fa3d31cfe600208711d60f"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "2c5188075215969f2ae08fed8ce223e7388912d2675947d8bfab35cc83bbb999"
+      "sha256": "6f7a6e01116a3b814ab05a95dc5270146fdb3dcd848111aaee64356c2289975f"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "ce5c7dce940e7e733c85188c5f418228eb3d9a33af16f156031f9c9c1c7ba637"
+      "sha256": "f1c351f3fcb08a4397be3948ba914c38168a31d40a47ef5bac576772b2eb69b5"
     },
     {
       "path": "docs/clip_review.md",
@@ -228,7 +232,7 @@
     },
     {
       "path": "tests/check_teppan_browser.cjs",
-      "sha256": "0d692e80e484e8acadb94df6d68a50a93e8485e93a2ed47704d1af2277634547"
+      "sha256": "0527ac99e85d6f1c0f8219fb7252bbd1547e64e43234fd6abec78122bb4a5862"
     },
     {
       "path": "tests/check_ui.cjs",
@@ -377,6 +381,10 @@
     {
       "path": "tests/test_takes.py",
       "sha256": "d63fc2e31ab5b89a47fed2c1262b3c7e3fda4693d7cbf6327cf229b1bf5e5495"
+    },
+    {
+      "path": "tests/test_teppan_presets.py",
+      "sha256": "630209309246731c2377decf2e33253a041011c05b543a07013477519ac25bed"
     },
     {
       "path": "tests/test_teppan_timing.py",

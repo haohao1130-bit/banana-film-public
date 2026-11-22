@@ -37,6 +37,16 @@ class Handler(app.Handler):
             if job.get('kitchen') and job['status'] in ('planning_story', 'running'):
                 view['comfy_progress']=self.comfy_progress(job_id)
             return self.send_json(view)
+        if path=='/api/film/kitchen/presets':
+            from banana_mv import teppan_presets
+            return self.send_json(teppan_presets.list_presets())
+        if path=='/api/film/kitchen/asset':
+            try:
+                from banana_mv import teppan_presets
+                asset_id=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get('id',[''])[0]
+                return self.send_file(teppan_presets.image_asset(asset_id)[1])
+            except (ValueError,OSError) as error:
+                return self.send_json({'error':str(error)},404)
         if path=='/api/health':return self.send_json({'service':'banana-film','standalone':True})
         return super().do_GET()
 
@@ -61,6 +71,10 @@ class Handler(app.Handler):
                 from banana_mv import film_kitchen
                 action = path.rsplit('/', 1)[-1]
                 body = self.body_json()
+                if action in ('preset_save', 'preset_delete'):
+                    from banana_mv import teppan_presets
+                    handler = teppan_presets.save_preset if action == 'preset_save' else teppan_presets.delete_preset
+                    return self.send_json(handler(body))
                 if action == 'estimate':
                     from banana_mv.teppan_timing import estimate_menu
                     return self.send_json(estimate_menu(body.get('menu')))

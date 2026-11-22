@@ -146,6 +146,19 @@ progress { width: 100%; height: 6px; accent-color: var(--gold); margin-top: 4px;
 .ref-clear { position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 13px; border: 0; background: #000b; color: #fff; font-size: .8rem; z-index: 1; }
 .sheet.locked .initial { opacity: .5; pointer-events: none; }
 
+.preset-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.preset { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 22px; background: var(--panel-2); overflow: hidden; }
+.preset-load { min-height: 44px; padding: 0 14px; border: 0; background: transparent; font-weight: 600; text-align: left; }
+.preset-load small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; }
+.preset-delete { min-width: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--muted); }
+.preset-delete.confirm { background: #b52932; color: #fff; padding: 0 10px; }
+.preset.active { border-color: var(--gold); }
+.preset-feedback { margin: 6px 0 0; font-size: .85rem; color: var(--gold); }
+.preset-feedback:empty { display: none; }
+.preset-save { display: flex; gap: 8px; margin-top: 14px; }
+.preset-save .btn { flex: 0 0 auto; white-space: nowrap; }
+.preset-save input { flex: 1 1 auto; min-width: 0; min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); padding: 8px 10px; }
+
 /* 蕉彌動畫 */
 .chef-motion, .spatula, .flames { transform-box: fill-box; }
 .chef-motion, .flames { transform-origin: center bottom; }

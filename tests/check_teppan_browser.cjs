@@ -5,7 +5,7 @@ const web = path.resolve('banana_mv/web');
 const shots = process.env.TEPPAN_SHOTS;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
-let job = null, polls = 0;
+let job = null, polls = 0, uploads = 0, presets = [];
 const requests = [];
 function makeJob(menu, seconds) {
   return {id: 'job1', title: '鐵板測試', status: 'planning_story', request: {aspect: '9:16', width: 480, sampling_steps: 6,
@@ -29,7 +29,13 @@ const server = http.createServer((req, res) => {
     if (url.startsWith('/api/')) requests.push([url, body]);
     if (url === '/api/film/kitchen/projects') return json([]);
     if (url === '/api/film/kitchen/estimate') return json({seconds: 16, windows: [10, 6], clips: 2, render_seconds: 180, source: 'estimate', native_h3: false});
-    if (url === '/api/upload') return json({id: 'a1'});
+    if (url === '/api/upload') return json({id: 'a' + (++uploads)});
+    if (url === '/api/film/kitchen/presets') return json(presets);
+    if (url === '/api/film/kitchen/asset') { res.setHeader('Content-Type', 'image/png'); return res.end(PNG); }
+    if (url === '/api/film/kitchen/preset_save') {
+      const b = JSON.parse(body); presets = presets.filter(p => p.name !== b.name);
+      presets.unshift({id: 'p' + presets.length, missing: [], ...b}); return json(presets);
+    }
     if (url === '/api/mv/reference') { res.setHeader('Content-Type', 'image/png'); return res.end(PNG); }
     if (url === '/api/film/kitchen/start') { const b = JSON.parse(body); job = makeJob(b.kitchen_menu, b.max_seconds); polls = 0; return json(job); }
     if (url === '/api/film/kitchen/adopt') { job.kitchen.dishes.at(-1).selected = JSON.parse(body).attempt; return json(job); }
@@ -69,9 +75,23 @@ const server = http.createServer((req, res) => {
   await page.waitForSelector('.attachment img');
   assert.equal(await page.locator('#shared-count').textContent(), '1');
   await page.click('#open-shared');
-  await page.fill('#shared', '@圖片1 是蕉彌');
+  await page.fill('#shared', '@圖片1=小巫=S1，S1=溫柔甜美女聲。');
+  await page.fill('#preset-name', '異世界食堂');
+  await page.click('#save-preset');
+  await page.waitForSelector('.preset-load:has-text("異世界食堂")');
+  assert.deepEqual(presets[0].slots, ['a1', null, null, null, null, null, null, null]);
   await snap('2-shared-sheet');
   await page.click('#sheet-shared [data-close]');
+
+  // 重新整理＝新開一桌：載入組合後再補一位客人
+  await page.reload();
+  await page.click('#open-shared');
+  await page.click('.preset-load:has-text("異世界食堂")');
+  assert.equal(await page.inputValue('#shared'), '@圖片1=小巫=S1，S1=溫柔甜美女聲。');
+  assert.equal(await page.locator('.ref-slot.filled').count(), 1);
+  await page.click('#sheet-shared [data-close]');
+  await page.setInputFiles('#image-picker', png);
+  await page.waitForFunction(() => document.getElementById('shared-count').textContent === '2');
 
   // 參數面板：預設值打勾
   await page.click('#open-settings');
@@ -89,7 +109,8 @@ const server = http.createServer((req, res) => {
   await page.waitForSelector('text=炒好了！', {timeout: 8000});
   const start = JSON.parse(requests.find(([url]) => url === '/api/film/kitchen/start')[1]);
   assert.equal(start.max_seconds, 10);
-  assert.equal(start.kitchen_shared_setup, '@圖片1 是蕉彌');
+  assert.equal(start.kitchen_shared_setup, '@圖片1=小巫=S1，S1=溫柔甜美女聲。');
+  assert.deepEqual(start.image_slots.slice(0, 3), ['a1', 'a2', null]);   // 組合的圖不重傳，客人圖新上傳
   assert.equal(start.sampling_steps, 6);
   await snap('5-cooked');
 
@@ -104,5 +125,5 @@ const server = http.createServer((req, res) => {
   assert.deepEqual(errors, []);
   await browser.close();
   server.close();
-  console.log('Teppan chat checks passed: attach, shared sheet, defaults, estimate bubble, cook, adopt tray, serve.');
+  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, adopt tray, serve.');
 })().catch(error => { console.error(error); process.exit(1); });

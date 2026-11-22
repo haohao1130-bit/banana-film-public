@@ -6,8 +6,9 @@ const SLOT_COUNT = 8;
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
 const paused = new Set(['error', 'cancelled', 'interrupted']);
 let job = null, timer, pending = false, restoring = false, reactionTimer;
+// 每格：null，或 {file, src, name}（剛選的圖）／{id, src, name}（素材庫裡的圖，例如組合載入的）
 let localSlots = Array(SLOT_COUNT).fill(null);
-const localImageUrls = new Map();
+let presets = [], activePreset = '';
 let pendingOrder = loadPending();
 let chatSignature = '';
 
@@ -83,11 +84,17 @@ function imageReferences() {
       return [{slot: index + 1, src: 'api/mv/reference?' + query}];
     });
   }
-  return localSlots.flatMap((file, index) => {
-    if (!file) return [];
-    if (!localImageUrls.has(file)) localImageUrls.set(file, URL.createObjectURL(file));
-    return [{slot: index + 1, src: localImageUrls.get(file), name: file.name}];
-  });
+  return localSlots.flatMap((item, index) => item ? [{slot: index + 1, src: item.src, name: item.name}] : []);
+}
+function fileSlot(file) {
+  return {file, src: URL.createObjectURL(file), name: file.name};
+}
+function releaseSlot(item) {
+  if (item?.file) URL.revokeObjectURL(item.src);
+}
+function clearSlots() {
+  localSlots.forEach(releaseSlot);
+  localSlots = Array(SLOT_COUNT).fill(null);
 }
 function addImages(files) {
   if (files.length) showFeedback('');
@@ -97,17 +104,13 @@ function addImages(files) {
       showFeedback('最多 8 張參考圖。');
       break;
     }
-    localSlots[free] = file;
+    localSlots[free] = fileSlot(file);
   }
   renderReferences();
 }
 function setSlot(index, file) {
-  const old = localSlots[index];
-  if (old && localImageUrls.has(old)) {
-    URL.revokeObjectURL(localImageUrls.get(old));
-    localImageUrls.delete(old);
-  }
-  localSlots[index] = file;
+  releaseSlot(localSlots[index]);
+  localSlots[index] = file ? fileSlot(file) : null;
   renderReferences();
 }
 function renderReferences() {
@@ -262,7 +265,7 @@ function closeSheets() {
   render();
 }
 $('open-settings').onclick = () => openSheet('sheet-settings');
-$('open-shared').onclick = () => { renderReferences(); openSheet('sheet-shared'); };
+$('open-shared').onclick = () => { renderReferences(); renderPresets(); fetchPresets(); openSheet('sheet-shared'); };
 $('sheet-backdrop').onclick = closeSheets;
 for (const close of document.querySelectorAll('[data-close]')) close.onclick = closeSheets;
 document.addEventListener('keydown', event => {
@@ -581,6 +584,7 @@ function render() {
   $('shared').disabled = Boolean(job);
   if (job) $('shared').value = job.request?.kitchen_shared_setup ?? '';
   renderReferences();
+  renderPresets();
   renderChat();
   renderTray();
 }
@@ -668,22 +672,7 @@ async function firstRequest(menu, seconds) {
   const shared = $('shared').value.trim();
   const prompt = [shared, menu].filter(Boolean).join('\n\n');
   if (Array.from(prompt).length > 30000) throw Error('共同設定和菜單合計最多 30000 字。');
-  const slots = [];
-  for (const file of localSlots) {
-    if (!file) { slots.push(null); continue; }
-    const reference = '@圖片' + (slots.length + 1);
-    const stage = '上傳 ' + reference;
-    showFeedback('正在' + stage + '…');
-    if (file.size > 256 * 1024 * 1024) throw Error(reference + ' 超過單檔上限 256 MiB。');
-    let bytes;
-    try { bytes = await file.arrayBuffer(); } catch { throw Error('無法讀取 ' + reference + '，請重新選擇圖片。'); }
-    if (!bytes.byteLength) throw Error(reference + ' 是空檔案，請重新選擇圖片。');
-    const asset = await api('api/upload', {
-      method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)}, body: bytes
-    }, stage);
-    if (!asset?.id) throw Error(stage + '失敗：伺服器未回傳圖片編號。');
-    slots.push(asset.id);
-  }
+  const slots = await uploadSlots(showFeedback);
   slots.push(null);
   const aspect = $('aspect').value, resolution = Number($('resolution').value);
   return {
@@ -696,6 +685,116 @@ async function firstRequest(menu, seconds) {
     kitchen_attention: true, sparse_attention: false, motion_lora: false
   };
 }
+// 把還沒上傳的圖送到電腦的素材庫，回傳 8 格圖片編號（空格為 null）。上傳過的會記住編號，不重傳。
+async function uploadSlots(report) {
+  const ids = [];
+  for (let index = 0; index < SLOT_COUNT; index++) {
+    const item = localSlots[index];
+    if (!item) { ids.push(null); continue; }
+    if (!item.id) {
+      const reference = '@圖片' + (index + 1);
+      const stage = '上傳 ' + reference;
+      report('正在' + stage + '…');
+      if (item.file.size > 256 * 1024 * 1024) throw Error(reference + ' 超過單檔上限 256 MiB。');
+      let bytes;
+      try { bytes = await item.file.arrayBuffer(); } catch { throw Error('無法讀取 ' + reference + '，請重新選擇圖片。'); }
+      if (!bytes.byteLength) throw Error(reference + ' 是空檔案，請重新選擇圖片。');
+      const asset = await api('api/upload', {
+        method: 'POST', headers: {'X-Filename': encodeURIComponent(item.file.name)}, body: bytes
+      }, stage);
+      if (!asset?.id) throw Error(stage + '失敗：伺服器未回傳圖片編號。');
+      item.id = asset.id;
+    }
+    ids.push(item.id);
+  }
+  report('');
+  return ids;
+}
+
+/* ---------- 共同設定組合 ---------- */
+function presetFeedback(message) {
+  $('preset-feedback').textContent = message || '';
+}
+async function fetchPresets() {
+  try {
+    presets = await api('api/film/kitchen/presets', undefined, '讀取組合');
+  } catch (error) {
+    presetFeedback(error.message);
+  }
+  renderPresets();
+}
+function renderPresets() {
+  const list = $('preset-list');
+  list.replaceChildren(...presets.map(preset => {
+    const count = (preset.slots || []).filter(Boolean).length;
+    const load = el('button', {className: 'preset-load', attrs: {type: 'button'}}, [
+      document.createTextNode(preset.name),
+      el('small', {text: `${count} 張圖` + (preset.missing?.length ? `・缺圖片${preset.missing.join('、')}` : '')})
+    ]);
+    load.disabled = Boolean(job);
+    load.onclick = () => loadPreset(preset);
+    const remove = el('button', {className: 'preset-delete', text: '✕', attrs: {type: 'button', 'aria-label': `刪除組合「${preset.name}」`}});
+    remove.onclick = async () => {
+      if (!remove.classList.contains('confirm')) {
+        remove.classList.add('confirm');
+        remove.textContent = '確定刪除？';
+        setTimeout(() => { remove.classList.remove('confirm'); remove.textContent = '✕'; }, 3000);
+        return;
+      }
+      try {
+        presets = await post('film/kitchen/preset_delete', {id: preset.id}, '刪除組合');
+        presetFeedback(`已刪除「${preset.name}」。`);
+      } catch (error) {
+        presetFeedback(error.message);
+      }
+      renderPresets();
+    };
+    return el('div', {className: 'preset' + (preset.name === activePreset ? ' active' : '')}, [load, remove]);
+  }));
+  $('preset-empty').hidden = presets.length > 0;
+}
+function loadPreset(preset) {
+  if (job) return;
+  clearSlots();
+  const missing = new Set(preset.missing || []);
+  localSlots = (preset.slots || []).slice(0, SLOT_COUNT).map((id, index) => id && !missing.has(index + 1)
+    ? {id, src: 'api/film/kitchen/asset?id=' + encodeURIComponent(id), name: `${preset.name} 圖片${index + 1}`} : null);
+  while (localSlots.length < SLOT_COUNT) localSlots.push(null);
+  $('shared').value = preset.shared || '';
+  $('preset-name').value = preset.name;
+  activePreset = preset.name;
+  presetFeedback(`已載入「${preset.name}」` + (missing.size ? `，但圖片${[...missing].join('、')} 已不在素材庫，請補上。` : '。可以按 ＋ 補這次的客人。'));
+  renderPresets();
+  render();
+}
+async function savePreset() {
+  const name = $('preset-name').value.trim();
+  if (!name) {
+    presetFeedback('先幫這個組合取個名字。');
+    $('preset-name').focus();
+    return;
+  }
+  $('save-preset').disabled = true;
+  try {
+    const slots = job ? (job.request?.image_slots ?? []).slice(0, SLOT_COUNT) : await uploadSlots(presetFeedback);
+    while (slots.length < SLOT_COUNT) slots.push(null);
+    const shared = job ? (job.request?.kitchen_shared_setup ?? '') : $('shared').value;
+    const replacing = presets.some(preset => preset.name === name);
+    presets = await post('film/kitchen/preset_save', {name, shared, slots}, '儲存組合');
+    activePreset = name;
+    presetFeedback(replacing ? `已更新組合「${name}」。` : `已存成組合「${name}」，下次新開一桌就能載入。`);
+  } catch (error) {
+    presetFeedback(error.message);
+  } finally {
+    $('save-preset').disabled = false;
+    renderPresets();
+  }
+}
+$('save-preset').onclick = savePreset;
+$('preset-name').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); savePreset(); }
+});
+
 async function sync(id) {
   clearTimeout(timer);
   try {
@@ -754,9 +853,9 @@ $('new-project').onclick = () => {
   job = null;
   pendingOrder = null;
   savePending();
-  localSlots = Array(SLOT_COUNT).fill(null);
-  for (const url of localImageUrls.values()) URL.revokeObjectURL(url);
-  localImageUrls.clear();
+  clearSlots();
+  activePreset = '';
+  presetFeedback('');
   $('menu').value = '';
   $('shared').value = '';
   chatSignature = '';
@@ -766,6 +865,7 @@ $('new-project').onclick = () => {
 };
 
 syncPills();
+fetchPresets();
 const saved = localStorage.getItem(storageKey);
 if (saved) {
   restoring = true;
