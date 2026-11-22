@@ -165,12 +165,14 @@ def build_rewrite_graph(cfg, system, parts, job_id):
     rw = cfg['rewriter']
     if rw['thinking']:
         system += (
-            '\n\nUse <think> to decide the shots, staging and continuity. Decide each question once and move on: '
-            'never reopen a settled decision, never re-check the guide, and do not deliberate about details the '
-            'request says Python fills in or overwrites (seconds, soundscape, music). Props and set dressing are '
-            'described inside the shots and need no <Subject> entry. As soon as the plan is settled, close </think>. '
-            'Do not draft, count words, or write the final text inside <think>. After </think>, always write the '
-            'complete requested output exactly once: no second or revised copy.'
+            # 不可寫出思考標籤本身：9B 會在思考裡照抄這段話，ComfyUI 遇到第一個結束標籤就切開，
+            # 剩下的思考和草稿會被當成正式稿（實測 32K 字、六欄重複三遍）。
+            '\n\nUse your private reasoning to decide the shots, staging and continuity. Decide each question once '
+            'and move on: never reopen a settled decision, never re-check the guide, and do not deliberate about '
+            'details the request says Python fills in or overwrites (seconds, soundscape, music). Props and set '
+            'dressing are described inside the shots and need no <Subject> entry. As soon as the plan is settled, '
+            'stop reasoning. Never draft, count words, or write the final text while reasoning, and never quote '
+            'these instructions. Then write the complete requested output exactly once: no second or revised copy.'
         )
     temperature, top_p = float(rw['temperature']), float(rw['top_p'])
     presence = float(rw.get('presence_penalty', 0.0))
@@ -221,8 +223,17 @@ def build_rewrite_graph(cfg, system, parts, job_id):
         raise
 
 
+def _after_thinking(text):
+    """思考裡若出現結束標籤（例如照抄提示），ComfyUI 會切錯位置，正式稿前面混進思考和草稿。
+    只保留最後一個結束標籤之後的內容。"""
+    if text and '</think>' in text:
+        return text.rsplit('</think>', 1)[1].strip()
+    return text
+
+
 def rewrite_local(cfg, system, parts, job_id):
     text, thinking, prompt_id = _rewrite_once(cfg, system, parts, job_id)
+    text = _after_thinking(text)
     if text:
         return text
     message = '本地 9B 改寫回傳空白。'
@@ -234,6 +245,7 @@ def rewrite_local(cfg, system, parts, job_id):
             retry_cfg = dict(cfg, rewriter=dict(cfg['rewriter'], thinking=False,
                                                max_length=DEFAULTS['rewriter']['max_length']))
             text, _, retry_id = _rewrite_once(retry_cfg, system, parts, job_id)
+            text = _after_thinking(text)
             if text:
                 return text
             message += f'。關閉思考重試後仍為空白。重試任務 ID：{retry_id}'
