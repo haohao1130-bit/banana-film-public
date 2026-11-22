@@ -110,6 +110,8 @@ class FilmTests(unittest.TestCase):
                 queue=stack.enter_context(patch.object(app.backend,'queue_prompt'))
                 writer=stack.enter_context(patch.object(film,'write_prompt'))
                 model=stack.enter_context(patch.object(app.backend,'rewrite_local',return_value=json.dumps(draft())))
+                # 參考圖經 ComfyUI /upload/image 上傳，不是直接寫進 input 資料夾。
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 app.GPU_LOCK.acquire();film.worker(job,cfg,[photo])
                 self.assertEqual(job['status'],'script_ready');queue.assert_not_called();writer.assert_not_called()
                 old_revision=job['script_revision'];edited=copy.deepcopy(job['script_draft'])
@@ -139,7 +141,7 @@ class FilmTests(unittest.TestCase):
             job.update(**plan,status='script_ready',script_revision='original')
             job['script_draft']=film.review_draft(job)
             before=copy.deepcopy(job)
-            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue:
+            with patch.object(app,'read_state',side_effect=lambda _:copy.deepcopy(job)),patch.object(app,'job_dir',return_value=work),patch.object(app,'write_state') as save,patch.object(app.backend,'load_config',return_value=cfg),patch.object(app.backend,'rewrite_local',return_value='not JSON'),patch.object(app.backend,'queue_prompt') as queue,patch.object(app.backend,'upload_comfy_image',return_value='photo.png'):
                 with self.assertRaises(ValueError):film.revise_script(job['id'],job['script_draft'],'original','調整開頭')
                 self.assertEqual(job,before);save.assert_not_called();queue.assert_not_called()
                 self.assertFalse(app.GPU_LOCK.locked())
@@ -189,7 +191,8 @@ class FilmTests(unittest.TestCase):
                 self.assertNotIn('FULL_STORY_SECRET',text)
                 self.assertNotIn('slides one sealed',text)
                 self.assertIn('<Picture 2>',task['current_clip_commission'])
-                self.assertIn('not a locked first frame',task['continuity_reference'])
+                # 單張末幀以 H3 first_frame（Hybrid）送入，確實錨定在第 0 幀。
+                self.assertIn('anchored at frame zero',task['continuity_reference'])
                 self.assertIn('sound_mode',task);self.assertNotIn('<Audio',prompt)
 
     def test_worker_generates_and_assembles_native_audio_then_resume_reuses_parts(self):
@@ -254,7 +257,7 @@ class FilmTests(unittest.TestCase):
     def test_film_entry_validation_never_requires_a_song(self):
         with tempfile.TemporaryDirectory() as tmp:
             photo,work,req,job,cfg=self.fixture(Path(tmp))
-            bad=[dict(req,max_seconds=181),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,prompt='a'*30001),dict(req,segment_seconds=20)]
+            bad=[dict(req,max_seconds=301),dict(req,max_seconds=float('inf')),dict(req,prompt=''),dict(req,prompt='a'*30001),dict(req,segment_seconds=20)]
             for r in bad:
                 with patch.object(app.backend,'load_config',return_value=cfg),self.assertRaises(ValueError):film.start(r)
             with ExitStack() as stack:
@@ -266,6 +269,7 @@ class FilmTests(unittest.TestCase):
                 stack.enter_context(patch.object(app,'write_state'))
                 stack.enter_context(patch.object(app.backend,'comfy',return_value={'queue_running':[],'queue_pending':[]}))
                 stack.enter_context(patch.object(film.threading,'Thread'))
+                stack.enter_context(patch.object(app.backend,'upload_comfy_image',return_value='photo.png'))
                 started=film.start(dict(req,image_ids=['asset'],seed=0))
                 self.assertEqual(started['seed'],0);self.assertEqual(started['segments'],[])
                 self.assertEqual(started['request']['duration_policy'],'flexible')

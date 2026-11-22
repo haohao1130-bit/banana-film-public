@@ -4,6 +4,7 @@ No model or GPU required: checks inherited Colab routes and that the HTTP
 response is the canonical UI (only one appended local build-number script).
 """
 import http.client
+import re
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import threading
@@ -37,7 +38,8 @@ class Film5070ColabParityTests(unittest.TestCase):
         self.assertIn('if os.environ.get("BANANA_FILM_LIBRARY"):', runtime)
         self.assertIn('app.backend.LIBRARY = Path(os.environ["BANANA_FILM_LIBRARY"])', runtime)
         self.assertIn('app.RUNS = Path(os.environ["BANANA_FILM_PROJECTS"])', runtime)
-        self.assertIn("LIBRARY = DATA/'library'", services, "shared MV service default must stay unchanged")
+        # 沒設 BANANA_FILM_LIBRARY 時，共用預設仍是 DATA/'library'。
+        self.assertIn("else DATA/'library'", services, "shared MV service default must stay unchanged")
 
     def test_colab_html_is_authoritative_not_simplified_v2(self):
         canonical = (ROOT / "banana_mv/web/film.html").read_text(encoding="utf-8")
@@ -50,7 +52,7 @@ class Film5070ColabParityTests(unittest.TestCase):
         self.assertIn('app.RUNS = app.backend.DATA / "films"', local_source)
         self.assertIn("films_v2", launcher)
         self.assertIn("film_review.js", canonical)
-        self.assertIn('src="kitchen.js"', canonical)
+        self.assertRegex(canonical, r'src="kitchen\.js(?:\?v=[^"]*)?"')  # 允許快取版本號
         self.assertIn("BananaKitchen", (ROOT / "banana_mv/web/film.js").read_text(encoding="utf-8"))
         self.assertIn("film.js", canonical)
         self.assertIn("projector", canonical)
@@ -76,10 +78,10 @@ class Film5070ColabParityTests(unittest.TestCase):
             code, html = request("/")
             self.assertEqual(code, 200)
             canonical = (mv.WEB / "film.html").read_text(encoding="utf-8")
-            self.assertEqual(
-                html, canonical.replace(
-                    "</body>",
-                    '<script defer src="/film-5070-build.js"></script></body>'))
+            # 原版 UI 一字不改，只在 </body> 前多插一行本機版本號腳本（允許快取版本號）。
+            injected = re.findall(r'<script defer src="/film-5070-build\.js(?:\?v=[^"]*)?"></script>', html)
+            self.assertEqual(len(injected), 1)
+            self.assertEqual(html.replace(injected[0], ""), canonical)
             for path, local_name in (
                     ("/film.js", "film.js"),
                     ("/film_review.js", "film_review.js"),

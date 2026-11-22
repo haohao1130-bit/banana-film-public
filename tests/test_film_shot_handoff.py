@@ -87,7 +87,7 @@ SHOT 06：兩人沉默後拉遠。
 
 class FilmShotHandoffTests(unittest.TestCase):
     def generated(self):
-        # The original reproduction produced 4 legal clips for a 30s commission.
+        # 10 秒預設：每段固定交付 10 秒（模型跑 243 幀、裁成 240 幀），30 秒＝3 段。
         return film_manual.distribute_manual_prompt([(10, story())], 30, 10)
 
     def test_prompt_duration_parses_natural_brief_and_full_shot_timeline(self):
@@ -166,7 +166,8 @@ class FilmShotHandoffTests(unittest.TestCase):
         self.assertEqual(sum(prompt.count('SHOT 11A')
                              for _,prompt in clips),1)
         req={'max_seconds':61.5,'target_seconds':60,'target_is_exact':True,
-             'timeline_tolerance':1.5,'segment_seconds':10,'sound_mode':'auto'}
+             'timeline_tolerance':1.5,'segment_seconds':10,'sound_mode':'auto',
+             'ten_second_delivery_v2':True}  # film.start 對 10 秒一段一律帶這個旗標
         plan=film_manual.make_manual_plan(
             clips,req,film.normalize_prompt,film.map_story,2,film.validate_manual_sound)
         self.assertIn('<Picture 1> = 女主角',plan['shared_setup'])
@@ -286,7 +287,7 @@ class FilmShotHandoffTests(unittest.TestCase):
             scenes.append(f'SHOT {i+1:02d}｜{start:.2f}–{start+5:.2f}秒\n'+'\n'.join(beats))
         source='角色設定\n(S1) = <Picture 1> = 女主角。\n(S2) = <Picture 2> = 男主角。\n\n'+'\n\n'.join(scenes)
         clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
-        self.assertEqual(len(clips),5)
+        self.assertEqual(len(clips),4)
         self.assertTrue(all(7<=seconds<=10 for seconds,_ in clips))
         self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40,delta=1.5)
         prompts=[prompt for _,prompt in clips]
@@ -326,11 +327,10 @@ class FilmShotHandoffTests(unittest.TestCase):
             shots.append('\n'.join(lines))
         source='角色設定\n(S1) = <Picture 1> = 小語。\n(S2) = <Picture 2> = 男主角。\n\n'+'\n\n'.join(shots)
         clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
-        self.assertLessEqual(len(clips),7)
-        self.assertGreaterEqual(len(clips),5)
+        self.assertEqual(len(clips),4)
         self.assertAlmostEqual(sum(duration for duration,_ in clips),40.0,delta=1.5)
         for i,(duration,prompt) in enumerate(clips):
-            self.assertLess(duration,10.0)
+            self.assertLessEqual(duration,10.0)
             lines=re.findall(r'\(S\d+\) <d>\[Chinese\] [^<]+</d>',prompt)
             budget=film_manual._dialogue_budget_seconds('\n'.join(lines))
             room=duration-film_manual.FILM_DIALOGUE_TAIL_SECONDS
@@ -364,9 +364,13 @@ class FilmShotHandoffTests(unittest.TestCase):
                 lines.append('兩人相互看著，保持原本的情緒與動作。')
             shots.append('\n'.join(lines))
         story='角色設定\n(S1) = <Picture 1> = 主角。\n\n'+'\n\n'.join(shots)
-        clips=film_manual.distribute_manual_prompt([(10,story)],40,10)
+        # 10 秒預設段數固定、每段剛好 10 秒：塞不下就明確報錯，請使用者加長，不會偷裁台詞。
+        with self.assertRaisesRegex(ValueError,'請增加全片長度'):
+            film_manual.distribute_manual_prompt([(10,story)],40,10)
+        # 動態加段屬於非 10 秒預設的原生格點分配器（舊 9.417 秒上限）。
+        clips=film_manual.distribute_manual_prompt([(9.42,story)],40,9.42)
         self.assertGreaterEqual(len(clips),6)
-        self.assertTrue(all(5 <= seconds <= 10 for seconds,_ in clips))
+        self.assertTrue(all(5 <= seconds <= 9.42 for seconds,_ in clips))
         self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40.0,delta=1.5)
         full='\n'.join(prompt for _,prompt in clips)
         for i in range(6):
@@ -390,10 +394,10 @@ class FilmShotHandoffTests(unittest.TestCase):
             shots.append('\n'.join(lines))
         story='角色設定\n小語與男主角在雨後街道對話。\n\n'+'\n\n'.join(shots)
         clips=film_manual.distribute_manual_prompt([(10,story)],40,10)
-        self.assertEqual(len(clips),5)
+        # 10 秒預設：交付長度固定 240 幀（模型多跑到 243 幀再裁），不再是 5+17k。
+        self.assertEqual(len(clips),4)
         self.assertEqual(round(sum(seconds*24 for seconds,_ in clips)),960)
-        self.assertTrue(all(7 <= seconds <= 10 for seconds,_ in clips))
-        self.assertTrue(all(round(seconds*24)%17==5 for seconds,_ in clips))
+        self.assertTrue(all(round(seconds*24)==240 for seconds,_ in clips))
         joined='\n'.join(prompt for _,prompt in clips)
         for i in range(8):
             self.assertEqual(joined.count(f'第{i+1}段完整台詞，請把它說完。'),0 if i==6 else 1)
@@ -436,7 +440,7 @@ class FilmShotHandoffTests(unittest.TestCase):
             f'SHOT {i+1:02d}｜{i*5:.2f}–{(i+1)*5:.2f}秒\n'+action
             for i,action in enumerate(actions))
         clips=film_manual.distribute_manual_prompt([(10,source)],40,10)
-        self.assertEqual(len(clips),5)
+        self.assertEqual(len(clips),4)
         self.assertTrue(all(7<=seconds<=10 for seconds,_ in clips))
         self.assertAlmostEqual(sum(seconds for seconds,_ in clips),40,delta=1.5)
         prompts=[prompt for _,prompt in clips]
@@ -473,8 +477,8 @@ class FilmShotHandoffTests(unittest.TestCase):
 
     def test_30s_shot_notes_never_form_unperformed_h3_shot(self):
         clips=self.generated()
-        self.assertEqual(len(clips), 4)
-        self.assertAlmostEqual(sum(sec for sec,_ in clips),29.875,places=3)
+        self.assertEqual(len(clips), 3)
+        self.assertAlmostEqual(sum(sec for sec,_ in clips),30.0,places=3)
         for i,(seconds,prompt) in enumerate(clips):
             with self.subTest(clip=i):
                 self.assertIn('detailed_description:',prompt)
@@ -489,10 +493,10 @@ class FilmShotHandoffTests(unittest.TestCase):
                     self.assertTrue(len(performed.splitlines())>=2,performed)
                     self.assertNotIn('continue without replay',performed)
                     self.assertTrue(re.search(r'(?:[\u4e00-\u9fff]|<d>)',performed),performed)
-        # SHOT 02 is split across first two windows, but both parts contain a
-        # genuine performed action rather than just the camera constraint.
+        # Whichever window(s) carry SHOT 02, each contains a genuine performed
+        # action rather than just the camera constraint.
         chunks=[text for _,text in clips if '小語特寫，捕捉委屈' in text]
-        self.assertEqual(len(chunks),2)
+        self.assertGreaterEqual(len(chunks),1)
         for chunk in chunks:
             self.assertIn('detailed_description:',chunk)
             self.assertTrue(any(token in chunk for token in ('小語眼眶泛紅','她的眼睛開始濕潤','你不是答應了嗎','我知道')))
@@ -532,7 +536,7 @@ class FilmShotHandoffTests(unittest.TestCase):
         clips=self.generated()
         req={'max_seconds':31.5,'target_seconds':30,'target_is_exact':True,
              'timeline_tolerance':1.5,'segment_seconds':10,'sound_mode':'auto',
-             'python_manual_handoff':True}
+             'python_manual_handoff':True,'ten_second_delivery_v2':True}
         plan=film_manual.make_manual_plan(clips,req,lambda text,n:text,
                                           lambda req,text,n:text,2,
                                           lambda text,duration,sound:text)

@@ -43,7 +43,7 @@ const server=http.createServer((req,res)=>{
   await page.evaluate(()=>{active='fixture';renderJob({id:'fixture',status:'running',duration:0,seed:0,segments:[],request:{max_seconds:180}});});
   assert(await page.locator('#stop').isVisible());
   assert.equal(await page.locator('#stop').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(181, 41, 50)');
-  assert((await page.locator('#stop-hint').textContent()).includes('本段完成後停止'));
+  assert((await page.locator('#stop-hint').textContent()).includes('立即要求中斷'));
   await page.evaluate(()=>renderJob({id:'fixture',status:'done',duration:0,seed:0,segments:[]}));
   assert(await page.locator('#references').evaluate(e=>!!(e.compareDocumentPosition(document.getElementById('prompt'))&Node.DOCUMENT_POSITION_FOLLOWING)));
   await prompt.fill('x'.repeat(25000));await prompt.press('End');await prompt.press('a');

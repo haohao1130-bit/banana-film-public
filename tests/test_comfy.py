@@ -11,11 +11,17 @@ from banana_mv import comfy
 
 class ComfyTests(unittest.TestCase):
     def test_http_queue_history_download_and_rejection(self):
-        requests=[]
+        requests=[];uploads=[]
         class Fake(BaseHTTPRequestHandler):
             def log_message(self,*args):pass
             def do_POST(self):
-                payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                body=self.rfile.read(int(self.headers['Content-Length']))
+                if self.path=='/upload/image':
+                    # 與真 ComfyUI 相同：multipart 上傳，回傳存放的檔名。
+                    uploads.append(body)
+                    data=json.dumps({'name':'uploaded.jpg','subfolder':'','type':'input'}).encode()
+                    self.send_response(200);self.end_headers();self.wfile.write(data);return
+                payload=json.loads(body)
                 if self.path=='/free':
                     self.send_response(200);self.end_headers();return
                 requests.append(payload)
@@ -55,6 +61,9 @@ class ComfyTests(unittest.TestCase):
                 self.assertEqual(services.rewrite_local(rewrite_cfg,'guide',
                     [('text','<Picture 1>'),('image',Image.new('RGB',(32,32),'red'))],'http-test'),'rewritten')
                 self.assertEqual(list(Path(tmp).glob('*.jpg')),[])
+                self.assertEqual(len(uploads),1)
+                self.assertIn(b'Content-Type: image/jpeg',uploads[0])
+                self.assertEqual(requests[-1]['prompt']['picture_0']['inputs']['image'],'uploaded.jpg')
             with patch.object(comfy,'history_entry',return_value={'status':{'status_str':'error',
                 'messages':[['execution_error',{'node_type':'Test','exception_message':'bad tag'}]]}}):
                 with self.assertRaisesRegex(RuntimeError,'Test: bad tag'):comfy.wait_prompt(cfg,'p1')
