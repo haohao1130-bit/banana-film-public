@@ -39,6 +39,10 @@
       "sha256": "a5dcb0215e0c146fbf43fd02fc4d04d4e7741ce5190712ce5f165d500506c7a2"
     },
     {
+      "path": "banana_mv/cast_refs.py",
+      "sha256": "b3b33731dded68f288fbc3132b9fe693abf9a855b62487d4608e7694a3db2a30"
+    },
+    {
       "path": "banana_mv/comfy.py",
       "sha256": "452e07607018d47c315aa04e536da3c61520121b8b0c01bac01a0d94610522f3"
     },
@@ -60,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "be9e1533cf643080816bb91da41e04bc7b77c453202068ddf4178674380789a7"
+      "sha256": "ac342bed9e018c89f6a6c244fdc13f5a5ec714b9afb2bed24a907d2a25c0c0ce"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -88,7 +92,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "1d8c33f9d3ae3ac7bfd12c2200e63c6256f13b9197ff23412ceb2124707da979"
+      "sha256": "ea1858a91a2b9fadc9e27166f4f82027f5747dcb09129a82e2c92a98d5d7691c"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -184,15 +188,15 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "10e731ed14e11929146f8d9fd8094399a4c6a46dfb6a1893806661d84d54c3b9"
+      "sha256": "42d306a802a609ef950740f7e123ac366988eda66c2c54108ac8fcb1a44c5040"
     },
     {
       "path": "banana_mv/web/teppan.html",
-      "sha256": "db2b64b301ad859000c76d6af6a777af895f2eaeb8cb3d1894d98b4aa3ae3516"
+      "sha256": "5b3582ec3a8a7f84e0b69f7c701e2fcd114681530b2f4d67985896f20aac9f8a"
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "c1f88d6b1a85e3620b1615ad7ad7e2aa87fc7c9d8438e7fdddab0a0056868b54"
+      "sha256": "83663df015bc80076fede699c61d7666c2f5264f0d1fead7358b07dbc7b5d7d5"
     },
     {
       "path": "docs/clip_review.md",
@@ -236,7 +240,7 @@
     },
     {
       "path": "tests/check_teppan_browser.cjs",
-      "sha256": "32a079f1344df13d7a59dee31820f02bd5cea413ebd7376850b53423bf232942"
+      "sha256": "2315d0ef4141b27ff180edbb1e1d059eab9d142d36b821834cd9357f699fbe5f"
     },
     {
       "path": "tests/check_ui.cjs",
@@ -257,6 +261,10 @@
     {
       "path": "tests/test_audio_timing.py",
       "sha256": "51daffdfc2451f479cee8ee0c3dbda185384de30df5656ddefdd08026a440e9a"
+    },
+    {
+      "path": "tests/test_cast_refs.py",
+      "sha256": "b54569deeeb969f8311fab46d9f1ebeb37bfd0bbc36a15846b0f89d00195c01e"
     },
     {
       "path": "tests/test_chain5_audio.py",

@@ -391,8 +391,24 @@ function workingText() {
   const clips = latestDish()?.attempts.at(-1).clips ?? [];
   const done = clips.filter(index => job.segments[index]?.status === 'done').length;
   if (status === 'planning_story') return '蕉彌正在讀菜單、分配每段要演什麼…';
+  if (status === 'casting') {
+    const p = job.cast_fitting_progress;
+    return p ? `蕉彌正在幫 ${p.name}（${p.role}）拍定裝照，${p.index} / ${p.total} 位…` : '蕉彌正在幫新角色拍定裝照…';
+  }
   if (status === 'running') return `蕉彌正在炒菜，${done} / ${clips.length} 段完成。`;
   return '蕉彌正在準備鐵板…';
+}
+function castBubble(refs) {
+  const fitting = refs.every(ref => ref.source === 'fitting');
+  return bubble('bot', [
+    para(fitting ? '沒有圖的新角色，先拍了定裝照，後面的段都照這個長相：'
+      : '幫沒有圖的新角色從畫面抓了一張提示圖，後面的段都照這個長相：'),
+    el('div', {className: 'thumbs cast'}, refs.map(ref => el('figure', {}, [
+      el('img', {attrs: {src: `api/mv/reference?id=${encodeURIComponent(job.id)}&image=${ref.image_index}&v=${ref.sha256.slice(0, 8)}`,
+        alt: `${ref.name}（${ref.role}）提示圖`}}),
+      el('figcaption', {text: `${ref.role} ${ref.name}・@圖片${ref.picture}`})
+    ])))
+  ]);
 }
 function buildMessages() {
   const nodes = [];
@@ -423,6 +439,10 @@ function buildMessages() {
         const ready = previews.length > 0 && previews.length === clips.length;
         const accepted = dish.selected === v;
         const canChoose = lastDish && dish.selected === undefined && job.status === 'kitchen_ready';
+        const castRefs = (job.cast_refs ?? []).filter(ref => ref.source === 'fitting'
+          ? d === 0 && v === 0 : clips.some(clip => clip?.index === ref.segment));
+        const fittings = castRefs.filter(ref => ref.source === 'fitting'), grabbed = castRefs.filter(ref => ref.source !== 'fitting');
+        if (fittings.length) nodes.push(castBubble(fittings));
         if (previews.length) {
           const total = clips.reduce((sum, clip) => sum + (clip.seconds || 0), 0);
           const head = !ready ? `已出菜 ${previews.length} / ${clips.length} 段，可以先試看：`
@@ -448,6 +468,7 @@ function buildMessages() {
           preview.id = `dish-preview-${d}-${v}`;
           nodes.push(preview);
         }
+        if (grabbed.length) nodes.push(castBubble(grabbed));
         if (!ready && lastDish && lastAttempt && working && !job.kitchen?.serving) {
           nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
             para(workingText())]));
@@ -505,7 +526,7 @@ function renderChat() {
   const dishes = job?.kitchen?.dishes ?? [];
   const signature = JSON.stringify([job?.id, status, job?.error, job?.video, job?.final_versions?.length, job?.kitchen,
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
-    pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().length]);
+    pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().length, job?.cast_refs?.length]);
   if (signature === chatSignature) return;
   const chat = $('chat');
   const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
@@ -532,14 +553,15 @@ function renderTray() {
 }
 function renderComfyProgress(status, segment) {
   const panel = $('comfy-progress');
-  panel.hidden = !['planning_story', 'running'].includes(status);
+  panel.hidden = !['planning_story', 'casting', 'running'].includes(status);
   if (panel.hidden) return;
   const task = job.comfy_progress;
   const writing = task?.node === 'TextGenerate';
   const sampling = ['SamplerCustomAdvanced', 'KSampler', 'KSamplerAdvanced'].includes(task?.node);
   const measured = task?.state === 'running' && (writing || sampling) && Number.isInteger(task.value) &&
     Number.isInteger(task.max) && task.max > 0 && task.value >= 0 && task.value <= task.max;
-  let label = status === 'planning_story' ? '9B 規劃菜單' : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
+  let label = status === 'planning_story' ? '9B 規劃菜單' : status === 'casting' ? 'H3 拍定裝照'
+    : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
   if (task?.state === 'queued') label += ' · 排隊中';
   else if (task?.state === 'finished') label = '正在整理生成結果';
   else if (task?.state === 'failed') label = 'ComfyUI 回報錯誤';
@@ -696,6 +718,7 @@ async function firstRequest(menu, seconds) {
     segment_seconds: 10, mode: $('mode').value === 'chain5' ? 'chain5' : 'chain', sound_mode: $('sound').value, aspect,
     width: aspect === '16:9' ? (resolution === 480 ? 854 : 1280) : resolution,
     sampling_steps: Number($('steps').value), rewriter_thinking: $('thinking').checked,
+    auto_cast_frames: $('cast-frames').checked, cast_fitting: $('cast-fitting').checked,
     kitchen_attention: true, sparse_attention: false, motion_lora: false
   };
 }

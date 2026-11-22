@@ -663,8 +663,8 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
         (target/(f'{artifact_prefix or str(seg["index"]).zfill(2)+"_"}rewrite_raw_{attempt:02d}.txt')).write_text(raw,encoding='utf-8')
         try:
             if req.get('h3_validation_version')==1:
-                from banana_mv.direction_contract import validate_h3_sections
-                validate_h3_sections(raw)
+                from banana_mv.direction_contract import last_complete_h3, validate_h3_sections
+                validate_h3_sections(last_complete_h3(_text(raw).strip()))
             prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
             if withheld.intersection(int(n) for n in _PICTURE_TAG.findall(prompt)):
                 raise ValueError('Remove unavailable character reference pictures from the complete H3 prompt.')
@@ -770,6 +770,9 @@ def start(req):
         menu = req.get('kitchen_menu', req.get('prompt', ''))
         if not isinstance(menu, str) or not menu.strip():
             raise ValueError('請填寫第一道菜單。')
+        for flag in ('auto_cast_frames', 'cast_fitting'):
+            if type(req.get(flag, False)) is not bool:
+                raise ValueError('沒圖角色的補圖設定必須為勾選值。')
         req.update(auto_director=True, script_review=False, face_refine=False, upscale_1080p=False)
         if req.get('max_seconds') == 'auto':
             from banana_mv.teppan_timing import estimate_menu
@@ -1081,6 +1084,20 @@ def worker(job,cfg,originals,song=None,drive=None):
             film_kitchen.prepare(job, cfg, originals)
             check_cancelled(cfg)
             app.write_state(job)
+            if not kitchen.get('serving'):
+                from banana_mv import cast_refs
+                from banana_mv.core import command
+                try:
+                    cast_refs.fitting(app, cfg, job, originals, command)
+                except InterruptedError:
+                    raise
+                except Exception as error:
+                    # 定裝照失敗不擋出菜：記下原因，照常用文字描述開炒。
+                    logging.getLogger(__name__).warning('定裝照失敗：%s', error)
+                    job['cast_fitting_error'] = f'{type(error).__name__}: {error}'
+                    job.pop('cast_fitting_progress', None)
+                check_cancelled(cfg)
+                app.write_state(job)
             attempt = film_kitchen.latest(job)
             serving = kitchen.get('serving')
             active_segments = [] if serving else [job['segments'][i] for i in attempt['clips']]
@@ -1186,6 +1203,14 @@ def worker(job,cfg,originals,song=None,drive=None):
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
             seg['status']='done'
             guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
+            if kitchen:
+                from banana_mv import cast_refs
+                from banana_mv.core import command
+                try:
+                    cast_refs.grab_from_clip(app, cfg, job, seg, part, prompt, originals, command)
+                except Exception as error:
+                    logging.getLogger(__name__).warning('從影片抓角色圖失敗：%s', error)
+                    job['cast_ref_error'] = f'{type(error).__name__}: {error}'
             app.write_state(job)
             if first:(Path(cfg['comfy_input_dir'])/first).unlink(missing_ok=True)
         if job['id'] in app.CANCEL:job['status']='cancelled';app.write_state(job);return

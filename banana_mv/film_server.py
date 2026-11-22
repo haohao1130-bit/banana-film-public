@@ -49,7 +49,7 @@ class Handler(app.Handler):
             except ValueError as error:
                 return self.send_json({'error':str(error)},400)
             view=describe(job)
-            if job.get('kitchen') and job['status'] in ('planning_story', 'running'):
+            if job.get('kitchen') and job['status'] in ('planning_story', 'casting', 'running'):
                 view['comfy_progress']=self.comfy_progress(job_id)
             return self.send_json(view)
         if path=='/api/film/kitchen/presets':

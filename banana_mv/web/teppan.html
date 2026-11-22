@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=chat-5">
-  <script defer src="teppan.js?v=mode-1"></script>
+  <link rel="stylesheet" href="teppan.css?v=chat-6">
+  <script defer src="teppan.js?v=cast-1"></script>
 </head>
 <body>
   <div class="app">
@@ -153,7 +153,7 @@
 
   <section id="sheet-settings" class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="sheet-head"><h2 id="settings-title">參數</h2><button type="button" class="chip" data-close>完成</button></div>
-    <p id="settings-locked" class="muted" hidden>開桌後比例、接續方式、解析度、步數、聲音與 Thinking 固定；每道秒數和上菜升頻隨時可改。</p>
+    <p id="settings-locked" class="muted" hidden>開桌後比例、接續方式、解析度、步數、聲音、Thinking 與補圖方式固定；每道秒數和上菜升頻隨時可改。</p>
     <h3>每道菜秒數</h3>
     <div class="pills" role="radiogroup" aria-label="每道菜秒數" data-target="seconds">
       <button type="button" data-value="auto">蕉彌估</button>
@@ -173,8 +173,9 @@
     <h3>段與段接續</h3>
     <div class="pills initial" role="radiogroup" aria-label="段與段接續" data-target="mode">
       <button type="button" data-value="chain">首尾幀</button>
-      <button type="button" data-value="chain5">末五幀（動作接續）</button>
+      <button type="button" data-value="chain5">末五幀</button>
     </div>
+    <p class="muted">首尾幀：上一段最後一格接成下一段第一格。末五幀：再多給五格，連動作方向一起接。</p>
     <h3>解析度</h3>
     <div class="pills initial" role="radiogroup" aria-label="解析度" data-target="resolution">
       <button type="button" data-value="480">480P</button>
@@ -193,6 +194,8 @@
     </div>
     <div class="toggles">
       <label class="check initial"><input type="checkbox" id="thinking" checked> 9B Thinking（16K）</label>
+      <label class="check initial"><input type="checkbox" id="cast-frames" checked> 沒圖的新角色：從影片抓一格當提示圖</label>
+      <label class="check initial"><input type="checkbox" id="cast-fitting"> 沒圖的新角色：開炒前先拍定裝照（每人約 1 分鐘）</label>
       <label class="check"><input type="checkbox" id="upscale" checked> 上菜後升頻至 2K</label>
     </div>
     <label class="field initial">專案名稱（選填）<input id="name" maxlength="120" placeholder="不填就讓蕉彌取名"></label>
