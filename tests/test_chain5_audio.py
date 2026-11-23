@@ -1,4 +1,4 @@
-"""末五幀接續：前導 5 格的聲音不硬切，合成時和上一段交叉淡化（真實 FFmpeg）。"""
+"""末五幀接續：接縫只做 30 毫秒淡化，上一段尾音不被淡掉（真實 FFmpeg）。"""
 import shutil
 import subprocess
 import tempfile
@@ -24,6 +24,13 @@ def window_volume(path, start, end):
     return float(out.split('max_volume:')[1].split('dB')[0])
 
 
+def mean_volume(path, start, end):
+    out = subprocess.run(['ffmpeg', '-v', 'info', '-ss', str(start), '-t', str(end - start), '-i', str(path),
+                          '-map', '0:a', '-af', 'volumedetect', '-f', 'null', '-'],
+                         capture_output=True, text=True).stderr
+    return float(out.split('mean_volume:')[1].split('dB')[0])
+
+
 @unittest.skipUnless(shutil.which('ffmpeg'), 'needs ffmpeg')
 class Chain5AudioTests(unittest.TestCase):
     def test_lead_in_sound_survives_and_length_is_unchanged(self):
@@ -43,6 +50,23 @@ class Chain5AudioTests(unittest.TestCase):
             self.assertAlmostEqual(probe_seconds(final), 4.0, delta=0.05)
             # 交接點前 0.2 秒：舊做法這裡完全無聲（嗶聲的開頭被切掉），新做法聽得到淡入的嗶聲。
             self.assertGreater(window_volume(final, 1.88, 2.0), -40)
+
+    def test_previous_tail_keeps_full_volume_at_the_seam(self):
+        # 實測 cf9f52c7f21f：上一段最後 0.2 秒有台詞，下一段前導刻意靜音；
+        # 舊做法整段 0.208 秒交叉淡化，把上一段的尾音淡掉。現在只淡 30 毫秒。
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            raw_a, raw_b = tmp / 'a_raw.mp4', tmp / 'b_raw.mp4'
+            part_a, part_b = tmp / '00_part.mp4', tmp / '01_part.mp4'
+            tone = 'sine=f=440:d=3:r=48000,aformat=channel_layouts=stereo'
+            make_clip(raw_a, 48, f'{tone}[s];[1:a][s]amix=inputs=2:normalize=0[a]')   # 講到最後一格
+            make_clip(raw_b, 53, '[1:a]anull[a]')                                       # 前導靜音
+            trim_native(raw_a, part_a, 48)
+            trim_native(raw_b, part_b, 48, prefix_frames=5)
+            final = tmp / 'final.mp4'
+            assemble_native([part_a, part_b], final, 96 / FPS)
+            body = mean_volume(final, 1.0, 1.5)
+            self.assertGreater(mean_volume(final, 1.80, 1.95), body - 1.0)
 
     def test_no_prefix_removes_stale_lead(self):
         with tempfile.TemporaryDirectory() as tmp:

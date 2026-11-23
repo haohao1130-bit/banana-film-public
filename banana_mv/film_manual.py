@@ -482,7 +482,10 @@ def protect_chain5_opening(prompt):
     marker = 'CHAIN5_VISUAL_ONLY_LEAD_IN'
     if marker in prompt:
         return prompt
-    shot = re.search(r'\[Shot 1\](?!\s*At\b)', prompt)
+    # 只認 detailed_description 裡行首的 [Shot 1]；retention_analysis 也會寫
+    # 「appears in [Shot 1]」，插到那裡 H3 不會當成鏡頭指示（實測 cf9f52c7f21f）。
+    details = re.search(r'(?m)^[ \t]*detailed_description[ \t]*:', prompt)
+    shot = re.compile(r'(?m)^[ \t]*\[Shot 1\](?!\s*At\b)').search(prompt, details.end() if details else 0)
     if not shot:
         return prompt
     lead = (' CHAIN5_VISUAL_ONLY_LEAD_IN: For the first 0.35 seconds, silently '
@@ -490,6 +493,32 @@ def protect_chain5_opening(prompt):
             'no vocal onset and no new sound cue. Only after this visual-only '
             'lead-in does the first spoken line and its synced mouth motion begin.\n')
     return prompt[:shot.end()] + lead + prompt[shot.end():]
+
+
+def protect_render_tail(prompt, delivered_frames, render_frames, prefix_frames=0, fps=24):
+    """H3 的長度只能是 5+17k 格，常比交付長度多（末五幀 10 秒要算 260 格＝10.83 秒）。
+    多出來的尾巴會被裁掉，但 H3 不知道，會把收尾動作和聲音排到自己的最後
+    （實測 cf9f52c7f21f：10.0–10.4 秒的響聲被裁掉）。在最後一鏡註明何時收尾、之後定格靜音。"""
+    marker = 'CLIP_END_HOLD'
+    overrun = render_frames - prefix_frames - delivered_frames
+    if marker in prompt or overrun < 6:          # 首尾幀 10 秒只多 3 格（0.125 秒），不改它的節奏
+        return prompt
+    end = (prefix_frames + delivered_frames) / fps
+    details = re.search(r'(?m)^[ \t]*detailed_description[ \t]*:', prompt)
+    sound = re.compile(r'(?m)^[ \t]*overall_soundscape[ \t]*:').search(prompt, details.end() if details else 0)
+    if not details or not sound:
+        return prompt
+    shots = list(re.compile(r'(?m)^[ \t]*\[Shot \d+\]').finditer(prompt, details.end(), sound.start()))
+    if not shots:
+        return prompt
+    cut = sound.start()
+    while cut > shots[-1].end() and prompt[cut - 1] in ' \t\n':
+        cut -= 1
+    clock = lambda t: f'{int(t // 60):02d}:{t % 60:06.3f}'
+    note = (f' {marker}: every action, spoken line and sound cue of this clip finishes by '
+            f'{clock(max(end - 0.25, 0))}; from {clock(end)} until the video ends, hold the final pose, gaze and '
+            'framing perfectly still in silence, with no new movement, word or sound.')
+    return prompt[:cut] + note + prompt[cut:]
 
 
 # Classic Python Slot handoff model: reference/world settings are immutable

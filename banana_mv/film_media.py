@@ -8,8 +8,11 @@ def require_audio(path):
         raise ValueError('H3 輸出缺少原生音軌，已停止；不以無聲影片冒充影音成片。')
 
 
+SEAM_FADE=0.03
+
+
 def lead_path(part):
-    """末五幀模式：被裁掉的前導聲音另存在毛片旁邊，合成時拿來交叉淡化。"""
+    """末五幀模式：被裁掉的前導聲音另存在毛片旁邊，合成時拿最後 30 毫秒做接縫淡化。"""
     part=Path(part)
     return part.with_name(part.stem+'_lead.wav')
 
@@ -69,8 +72,12 @@ def assemble_native(parts,dest,seconds,output_size=None):
     for i in range(1,len(parts)):
         if leads[i]:
             inputs+=['-i',leads[i]]
-            fade=min(probe_seconds(leads[i]),probe_seconds(parts[i-1])-1/FPS)
-            graph.append(f'[{extra}:a:0]aresample=48000,aformat=channel_layouts=stereo[l{i}]')
+            # 只用前導最後 30 毫秒和上一段收尾做極短淡化，避免爆音；
+            # 不再拿整段 0.208 秒淡化，否則上一段最後一個字會被淡掉（實測 cf9f52c7f21f）。
+            lead_seconds=probe_seconds(leads[i])
+            fade=max(min(SEAM_FADE,lead_seconds,probe_seconds(parts[i-1])-1/FPS),0.001)
+            graph.append(f'[{extra}:a:0]atrim=start={lead_seconds-fade:.9f},asetpts=PTS-STARTPTS,'
+                         f'aresample=48000,aformat=channel_layouts=stereo[l{i}]')
             graph.append(f'[l{i}][a{i}]concat=n=2:v=0:a=1[b{i}]')
             graph.append(f'[{current}][b{i}]acrossfade=d={fade:.9f}:c1=tri:c2=tri[m{i}]')
             extra+=1
