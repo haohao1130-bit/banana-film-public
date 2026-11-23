@@ -259,6 +259,11 @@ class KitchenPlanTests(unittest.TestCase):
         self.assertNotIn('第 2 幕', brief)
         self.assertNotIn('====', brief)
 
+    def test_scene_pictures_are_not_absent_cast(self):
+        shared = ('■ 角色綁定\n<Picture 1> = 蕉彌，拳擊手。\n<Picture 2> = 猴哥，裁判。\n'
+                  '■ 場景\n<Picture 3> = 演唱會舞台。\n<Picture 4> = 拳擊擂台。\n<Picture 5> = 頂樓，夜景。')
+        self.assertEqual(film.kitchen_absent_pictures('入鏡：蕉彌；猴哥不入鏡\n蕉彌舉拳。', shared), {2})
+
     def test_cast_scan_includes_roles_in_a_range(self):
         shared = '\n'.join(f'<Picture {i}> = 角色{i} = S{i}' for i in range(1, 9))
         self.assertEqual(film.kitchen_absent_pictures('S1到S5五人站在門口。', shared), {6, 7, 8})
