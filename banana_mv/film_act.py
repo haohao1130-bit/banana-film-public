@@ -4,12 +4,13 @@ The director route also accepts an explicit CLIP action/story timeline.
 """
 import re
 
+# GPT 常寫成 ACT01（沒空格），或在時間後面加「｜標題」；兩種都要認得，標題只當名稱。
 _ACT = re.compile(
-    r'(?im)^[ \t]*ACT[ \t]+(?P<number>\d+)[ \t]*[｜|:：\-—][ \t]*'
+    r'(?im)^[ \t]*ACT[ \t]*(?P<number>\d+)[ \t]*[｜|:：\-—][ \t]*'
     r'(?P<start>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'
-    r'(?P<end>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*$'
+    r'(?P<end>\d{1,2}:\d{2}(?:\.\d+)?)[ \t]*(?:[｜|][^\n]*)?$'
 )
-_ACT_LIKE = re.compile(r'(?im)^[ \t]*ACT[ \t]+\d+[ \t]*[｜|:：\-—][ \t]*\d')
+_ACT_LIKE = re.compile(r'(?im)^[ \t]*ACT[ \t]*\d+[ \t]*[｜|:：\-—][ \t]*\d')
 _NUMBERED_SECTION = re.compile(r'(?m)^[ \t]*第[ \t]*(\d+)[ \t]*段[ \t]*[：:｜|][ \t]*([^\n]*)$')
 _LOCAL_WINDOW = re.compile(
     r'(?m)^[ \t]*\[[ \t]*(\d+(?:\.\d+)?)[ \t]*[-–—－~～至][ \t]*'

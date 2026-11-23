@@ -49,6 +49,15 @@ def _six_act_story():
 
 
 class ActParserTests(unittest.TestCase):
+    def test_act_without_space_and_with_title_is_read(self):
+        # GPT 常寫成 ACT01（沒空格）並在時間後加標題；以前會默默不認 ACT。
+        from banana_mv.film_act import _act_blocks
+        story = ('ACT01｜00:00.000–00:10.000｜開場\n0–5 秒：蕉彌走上擂台。\n'
+                 'ACT02｜00:10.000–00:20.000｜開賽\n0–5 秒：兩人碰拳。')
+        _, blocks = _act_blocks(story)
+        self.assertEqual([round(seconds) for seconds, _ in blocks], [10, 10])
+        self.assertTrue(blocks[1][1].startswith('0–5 秒：兩人碰拳'))
+
     def test_six_ten_second_clips(self):
         clips = split_act_source(_six_act_story())
         self.assertEqual(len(clips), 6)
