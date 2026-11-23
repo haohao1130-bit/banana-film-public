@@ -78,6 +78,32 @@ def render_frames(delivered_frames, *, prefix_frames=CONTEXT_FRAMES):
     return 5+17*math.ceil((delivered_frames+prefix_frames-5)/17)
 
 
+def fit_chain5_delivery(job, seg, prefix):
+    """末五幀段的交付長度往下取到 H3 拍得出來的長度，H3 拍的每一格都用上、尾巴不裁。
+
+    H3 只能拍 5+17k 格。10 秒要「5 格前導＋240 格」＝245 格，不合法，以前只好拍 260 格
+    再把尾巴 0.625 秒裁掉，H3 排在最後的動作和聲音就被切了（實測 cf9f52c7f21f）。
+    改拍 243 格、交付 238 格（9.92 秒）。後面各段起點與全片長度跟著縮。
+    """
+    if not prefix or seg.get('status') == 'done':
+        return False
+    legal = 5 + 17 * ((seg['frames'] + prefix - 5) // 17)
+    frames = legal - prefix
+    if legal < 124 or frames < 1 or (frames, seg.get('model_frames')) == (seg['frames'], legal):
+        return False
+    delta = seg['frames'] - frames
+    start = seg.get('start_frame', 0)
+    seg.setdefault('chain5_requested_frames', seg['frames'])
+    seg.update(frames=frames, seconds=frames / FPS, model_frames=legal)
+    for other in job['segments']:
+        if other is not seg and other.get('start_frame', -1) > start:
+            other['start_frame'] -= delta
+            other['start'] = other['start_frame'] / FPS
+    if job.get('duration'):
+        job['duration'] = max(job['duration'] - delta / FPS, frames / FPS)
+    return True
+
+
 def prepare_motion_tail(source, destination, input_dir, stem):
     """Take exactly the last five delivered frames, preserving chronological order."""
     source=Path(source);destination=Path(destination);input_dir=Path(input_dir) if input_dir is not None else None

@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "549574bef0788db9acbcd763a5aedb477de7c737a425ecc72c5ed95d8f3abc74"
+      "sha256": "f3e6841a78f9d3135af72562ae85a0c6a9bae5f1e6bcb25caa8a4d8e5b274a27"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -76,7 +76,7 @@
     },
     {
       "path": "banana_mv/film_continuity.py",
-      "sha256": "d33157d4fe3f2b87decc3f03c3fc91619febe8b424e1b37e50f491a9d5e035df"
+      "sha256": "52602c2f6aa7db9952215624e34a0065ca32f24ce505433eccc93651810903f0"
     },
     {
       "path": "banana_mv/film_kitchen.py",
@@ -320,7 +320,7 @@
     },
     {
       "path": "tests/test_film_motion_context.py",
-      "sha256": "8b02b4b9cdcd4806ff82f13f641c6c52e98a8d63ef1c0fcf79f74d6935da5307"
+      "sha256": "2e24efc857837aa8e2f8a98bef1f34ef9134576a6c82a9ac61a267c344e8dd49"
     },
     {
       "path": "tests/test_film_reference_settings.py",
