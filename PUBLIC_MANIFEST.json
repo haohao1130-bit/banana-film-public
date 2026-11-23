@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "ac342bed9e018c89f6a6c244fdc13f5a5ec714b9afb2bed24a907d2a25c0c0ce"
+      "sha256": "549574bef0788db9acbcd763a5aedb477de7c737a425ecc72c5ed95d8f3abc74"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -84,11 +84,11 @@
     },
     {
       "path": "banana_mv/film_manual.py",
-      "sha256": "9554572ad3c5977afce4611ab99d38b7ee159996fdf7f3fd75485a58c4ee0532"
+      "sha256": "4b6cab442ab5fb9f3a37876377e62fe0b3b5c84979163061cba21d58b4f33d52"
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "d66b94eb9abbdea755c4dd86ffa95f81a42632910abc4c1c0a2f3aef46e7dd29"
+      "sha256": "d4f0a727fffa4d4f0889fb9b3fc77a42d8de2bf66163662f80077db64673d31a"
     },
     {
       "path": "banana_mv/film_server.py",
@@ -148,7 +148,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "8c566935b6bc66926a13488cc8601ab90c93fb3e34bc9518a04597481bc49303"
+      "sha256": "ccdedf97cc4c617a7e7fc524f1d187290ca7600ac0cb2ede1f1a91d2a48cd418"
     },
     {
       "path": "banana_mv/teppan_presets.py",
@@ -268,7 +268,7 @@
     },
     {
       "path": "tests/test_chain5_audio.py",
-      "sha256": "2bc0753c9fcd6be4630b8ed8d3f66b8b46672c19b5d544523437bedae2120460"
+      "sha256": "4d477e2cf0aa88a9f9d1f7da947104e0d77a44295317bfdd65d002a9d8955824"
     },
     {
       "path": "tests/test_clip_scope.py",
@@ -328,7 +328,7 @@
     },
     {
       "path": "tests/test_film_shot_handoff.py",
-      "sha256": "aa4e14282f6d14e6fc5077ec77e038afb426e1bc4977b18a715b011eea31732c"
+      "sha256": "bb164f9987651a913e4d43926f1b58d82b8b429f858d51c010aa62e6a3e9162b"
     },
     {
       "path": "tests/test_h3_prompt.py",

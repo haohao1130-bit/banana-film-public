@@ -8,10 +8,21 @@ def require_audio(path):
         raise ValueError('H3 輸出缺少原生音軌，已停止；不以無聲影片冒充影音成片。')
 
 
+SEAM_FADE=0.03
+TAIL_SPILL=0.5      # 上一段被裁掉的尾音最多疊到下一段開頭 0.5 秒
+TAIL_FADE=0.25      # 疊過去的尾音在最後 0.25 秒淡出
+
+
 def lead_path(part):
-    """末五幀模式：被裁掉的前導聲音另存在毛片旁邊，合成時拿來交叉淡化。"""
+    """末五幀模式：被裁掉的前導聲音另存在毛片旁邊，合成時拿最後 30 毫秒做接縫淡化。"""
     part=Path(part)
     return part.with_name(part.stem+'_lead.wav')
+
+
+def tail_path(part):
+    """H3 算圖比交付長時，結尾被裁掉的聲音另存在毛片旁邊，合成時疊到下一段開頭。"""
+    part=Path(part)
+    return part.with_name(part.stem+'_tail.wav')
 
 
 def trim_native(source,dest,frames,*,prefix_frames=0):
@@ -37,6 +48,16 @@ def trim_native(source,dest,frames,*,prefix_frames=0):
                  '-c:a','pcm_s16le','-ar','48000','-ac','2',lead])
     else:
         lead.unlink(missing_ok=True)
+    tail=tail_path(dest)
+    overrun=probe_seconds(source)-end/FPS
+    if overrun>=3/FPS:
+        # 末五幀 10 秒要算 260 格，交付只取中間 240 格：H3 排在最後的腳步聲、最後一個字
+        # 會落在被裁掉的 0.6 秒裡（實測 cf9f52c7f21f）。另存起來，合成時延續到下一段。
+        command(['ffmpeg','-y','-v','error','-i',source,'-map','0:a:0',
+                 '-af',f'atrim=start={end/FPS:.9f}:duration={TAIL_SPILL:.9f},asetpts=PTS-STARTPTS',
+                 '-c:a','pcm_s16le','-ar','48000','-ac','2',tail])
+    else:
+        tail.unlink(missing_ok=True)
 
 
 def assemble_native(parts,dest,seconds,output_size=None):
@@ -53,29 +74,47 @@ def assemble_native(parts,dest,seconds,output_size=None):
         if (source['width'],source['height'])!=(width,height):
             options=['-vf',f'crop={width}:{height}','-c:v','libx264','-threads','1','-crf','18','-pix_fmt','yuv420p']
     leads=[lead_path(p) if i and lead_path(p).is_file() else None for i,p in enumerate(parts)]
-    if not any(leads):
+    tails=[tail_path(p) if i+1<len(parts) and tail_path(p).is_file() else None for i,p in enumerate(parts)]
+    if not any(leads) and not any(tails):
         command(['ffmpeg','-y','-v','error','-safe','0','-f','concat','-i',listing,
                  '-map','0:v:0','-map','0:a:0',*options,'-c:a','aac','-ar','48000','-ac','2',
                  '-b:a','192k','-t',f'{seconds:.9f}','-movflags','+faststart',dest])
         return
-    # 畫面照 concat 接；聲音逐段接，有前導聲音的段落和上一段結尾交叉淡化，總長不變。
+    # 畫面照 concat 接；聲音逐段接：上一段被裁掉的尾音疊到這段開頭並淡出，
+    # 有前導聲音的段落和上一段結尾做 30 毫秒接縫淡化，總長不變。
     inputs=['-safe','0','-f','concat','-i',listing]
     graph=[]
     for i,part in enumerate(parts):
         inputs+=['-i',part]
         graph.append(f'[{i+1}:a:0]aresample=48000,aformat=channel_layouts=stereo[a{i}]')
     extra=len(parts)+1
-    current='a0'
+    labels=[f'a{i}' for i in range(len(parts))]
+    for i in range(1,len(parts)):
+        if not tails[i-1]:
+            continue
+        inputs+=['-i',tails[i-1]]
+        spill=probe_seconds(tails[i-1])
+        fade=min(TAIL_FADE,spill)
+        graph.append(f'[{extra}:a:0]aresample=48000,aformat=channel_layouts=stereo,'
+                     f'afade=t=out:st={spill-fade:.9f}:d={fade:.9f}[t{i}]')
+        graph.append(f'[a{i}][t{i}]amix=inputs=2:duration=first:normalize=0[s{i}]')
+        labels[i]=f's{i}'
+        extra+=1
+    current=labels[0]
     for i in range(1,len(parts)):
         if leads[i]:
             inputs+=['-i',leads[i]]
-            fade=min(probe_seconds(leads[i]),probe_seconds(parts[i-1])-1/FPS)
-            graph.append(f'[{extra}:a:0]aresample=48000,aformat=channel_layouts=stereo[l{i}]')
-            graph.append(f'[l{i}][a{i}]concat=n=2:v=0:a=1[b{i}]')
+            # 只用前導最後 30 毫秒和上一段收尾做極短淡化，避免爆音；
+            # 不再拿整段 0.208 秒淡化，否則上一段最後一個字會被淡掉（實測 cf9f52c7f21f）。
+            lead_seconds=probe_seconds(leads[i])
+            fade=max(min(SEAM_FADE,lead_seconds,probe_seconds(parts[i-1])-1/FPS),0.001)
+            graph.append(f'[{extra}:a:0]atrim=start={lead_seconds-fade:.9f},asetpts=PTS-STARTPTS,'
+                         f'aresample=48000,aformat=channel_layouts=stereo[l{i}]')
+            graph.append(f'[l{i}][{labels[i]}]concat=n=2:v=0:a=1[b{i}]')
             graph.append(f'[{current}][b{i}]acrossfade=d={fade:.9f}:c1=tri:c2=tri[m{i}]')
             extra+=1
         else:
-            graph.append(f'[{current}][a{i}]concat=n=2:v=0:a=1[m{i}]')
+            graph.append(f'[{current}][{labels[i]}]concat=n=2:v=0:a=1[m{i}]')
         current=f'm{i}'
     command(['ffmpeg','-y','-v','error',*inputs,'-filter_complex',';'.join(graph),
              '-map','0:v:0','-map',f'[{current}]',*options,'-c:a','aac','-ar','48000','-ac','2',

@@ -375,6 +375,9 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             if native and prefix:
                 from banana_mv.film_manual import protect_chain5_opening
                 prompt=protect_chain5_opening(prompt)
+            if native:
+                from banana_mv.film_manual import protect_render_tail
+                prompt=protect_render_tail(prompt,seg['frames'],model_frames,prefix or 0)
             if cut:
                 take['opening_transition'] = 'cut'
             (output('prompt.txt')).write_text(prompt,encoding='utf-8')

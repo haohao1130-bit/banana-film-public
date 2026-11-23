@@ -414,6 +414,24 @@ class FilmShotHandoffTests(unittest.TestCase):
                         guarded.index('<d>[Chinese]'))
         self.assertEqual(film_manual.protect_chain5_opening(guarded),guarded)
 
+    def test_chain5_guards_land_in_the_shot_list_not_retention(self):
+        # 實測 cf9f52c7f21f：retention_analysis 也寫「appears in [Shot 1]」，舊版把前導句插到那裡；
+        # 而 260 格算圖、240 格交付，收尾動作的聲音落在被裁掉的 0.6 秒裡。
+        prompt=('subject_definitions:\n<Subject 1> is 小巫 from <Picture 1>.\n\nsummary:\nA welcome.\n\n'
+                'retention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved.\n\n'
+                'detailed_description:\n[Shot 1] 小巫 opens the door.\n'
+                '[Shot 2] At 00:07.000, she says, <d>[Chinese] 快進來吧。</d> He steps in; the clip ends.\n\n'
+                'overall_soundscape:\nNight.\n\nnon_diegetic_music:\nNone.')
+        guarded=film_manual.protect_render_tail(film_manual.protect_chain5_opening(prompt),240,260,5)
+        details=guarded.index('detailed_description:')
+        self.assertGreater(guarded.index('CHAIN5_VISUAL_ONLY_LEAD_IN'),details)
+        self.assertIn('[Shot 1] CHAIN5_VISUAL_ONLY_LEAD_IN',guarded)
+        hold=guarded.index('CLIP_END_HOLD')
+        self.assertTrue(guarded.index('[Shot 2]')<hold<guarded.index('overall_soundscape:'))
+        self.assertIn('finishes by 00:09.958; from 00:10.208',guarded)
+        self.assertEqual(film_manual.protect_render_tail(guarded,240,260,5),guarded)
+        self.assertEqual(film_manual.protect_render_tail(prompt,240,243,0),prompt)   # 首尾幀只多 3 格：不必加
+
     def test_classic_python_slot_wardrobe_survives_real_film_h3_slots(self):
         # Proven MV Python Slot contract: identity comes from Picture refs,
         # but a coat removed in an earlier slot must not be reintroduced
