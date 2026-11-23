@@ -127,6 +127,20 @@ formula on stories that do not call for them. Shot changes, repeated dialogue,
 unmotivated waiting, slow motion or stretching a finished ending are not new plot.
 Keep shared_setup and local briefs concise enough to deliver the complete JSON."""
 
+# MiniMax 官方 h3-prompt-writing 技能（含 base 指南）的寫作建議，只當建議，不做檢查。
+H3_SKILL_TIPS = (
+    "Writing tips from the official H3 skill (advice, not checks): "
+    "open detailed_description with one or two sentences of concrete style; "
+    "per shot, give composition, subject position, action and reaction, camera, and sound; "
+    "write camera moves as natural English (push in, pull out, pan, truck, tilt, pedestal, arc, tracking, static, POV, roll, slight or strong shake), "
+    "adding amplitude or speed only when it matters; "
+    "cut only for new information (subject, space, state, viewpoint or time), otherwise move the camera; "
+    "prefer concrete visual and audio detail over words like cinematic or beautiful; "
+    "keep shot timing inside the clip duration; "
+    "overall_soundscape: one to four sentences of ambience and physical sounds; "
+    "when music is requested, non_diegetic_music: one to three sentences on instruments, tempo and dynamics, no mood words."
+)
+
 WRITER = """Translate ONE authoritative local film commission into a native MiniMax H3 ref2va filming prompt.
 Every Shot and subject definition must repeat the explicit actor name for
 each action, recipient, dialogue line and prop ownership. Bind names to supplied
@@ -651,7 +665,7 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
     if correction:task.update(original_prompt=base,local_correction=correction)
     text=json.dumps(task,ensure_ascii=False)
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
-    system=guide+'\n'+WRITER+'\n'+FILM_INTENSITY[req['intensity']]
+    system=guide+'\n'+WRITER+'\n'+H3_SKILL_TIPS+'\n'+FILM_INTENSITY[req['intensity']]
     refs=([tail] if tail else [])+list(originals)
     withheld = {n + offset for n in hidden}
     pictures = _pictures(refs) if not withheld else []
