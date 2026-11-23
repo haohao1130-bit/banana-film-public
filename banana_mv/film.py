@@ -1172,9 +1172,10 @@ def worker(job,cfg,originals,song=None,drive=None):
                     prompt=write_prompt(cfg,job,seg,originals,tail)
                 prompt_file.write_text(prompt,encoding='utf-8')
                 seg.pop('prompt_id',None);seg.pop('refresh_prompt',None)
-            if prefix:
-                from banana_mv.film_manual import protect_chain5_opening
-                guarded = protect_chain5_opening(prompt)
+            from banana_mv.film_manual import protect_chain5_opening, protect_render_tail
+            guarded = protect_chain5_opening(prompt) if prefix else prompt
+            guarded = protect_render_tail(guarded, seg['frames'], opening_render_frames(job, seg), prefix)
+            if True:
                 if guarded != prompt:
                     prompt = guarded
                     prompt_file.write_text(prompt, encoding='utf-8')
