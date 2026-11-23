@@ -49,7 +49,7 @@ def trim_native(source,dest,frames,*,prefix_frames=0):
     else:
         lead.unlink(missing_ok=True)
     tail=tail_path(dest)
-    overrun=probe_seconds(source)-end/FPS
+    overrun=source_seconds(source)-end/FPS
     if overrun>=3/FPS:
         # 末五幀 10 秒要算 260 格，交付只取中間 240 格：H3 排在最後的腳步聲、最後一個字
         # 會落在被裁掉的 0.6 秒裡（實測 cf9f52c7f21f）。另存起來，合成時延續到下一段。
@@ -119,6 +119,14 @@ def assemble_native(parts,dest,seconds,output_size=None):
     command(['ffmpeg','-y','-v','error',*inputs,'-filter_complex',';'.join(graph),
              '-map','0:v:0','-map',f'[{current}]',*options,'-c:a','aac','-ar','48000','-ac','2',
              '-b:a','192k','-t',f'{seconds:.9f}','-movflags','+faststart',dest])
+
+
+def source_seconds(path):
+    """原始檔長度；讀不到時回傳 0（就不存尾音），不讓合成因此失敗。"""
+    info=probe(path)
+    values=[info.get('format',{}).get('duration')]+[s.get('duration') for s in info.get('streams',[])]
+    seconds=[float(v) for v in values if v not in (None,'N/A')]
+    return max(seconds) if seconds else 0.0
 
 
 def probe_seconds(path):
