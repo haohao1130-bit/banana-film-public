@@ -632,7 +632,9 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
         task['dialogue_contract'] = (
             'Each listed line must be spoken exactly once by its named speaker, never by the addressee. '
             'In subject_definitions, bind each speaking <Subject N> to its exact reference <Picture N> on one line. '
-            'Use the native H3 speaker and dialogue tags, with natural shot prose. '
+            'Use the native H3 speaker and dialogue tags, with natural shot prose: write the speaker\'s '
+            '<Subject N> (Sx) right before each line\'s speech verb, and never put another actor\'s (Sx) tag '
+            'between the speaker and the line, because H3 voices a line with the nearest preceding (Sx). '
             'The continuation picture has no speaking identity. Preserve the authored actor performing each action.'
         )
     task['genres']=[GENRES[g] for g in req.get('genres',[])]
@@ -668,6 +670,16 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
             prompt = validate_film_format(normalize_prompt(raw,len(refs)),seg['seconds'],req['sound_mode'])
             if withheld.intersection(int(n) for n in _PICTURE_TAG.findall(prompt)):
                 raise ValueError('Remove unavailable character reference pictures from the complete H3 prompt.')
+            from banana_mv.direction_contract import fix_speaker_tags, speaker_missing
+            missing = speaker_missing(prompt, locks)
+            if missing and attempt < req['rewrite_retries']:
+                # 說話的人沒定義成 <Subject N>，H3 不知道該用誰的聲音：退回重寫（最後一次就照常出菜）。
+                raise ValueError('Define every speaking actor in subject_definitions with their <Picture N> and tag '
+                                 'each line as <Subject N> (Sx) says, <d>…</d>. Missing: '
+                                 + '、'.join(f'{lock["speaker"]} {lock["reference"]}「{lock["line"]}」' for lock in missing))
+            prompt, repaired = fix_speaker_tags(prompt, locks)
+            if repaired:
+                logging.getLogger(__name__).warning('第 %d 段補上說話者：%s', seg['index'] + 1, '、'.join(repaired))
             try:
                 validate_authored_dialogue(prompt, locks)
             except ValueError as warning:

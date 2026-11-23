@@ -51,7 +51,9 @@ def validate_h3_sections(text):
             raise ValueError('Ref2VA 區塊不可空白：'+match[1])
 
 
-_CAST_LINE = re.compile(r'^\s*<Picture (\d+)>\s*[=＝]\s*([^，,：:\s。；;]+)', re.M)
+_CAST_LINE = re.compile(r'^\s*<Picture (\d+)>\s*[=＝]\s*([^，,：:\s。；;=＝]+)', re.M)
+# 「<Picture 2>＝小貓＝S2」：名字之後的 S 代號也是這個角色（菜單常寫「S5對S2說」）。
+_CAST_ROLE_LINE = re.compile(r'^\s*<Picture (\d+)>\s*[=＝]\s*[^，,：:\s。；;=＝]+\s*[=＝]\s*(S[1-8])(?![0-9])', re.M | re.I)
 _QUOTED_LINE = re.compile(r'「([^」\n]+)」|『([^』\n]+)』')
 _VOICE_CUE = re.compile(
     r'(?:說|問|喊|吼|答|提醒|回應|低語|嘀咕|抱怨|忍笑|鎮定|旁白|開口)[^：:\n，,。！？；;]{0,8}[：:]\s*$'
@@ -68,10 +70,17 @@ _VOICE_LINE = re.compile(r'<d>\s*(?:\[[^\]\n]+\]\s*)?(.*?)\s*</d>', re.S)
 
 def authored_dialogue(brief, shared):
     """Lock only quoted speech with a uniquely named reference actor."""
-    cast = [(name, int(picture)) for picture, name in _CAST_LINE.findall(shared)]
-    if not cast:
+    named = {int(picture): name for picture, name in _CAST_LINE.findall(shared)}
+    if not named:
         return []
+    # 名字與 S 代號都是同一個角色的稱呼；鎖定時一律回報名字。
+    cast = [(name, picture) for picture, name in named.items()]
+    cast += [(role.upper(), int(picture)) for picture, role in _CAST_ROLE_LINE.findall(shared)]
     names = '|'.join(map(re.escape, sorted({name for name, _ in cast}, key=len, reverse=True)))
+    def mentioned(alias, lead):
+        if re.fullmatch(r'S[1-8]', alias):
+            return re.search(rf'(?<![A-Za-z0-9]){alias}(?![0-9])', lead, re.I) is not None
+        return alias in lead
     addressed = re.compile(
         rf'(?P<speaker>{names})\s*(?:轉身\s*)?(?:對著?|朝著?|向|看向|望向)\s*(?:{names})\s*'
         + _VOICE_CUE.pattern
@@ -82,15 +91,95 @@ def authored_dialogue(brief, shared):
         after_quote = quote.end()
         if not _VOICE_CUE.search(lead):
             continue
-        speakers = {(name, picture) for name, picture in cast
-                    if name in lead or f'<Picture {picture}>' in lead}
+        speakers = {picture for alias, picture in cast
+                    if mentioned(alias, lead) or f'<Picture {picture}>' in lead}
         if len(speakers) > 1 and (exchange := addressed.search(lead)):
-            speakers = {(name, picture) for name, picture in speakers if name == exchange['speaker']}
+            speaker = exchange['speaker'].upper()
+            speakers = {picture for alias, picture in cast if alias.upper() == speaker}
         if len(speakers) == 1:
-            name, picture = speakers.pop()
-            locks.append({'speaker': name, 'reference': f'<Picture {picture}>',
+            picture = speakers.pop()
+            roles = [alias for alias, number in cast if number == picture and re.fullmatch(r'S[1-8]', alias)]
+            locks.append({'speaker': named[picture], 'reference': f'<Picture {picture}>',
+                          **({'role': roles[0]} if roles else {}),
                           'line': quote[1] or quote[2]})
     return locks
+
+
+def _definition_rows(definitions):
+    """subject_definitions 每行對應的 Subject：「<Subject 1> is … <Picture 1>」與
+    「<Picture 1> is the appearance reference for <Subject 1>」兩種寫法都認。"""
+    rows = {}
+    for row in definitions.splitlines():
+        found = re.search(r'<Subject (\d+)>', row)
+        if found and re.match(r'\s*<(?:Subject|Picture) \d+>', row):
+            rows[found[1]] = rows.get(found[1], '') + ' ' + row
+    return rows
+
+
+_TAGGED = re.compile(r'<Subject (\d+)>\s*\((S\d+)\)')
+
+
+def fix_speaker_tags(prompt, locks):
+    """H3 用台詞前最近的「<Subject N> (Sx)」決定誰的聲音講這句。9B 常漏標或標到聽的人
+    （實測 cf9f52c7f21f 第 18 段：小浣喊「小貓！你最好了！」前最近的標籤是小貓）。
+    指定台詞的最近標籤不是該講的人時，Python 在 <d> 前補上正確的說話者；找不到該角色就不動。
+    回傳 (修正後的全咒, 修正了哪些台詞)。"""
+    if not locks or 'detailed_description:' not in prompt:
+        return prompt, []
+    prompt = re.sub(r'(\(S\d+\))(?:\s*\1)+', r'\1', prompt)       # 「(S6) (S6)」→「(S6)」
+    head, _, rest = prompt.partition('detailed_description:')
+    shots, marker, tail = rest.partition('overall_soundscape:')
+    definitions = head.split('summary:', 1)[0]
+    rows = _definition_rows(definitions)
+
+    def speaker_subject(lock):
+        def own(row):
+            if lock['reference'] in row:
+                return True
+            if lock['speaker'] in row:
+                return True
+            role = lock.get('role')
+            return bool(role and re.search(rf'(?<![A-Za-z0-9]){role}(?![0-9])', row))
+        found = [n for n, row in rows.items() if own(row)]
+        named = [n for n in found if lock['speaker'] in rows[n] or lock['reference'] in rows[n]]
+        return (named or found or [None])[0]
+
+    wanted = {_line_key(lock['line']): lock for lock in locks}
+    fixed, pieces, cursor = [], [], 0
+    for line in _VOICE_LINE.finditer(shots):
+        lock = wanted.get(_line_key(line[1]))
+        if not lock:
+            continue
+        shot_start = max(shots.rfind('[Shot', 0, line.start()), 0)
+        tags = _TAGGED.findall(shots[shot_start:line.start()])
+        subject = speaker_subject(lock)
+        if subject is None or (tags and tags[-1][0] == subject):
+            continue
+        used = {tag for _, tag in _TAGGED.findall(shots)}
+        own_tag = next((tag for number, tag in _TAGGED.findall(shots) if number == subject), None)
+        if own_tag is None:
+            own_tag = next(f'S{k}' for k in range(1, 9) if f'S{k}' not in used)
+        pieces.append(shots[cursor:line.start()])
+        pieces.append(f'<Subject {subject}> ({own_tag}) says, ')
+        cursor = line.start()
+        fixed.append(lock['line'])
+    if not fixed:
+        return head + 'detailed_description:' + shots + marker + tail, []
+    pieces.append(shots[cursor:])
+    return head + 'detailed_description:' + ''.join(pieces) + marker + tail, fixed
+
+
+def speaker_missing(prompt, locks):
+    """指定台詞的說話者在 subject_definitions 裡找不到（9B 漏定義該角色），Python 無從補標。"""
+    definitions = prompt.split('summary:', 1)[0]
+    rows = list(_definition_rows(definitions).values())
+    missing = []
+    for lock in locks:
+        role = lock.get('role')
+        if not any(lock['reference'] in row or lock['speaker'] in row or
+                   (role and re.search(rf'(?<![A-Za-z0-9]){role}(?![0-9])', row)) for row in rows):
+            missing.append(lock)
+    return missing
 
 
 def _line_key(line):
