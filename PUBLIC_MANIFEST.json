@@ -40,7 +40,7 @@
     },
     {
       "path": "banana_mv/cast_refs.py",
-      "sha256": "b3b33731dded68f288fbc3132b9fe693abf9a855b62487d4608e7694a3db2a30"
+      "sha256": "a16b6f4268108a7a39594fd8ef028f1fc2731d5d524b3d216fb1ade078ad7c8e"
     },
     {
       "path": "banana_mv/comfy.py",
@@ -52,7 +52,7 @@
     },
     {
       "path": "banana_mv/direction_contract.py",
-      "sha256": "e6f88879cb0c5c1568d2efa412b89fab5b9168502133ab3626c490bb105b847b"
+      "sha256": "80ddc77421ccc1a976544d4cf70df3ae2c8bf9a68f0ae827ed34c5dd2585d68e"
     },
     {
       "path": "banana_mv/director.py",
@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "f3e6841a78f9d3135af72562ae85a0c6a9bae5f1e6bcb25caa8a4d8e5b274a27"
+      "sha256": "354aea02c06506865b4417e3e04b3a0e543c6ce78eb31da1634a210193964056"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -308,7 +308,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "e0874ebbe0fd617a11a1605ff1dd7b3ff019d6bc8dd3c91755e6519c2d6eec5b"
+      "sha256": "e453dd62469ddd07391257e3c0bc3bc33b2874e4821192f21f474b2dda88b256"
     },
     {
       "path": "tests/test_film_dynamic.py",
@@ -401,6 +401,10 @@
     {
       "path": "tests/test_shoot_plan.py",
       "sha256": "6962a9355b055d4ca572eaf4f1d17ccf7d325275e03d74f28b647e1035d32156"
+    },
+    {
+      "path": "tests/test_speaker_tags.py",
+      "sha256": "911967a8fd32534b2136e91d0fb636308a86545ba87fd3f842c539328879f58b"
     },
     {
       "path": "tests/test_takes.py",
