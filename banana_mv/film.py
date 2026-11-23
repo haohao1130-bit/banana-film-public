@@ -533,6 +533,8 @@ _ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:
 
 def kitchen_absent_pictures(brief, fixed):
     """Scan the clip commission against the shared character bindings."""
+    # 「」裡是台詞不是入鏡：小浣說「小貓！你最好了！」不代表小貓在畫面裡。
+    brief = re.sub(r'「[^」\n]*」|『[^』\n]*』', '「」', brief or '')
     roles = {int(n): name for n, name in _CAST_BINDING.findall(fixed or '')
              if not re.search(r'場景|環境|背景|場地', name)}
     mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}

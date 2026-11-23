@@ -58,6 +58,23 @@ class SpeakerTagTests(unittest.TestCase):
         self.assertEqual([lock['speaker'] for lock in missing], ['小浣'])
         self.assertEqual(speaker_missing(PROMPT, authored_dialogue(BRIEF, SHARED)), [])
 
+    def test_bare_speaker_lines_are_locked(self):
+        # 最簡寫法：冒號前只有代號或名字（可加語氣）也算台詞；招牌上的「」不算。
+        for brief in ('S5：「小貓！你最好了！」', 'S5（驚喜）：「小貓！你最好了！」',
+                      '小浣：「小貓！你最好了！」', '- S5：「小貓！你最好了！」'):
+            with self.subTest(brief=brief):
+                self.assertEqual([(l['speaker'], l['line']) for l in authored_dialogue(brief, SHARED)],
+                                 [('小浣', '小貓！你最好了！')])
+        self.assertEqual(authored_dialogue('場景：吧台。「歡迎光臨」的招牌。', SHARED), [])
+
+    def test_names_inside_dialogue_are_not_on_screen(self):
+        # 小浣說「小貓！你最好了！」不代表小貓入鏡：小貓的圖不送給 H3。
+        from banana_mv.film import kitchen_absent_pictures
+        absent = kitchen_absent_pictures('S5在吧台吃串燒。\nS5：「小貓！你最好了！」', SHARED)
+        self.assertIn(2, absent)
+        self.assertNotIn(5, absent)
+        self.assertNotIn(2, kitchen_absent_pictures('S2遞給S5一串。\nS5：「小貓！你最好了！」', SHARED))
+
 
 if __name__ == '__main__':
     unittest.main()

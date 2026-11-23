@@ -85,10 +85,14 @@ def authored_dialogue(brief, shared):
         rf'(?P<speaker>{names})\s*(?:轉身\s*)?(?:對著?|朝著?|向|看向|望向)\s*(?:{names})\s*'
         + _VOICE_CUE.pattern
     )
+    # 最簡寫法「S5：「…」」「S5（驚喜）：「…」」「小浣：「…」」：冒號前只有說話者（加語氣）也算台詞。
+    bare = re.compile(rf'^\s*(?:[-*•]\s*)?(?P<speaker>{names})\s*(?:[（(][^）)\n]{{0,20}}[）)])?\s*[：:]\s*$', re.I)
     locks, after_quote = [], 0
     for quote in _QUOTED_LINE.finditer(brief):
         lead = re.split(r'[\n。！？；;]', brief[after_quote:quote.start()])[-1]
         after_quote = quote.end()
+        if (only := bare.match(lead)):
+            lead = only['speaker'] + '說：'
         if not _VOICE_CUE.search(lead):
             continue
         speakers = {picture for alias, picture in cast
