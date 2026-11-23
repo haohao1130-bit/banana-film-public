@@ -88,7 +88,7 @@
     },
     {
       "path": "banana_mv/film_media.py",
-      "sha256": "11fd55186228cecaf2439d17bbcfb8e2c4518bd01650f4fc372b3cca0a5fb1ba"
+      "sha256": "d4f0a727fffa4d4f0889fb9b3fc77a42d8de2bf66163662f80077db64673d31a"
     },
     {
       "path": "banana_mv/film_server.py",
@@ -268,7 +268,7 @@
     },
     {
       "path": "tests/test_chain5_audio.py",
-      "sha256": "629734d68cf744099a5149189ca7807e457caf3f4cac1a473325c297e487bb33"
+      "sha256": "4d477e2cf0aa88a9f9d1f7da947104e0d77a44295317bfdd65d002a9d8955824"
     },
     {
       "path": "tests/test_clip_scope.py",

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from banana_mv.core import FPS
-from banana_mv.film_media import assemble_native, lead_path, probe_seconds, trim_native
+from banana_mv.film_media import assemble_native, lead_path, probe_seconds, tail_path, trim_native
 
 
 def make_clip(path, frames, audio_filter):
@@ -67,6 +67,26 @@ class Chain5AudioTests(unittest.TestCase):
             assemble_native([part_a, part_b], final, 96 / FPS)
             body = mean_volume(final, 1.0, 1.5)
             self.assertGreater(mean_volume(final, 1.80, 1.95), body - 1.0)
+
+    def test_trimmed_tail_sound_continues_into_the_next_clip(self):
+        # 實測 cf9f52c7f21f：260 格算圖只交付 240 格，H3 排在最後的聲音落在被裁掉的尾巴裡。
+        # 被裁掉的尾音另存，合成時疊到下一段開頭並淡出：剪接點後聽得到、總長不變。
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            raw_a, raw_b = tmp / 'a_raw.mp4', tmp / 'b_raw.mp4'
+            part_a, part_b = tmp / '00_part.mp4', tmp / '01_part.mp4'
+            step = 'sine=f=660:d=0.3:r=48000,adelay=2050|2050,apad,aformat=channel_layouts=stereo'
+            make_clip(raw_a, 63, f'{step}[s];[1:a][s]amix=inputs=2:normalize=0[a]')   # 2.05 秒才響：在交付的 2 秒之後
+            make_clip(raw_b, 53, '[1:a]anull[a]')
+            trim_native(raw_a, part_a, 48)
+            trim_native(raw_b, part_b, 48, prefix_frames=5)
+            self.assertGreater(probe_seconds(tail_path(part_a)), 0.4)
+            self.assertFalse(tail_path(part_b).exists())                # 剛好沒多算：不留尾音
+            final = tmp / 'final.mp4'
+            assemble_native([part_a, part_b], final, 96 / FPS)
+            self.assertAlmostEqual(probe_seconds(final), 4.0, delta=0.05)
+            self.assertGreater(window_volume(final, 2.06, 2.30), -30)   # 尾音跨過剪接點
+            self.assertLess(window_volume(final, 2.60, 3.50), -60)      # 疊完就沒了，不拖到後面
 
     def test_no_prefix_removes_stale_lead(self):
         with tempfile.TemporaryDirectory() as tmp:
