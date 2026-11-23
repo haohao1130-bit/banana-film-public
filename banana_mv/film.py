@@ -606,10 +606,12 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
           'reference_count':len(originals)+offset,
           'current_clip_commission':brief}
     # 9B 看圖會自己猜物種：原創吉祥物蕉彌被寫成兔子、生物、貓科（實測 c15e16581a5e 變成黃貓）。
+    # 9B 每段重寫服裝會讓角色換衣服（MV 實測 5a114b855bf1 小語四段四套），改成靠圖定義。
     task['reference_identity'] = (
         'For every character with a <Picture N>, never guess a species, animal or category from the picture. '
-        'Use the name and appearance wording from the shared settings; if they describe none, use only the name '
-        'plus clearly visible colors, head and ear shapes, costume and props.')
+        'Define them as name + <Picture N> + "appearance and costume exactly as in <Picture N>", adding only wording '
+        'copied from the shared settings (or a commissioned outfit change); never describe hair, clothes or '
+        'accessories from your own reading of the picture, and do not re-describe costumes in shots.')
     if job.get('kitchen'):
         task['cast_instruction'] = (
             'Use only the actors commissioned for this segment. Shared settings identify assets, '
