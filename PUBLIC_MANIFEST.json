@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "354aea02c06506865b4417e3e04b3a0e543c6ce78eb31da1634a210193964056"
+      "sha256": "d6c78422fe32fcfe9a715e67756c6a8d43979082ae0174be44f05e8cd0fb7120"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -308,7 +308,7 @@
     },
     {
       "path": "tests/test_film.py",
-      "sha256": "e453dd62469ddd07391257e3c0bc3bc33b2874e4821192f21f474b2dda88b256"
+      "sha256": "f5fc5190e3eb1da867382e8f9a65bcaba76c490f0bad66b5f1905929a6e04682"
     },
     {
       "path": "tests/test_film_dynamic.py",
@@ -377,6 +377,10 @@
     {
       "path": "tests/test_regressions.py",
       "sha256": "187ff1056f039f1b68974235c41d3a2e59efc4f000f0ca33a0c5183e9cb40818"
+    },
+    {
+      "path": "tests/test_room_switch_env.py",
+      "sha256": "b1cd1c6405aa7c37557b5aea1c9763a253e2329b87c8872638dc95ac5ba01fb1"
     },
     {
       "path": "tests/test_runtime.py",
