@@ -545,12 +545,35 @@ _PICTURE_TAG = re.compile(r'<Picture (\d+)>')
 _ONSCREEN = re.compile(r'(?:^|[｜\n])\s*(?:[-*•]\s*)?【?入鏡(?:】\s*[：:]?|[：:])')
 
 
+# 場景圖不是演員：舞台、擂台、房間這類圖不在入鏡名單很正常，不能被扣下
+# （MV 實測 b43d9e4edec4：場景圖被扣，9B 只好自己腦補新場景）。
+_SCENE_HEADING = re.compile(r'^\s*(?:[■#【\[]|─|━)?\s*[^\n]{0,6}(?:場景|場地|背景|環境|地點)')
+_SCENE_WORDS = re.compile(r'舞台|擂台|場景|場地|背景|環境|房間|客廳|臥室|教室|廚房|食堂|餐廳|街|公寓|海邊|沙灘|'
+                          r'公園|森林|城市|室內|室外|stage|ring|room|scene|background|location|street', re.I)
+_NOT_ONSCREEN = re.compile(r'[^\s、,，/／;；：:]+?(?=不入鏡|不出場|不在場|沒入鏡|缺席)(?:不入鏡|不出場|不在場|沒入鏡|缺席)')
+
+
+def scene_pictures(fixed):
+    """設定裡的場景參考圖編號：寫在「場景」標題底下，或名稱本身就是地點。"""
+    scenes, in_scene = set(), False
+    for line in (fixed or '').splitlines():
+        if re.match(r'\s*(?:[■#【]|─{3,}|━{3,})', line):
+            in_scene = bool(_SCENE_HEADING.match(line)) and '隔離' not in line
+        for number, name in _CAST_BINDING.findall(line):
+            if in_scene or _SCENE_WORDS.search(name):
+                scenes.add(int(number))
+    return scenes
+
+
 def kitchen_absent_pictures(brief, fixed):
     """Scan the clip commission against the shared character bindings."""
     # 「」裡是台詞不是入鏡：小浣說「小貓！你最好了！」不代表小貓在畫面裡。
     brief = re.sub(r'「[^」\n]*」|『[^』\n]*』', '「」', brief or '')
+    # 「猴哥不入鏡」是在說誰不在，不能當成有提到猴哥。
+    brief = _NOT_ONSCREEN.sub('', brief)
+    scenes = scene_pictures(fixed)
     roles = {int(n): name for n, name in _CAST_BINDING.findall(fixed or '')
-             if not re.search(r'場景|環境|背景|場地', name)}
+             if int(n) not in scenes and not re.search(r'場景|環境|背景|場地', name)}
     mentioned = {int(n) for n in _PICTURE_TAG.findall(brief)}
     mentioned_roles = {role.upper() for role in _ROLE_MENTION.findall(brief)}
     for first, last in _ROLE_RANGE.findall(brief):
