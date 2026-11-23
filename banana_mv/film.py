@@ -1074,7 +1074,7 @@ def worker(job,cfg,originals,song=None,drive=None):
     from banana_mv import face_refine
     from banana_mv.comfy import check_cancelled, track_prompt
     from banana_mv.film_continuity import (
-        add_motion_guide, motion_prefix, opening_render_frames, opens_with_cut, upload_motion_tail,
+        add_motion_guide, fit_chain5_delivery, motion_prefix, opening_render_frames, opens_with_cut, upload_motion_tail,
     )
     try:
         cfg = app.emergency_config(cfg, job['id'])
@@ -1138,6 +1138,9 @@ def worker(job,cfg,originals,song=None,drive=None):
                 for field in ('opening_sha256', 'motion_context', 'prompt_id'):
                     seg.pop(field, None)
             tail=None;context_names=[];prefix=motion_prefix(job,seg)
+            if fit_chain5_delivery(job, seg, prefix):
+                # 長度變了：舊稿（照 10 秒寫的）要重寫，佇列中的舊算圖也不能沿用。
+                seg['refresh_prompt']=True;seg.pop('prompt_id',None);app.write_state(job)
             if prefix:
                 source=guide_source
                 context_names,receipt=upload_motion_tail(cfg,source,work/'motion_context',f'banana_motion_{job["id"]}_{i:02d}')

@@ -14,7 +14,7 @@ from PIL import Image
 from banana_mv import film, server as app, takes
 from banana_mv.core import build_workflow, probe, assemble
 from banana_mv.film_media import trim_native
-from banana_mv.film_continuity import motion_prefix,render_frames,prepare_motion_tail,add_motion_guide
+from banana_mv.film_continuity import fit_chain5_delivery,motion_prefix,render_frames,prepare_motion_tail,add_motion_guide
 import test_film as film_tests
 
 
@@ -91,6 +91,28 @@ class MotionGraphTests(unittest.TestCase):
             self.assertEqual(trims,[0,5]);self.assertNotIn('motion_guide',graphs[0]);self.assertIn('motion_guide',graphs[1])
             self.assertEqual(prepare.call_args.args[0].name,'00_part_v1.mp4')
             self.assertEqual(graphs[1]['7']['inputs']['length'],render_frames(job['segments'][1]['frames']))
+            # B：H3 拍幾格就交付幾格（扣掉 5 格前導），尾巴一格都不裁
+            self.assertEqual(graphs[1]['7']['inputs']['length'],job['segments'][1]['frames']+5)
+            self.assertEqual(graphs[1]['7']['inputs']['length']%17,5)
+
+    def test_chain5_delivery_rounds_down_to_what_h3_can_render(self):
+        # 實測 cf9f52c7f21f：240 格要 245 格才拍得出，只能拍 260 再裁掉尾巴 0.625 秒。改拍 243、交付 238。
+        job={'duration':30.0,'segments':[
+            {'index':0,'start_frame':0,'frames':240,'seconds':10.0,'model_frames':243,'status':'done'},
+            {'index':1,'start_frame':240,'frames':240,'seconds':10.0,'model_frames':260,'status':'waiting'},
+            {'index':2,'start_frame':480,'frames':240,'seconds':10.0,'model_frames':260,'status':'waiting'}]}
+        seg=job['segments'][1]
+        self.assertTrue(fit_chain5_delivery(job,seg,5))
+        self.assertEqual((seg['frames'],seg['model_frames'],seg['chain5_requested_frames']),(238,243,240))
+        self.assertAlmostEqual(seg['seconds'],238/24)
+        self.assertEqual(job['segments'][2]['start_frame'],478)
+        self.assertAlmostEqual(job['duration'],30-2/24)
+        self.assertFalse(fit_chain5_delivery(job,seg,5))                      # 續做不會再縮
+        self.assertFalse(fit_chain5_delivery(job,job['segments'][0],5))       # 拍好的段不動
+        self.assertFalse(fit_chain5_delivery(job,job['segments'][2],0))       # 沒有前導：照舊
+        short={'start_frame':0,'frames':141,'model_frames':158,'status':'waiting'}
+        self.assertTrue(fit_chain5_delivery({'segments':[short]},short,5))
+        self.assertEqual((short['frames'],short['model_frames']),(136,141))
 
     def test_adjacent_retakes_use_the_new_previous_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
