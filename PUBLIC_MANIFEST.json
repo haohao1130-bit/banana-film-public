@@ -379,6 +379,10 @@
       "sha256": "187ff1056f039f1b68974235c41d3a2e59efc4f000f0ca33a0c5183e9cb40818"
     },
     {
+      "path": "tests/test_room_switch_env.py",
+      "sha256": "b1cd1c6405aa7c37557b5aea1c9763a253e2329b87c8872638dc95ac5ba01fb1"
+    },
+    {
       "path": "tests/test_runtime.py",
       "sha256": "18a69019906375b69677c53338f2363c9eaf5c6e235ecb84e24d6c51db97a791"
     },
