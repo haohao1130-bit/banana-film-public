@@ -265,12 +265,68 @@ function closeSheets() {
   render();
 }
 $('open-settings').onclick = () => openSheet('sheet-settings');
-$('open-shared').onclick = () => { renderReferences(); renderPresets(); fetchPresets(); openSheet('sheet-shared'); };
+$('open-shared').onclick = () => {
+  $('shared-text-feedback').textContent = '';
+  renderReferences();
+  renderPresets();
+  fetchPresets();
+  openSheet('sheet-shared');
+};
+$('open-guide').onclick = () => openSheet('sheet-guide');
 $('sheet-backdrop').onclick = closeSheets;
 for (const close of document.querySelectorAll('[data-close]')) close.onclick = closeSheets;
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !$('sheet-backdrop').hidden) closeSheets();
 });
+
+const aiGuide = `你是蕉彌鐵板燒的短片編劇。把我給的描述寫成可直接貼進鐵板燒的繁體中文菜單。
+
+開新桌時，如果我還沒整理共同設定，請把它獨立列出：角色與參考圖對應（例如 @圖片1=小巫=S1）、聲線、畫風、固定場景，以及每段都要沿用的規則。沒有提供的圖片與角色代號不要自行編造。這一段才會發生的事件、動作、台詞與運鏡放在菜單。
+
+如果我已經提供共同設定，或正在接著拍，直接給我可貼上的當段劇情。沿用角色和聲線，從上一段的結果往下演，不重貼共同設定、不重講故事主軸，也不重演前情。只展開我這次指定要拍的事。
+
+單段可直接寫清楚場景、動作和台詞，並寫出我指定的秒數。多段請照我給的片長和段數分段，段內時間從 0 秒重新算。例如：
+第01段：店門口
+[0-4秒] 小巫聽見敲門聲，停下手上的工作。
+[4-10秒] 小巫走去開門，抬頭說：「進來吧。」
+
+用純文字，不加 Markdown 圍欄。角色有代號時，台詞請標說話者，例如 S1：「進來吧。」`;
+
+async function copyText(text, sheet) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // 區網 HTTP 沒有 Clipboard API 時，仍可用瀏覽器的複製指令。
+  }
+  const previous = document.activeElement;
+  const field = el('textarea', {attrs: {readonly: '', 'aria-label': '複製文字'}});
+  field.value = text;
+  field.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  $(sheet).append(field);
+  try {
+    field.focus({preventScroll: true});
+    field.select();
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+    previous?.focus({preventScroll: true});
+  }
+}
+
+$('copy-ai-guide').onclick = async () => {
+  const copied = await copyText(aiGuide, 'sheet-guide');
+  const field = $('ai-guide-text');
+  $('guide-feedback').textContent = copied ? '已複製，貼到 AI 就能用。' : '請選取下方指令後複製。';
+  field.hidden = copied;
+  if (!copied) {
+    field.value = aiGuide;
+    field.focus();
+    field.select();
+  }
+};
 for (const group of document.querySelectorAll('.pills')) {
   const target = $(group.dataset.target);
   for (const option of group.querySelectorAll('button')) {
@@ -752,6 +808,31 @@ async function uploadSlots(report) {
 function presetFeedback(message) {
   $('preset-feedback').textContent = message || '';
 }
+$('copy-shared-text').onclick = async () => {
+  const text = $('shared').value;
+  const feedback = $('shared-text-feedback');
+  if (!text.trim()) {
+    feedback.textContent = '目前沒有共同設定可複製。';
+    return;
+  }
+  const copied = await copyText(text, 'sheet-shared');
+  feedback.textContent = copied ? '已複製共同設定。' : '瀏覽器無法直接複製，可下載共同設定 .txt。';
+};
+$('download-shared-text').onclick = () => {
+  const text = $('shared').value;
+  const feedback = $('shared-text-feedback');
+  if (!text.trim()) {
+    feedback.textContent = '目前沒有共同設定可下載。';
+    return;
+  }
+  feedback.textContent = '';
+  const url = URL.createObjectURL(new Blob([text], {type: 'text/plain;charset=utf-8'}));
+  const link = el('a', {attrs: {href: url, download: '蕉彌鐵板燒-共同設定.txt'}});
+  $('sheet-shared').append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 async function fetchPresets() {
   try {
     presets = await api('api/film/kitchen/presets', undefined, '讀取組合');

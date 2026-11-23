@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>蕉彌鐵板燒｜蕉宗一鍵短片</title>
-  <link rel="stylesheet" href="teppan.css?v=chat-6">
-  <script defer src="teppan.js?v=cast-1"></script>
+  <link rel="stylesheet" href="teppan.css?v=guide-1">
+  <script defer src="teppan.js?v=guide-1"></script>
 </head>
 <body>
   <div class="app">
@@ -99,7 +99,10 @@
         </div>
         <progress id="progress" aria-label="本次片段完成進度" hidden></progress>
       </div>
-      <button id="new-project" type="button" class="chip" hidden>新開一桌</button>
+      <div class="counter-actions">
+        <button id="open-guide" type="button" class="chip" aria-haspopup="dialog" aria-controls="sheet-guide">使用說明</button>
+        <button id="new-project" type="button" class="chip" hidden>新開一桌</button>
+      </div>
     </header>
 
     <main id="chat" aria-live="polite" aria-label="和蕉彌的對話">
@@ -150,6 +153,19 @@
   </div>
 
   <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+
+  <section id="sheet-guide" class="sheet" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+    <div class="sheet-head"><h2 id="guide-title">鐵板燒使用說明</h2><button type="button" class="chip" data-close>完成</button></div>
+    <ol class="guide-steps">
+      <li><strong>開桌先填共同設定。</strong>放角色與參考圖、聲線、畫風和固定場景。常用的設定和圖片可存成「我的組合」，文字也能單獨下載。</li>
+      <li><strong>菜單直接寫這次要演的劇情。</strong>接著拍時，從上一段結尾繼續寫動作和台詞。故事主軸、角色介紹和已拍過的事只要交代一次。</li>
+      <li><strong>多段菜單可先標好時間。</strong>例如「第01段：店門口」，下面標 [0-4秒] 和 [4-10秒]。選「蕉彌估」讀取時間碼。只有一段時也可以直接用一句話點菜。</li>
+      <li><strong>試菜滿意就採用。</strong>接著點下一道，全部拍好再上菜。</li>
+    </ol>
+    <button id="copy-ai-guide" class="btn primary" type="button">複製給 AI</button>
+    <p id="guide-feedback" class="preset-feedback" role="status"></p>
+    <textarea id="ai-guide-text" aria-label="可複製的 AI 指令" rows="6" readonly hidden></textarea>
+  </section>
 
   <section id="sheet-settings" class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="sheet-head"><h2 id="settings-title">參數</h2><button type="button" class="chip" data-close>完成</button></div>
@@ -225,6 +241,11 @@
       <p id="shared-image-empty" class="image-empty" role="status" hidden></p>
       <button id="shared-image-add" class="chip image-add" type="button" hidden>加入參考圖</button>
     </div>
+    <div class="actions shared-text-actions">
+      <button id="copy-shared-text" class="btn" type="button">複製共同設定</button>
+      <button id="download-shared-text" class="btn" type="button">下載共同設定 .txt</button>
+    </div>
+    <p id="shared-text-feedback" class="preset-feedback" role="status"></p>
     <div class="preset-save">
       <label for="preset-name" class="sr-only">組合名稱</label>
       <input id="preset-name" maxlength="40" placeholder="組合名稱，例如：異世界食堂">
