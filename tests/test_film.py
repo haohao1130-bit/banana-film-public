@@ -379,6 +379,7 @@ class FilmTests(unittest.TestCase):
             writer.assert_called_once()
             request = json.loads(writer.call_args_list[0].args[2][0][1])
             self.assertNotIn('already_established', request)
+            self.assertIn('never guess a species', request['reference_identity'])   # 原創角色不准被改物種
             self.assertEqual(request['authored_dialogue'], [
                 {'speaker':'貓又老闆','reference':'<Picture 2>','line':line},
             ])
