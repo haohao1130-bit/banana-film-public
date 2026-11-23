@@ -71,7 +71,8 @@ def free_slots(job):
 
 
 def mentioned(role, text):
-    return bool(role_pattern(role).search(text or ''))
+    text = re.sub(r'「[^」\n]*」|『[^』\n]*』', '「」', text or '')     # 台詞裡提到的名字不算出場
+    return bool(role_pattern(role).search(text))
 
 
 def add_reference(app, cfg, job, originals, character, image, source, segment=None):

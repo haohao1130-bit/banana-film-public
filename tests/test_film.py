@@ -373,8 +373,9 @@ class FilmTests(unittest.TestCase):
                     app.backend,'rewrite_local',return_value=draft) as writer:
                 with self.assertLogs('banana_mv.film', 'WARNING') as logged:
                     prompt = film.write_prompt(cfg,job,current,[photo,photo],tail=photo)
-            self.assertEqual(prompt, draft.strip())
-            self.assertIn('第 2 段台詞提醒', logged.output[0])
+            # 老闆的台詞被標給小狐：Python 直接在台詞前補上老闆的說話者標籤，不必重寫、不擋算圖。
+            self.assertIn('<Subject 1> (S2) says, <d>[Chinese] ' + line, prompt)
+            self.assertIn('第 2 段補上說話者', '\n'.join(logged.output))
             writer.assert_called_once()
             request = json.loads(writer.call_args_list[0].args[2][0][1])
             self.assertNotIn('already_established', request)
