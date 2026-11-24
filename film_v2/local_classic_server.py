@@ -160,7 +160,7 @@ def main():
             if job.get("request", {}).get("production") != "film":
                 continue
             if job["status"] not in (
-                    "done", "error", "cancelled", "interrupted", "script_ready"):
+                    "done", "error", "cancelled", "interrupted", "script_ready", "kitchen_ready"):
                 job.update(
                     status="interrupted",
                     error="本機後端重啟，已完成片段保留，可續跑。")

@@ -734,6 +734,7 @@ function render() {
   $('stop').hidden = !job || idle.has(status);
   $('stop').disabled = pending;
   $('new-project').hidden = !job || working;
+  renderRestart();
   $('restore-wrap').hidden = Boolean(job) || $('restore-project').options.length <= 1;
   $('profile').textContent = profileText();
   $('sheet-settings').classList.toggle('locked', Boolean(job));
@@ -1088,6 +1089,74 @@ $('new-project').onclick = () => {
   projects();
 };
 
+/* ---------- 一鍵重啟（只有本機 5070 有重啟器時才顯示） ---------- */
+const instanceKey = 'banana_teppan_instance';
+let restartState = {available: false, busy: false}, restarting = false;
+async function readHealth() {
+  const response = await fetch('api/health', {cache: 'no-store'});
+  if (!response.ok) throw Error('HTTP ' + response.status);
+  return response.json();
+}
+function renderRestart() {
+  const button = $('restart-kitchen');
+  button.hidden = !restartState.available;
+  const working = Boolean(job) && !idle.has(job.status);
+  button.disabled = restarting || restartState.busy || working || pending;
+  button.textContent = restarting ? '重啟中…' : '↻ 重啟丹爐';
+  button.title = working || restartState.busy ? '蕉彌還在忙，請先停爐或等這道炒完。'
+    : '重啟本機丹爐（ComfyUI 與短片服務）；重啟後新開一桌，舊的桌可從「繼續之前的桌」打開。';
+}
+async function checkRestart() {
+  if (restarting) return;
+  try {
+    const health = await readHealth();
+    restartState = {available: Boolean(health.restart_available), busy: Boolean(health.busy)};
+    if (health.instance) {
+      // 丹爐換了一個新的執行個體（重啟過）：這支手機記得的桌不自動打開，預設新開一桌。
+      const known = localStorage.getItem(instanceKey);
+      localStorage.setItem(instanceKey, health.instance);
+      if (known && known !== health.instance && localStorage.getItem(storageKey) && !job) {
+        localStorage.removeItem(storageKey);
+      }
+    }
+  } catch {
+    restartState = {available: false, busy: false};
+  }
+  renderRestart();
+}
+$('restart-kitchen').onclick = async () => {
+  if ($('restart-kitchen').disabled || !window.confirm('重啟丹爐？\n\n會重新啟動本機短片服務與 ComfyUI，大約 1–2 分鐘。重啟後新開一桌，之前的桌都保存著，可從「繼續之前的桌」打開。')) return;
+  restarting = true;
+  renderRestart();
+  let before = null;
+  try {
+    before = (await readHealth()).instance;
+    const response = await fetch('api/film/restart', {method: 'POST', headers: {'X-Banana-Control': 'film-restart'}});
+    if (!response.ok) throw Error(response.status === 409 ? '蕉彌還在忙，請先停爐。' : 'HTTP ' + response.status);
+    showFeedback('丹爐重啟中，好了會自動新開一桌…');
+    clearTimeout(timer);
+    const deadline = Date.now() + 240000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      try {
+        const health = await readHealth();
+        if (health.instance && health.instance !== before) {
+          localStorage.removeItem(storageKey);
+          localStorage.setItem(instanceKey, health.instance);
+          window.location.reload();
+          return;
+        }
+      } catch { /* 重啟中連不上是正常的 */ }
+    }
+    throw Error('等太久了，請看一下電腦上的丹爐視窗。');
+  } catch (error) {
+    showFeedback('重啟失敗：' + error.message);
+  } finally {
+    restarting = false;
+    renderRestart();
+  }
+};
+
 // 執行環境預設（Colab：720P、沒有 2K 升頻；5070：照網頁原本的 480P＋升頻）。
 async function applyProfileDefaults() {
   let defaults;
@@ -1107,9 +1176,13 @@ async function applyProfileDefaults() {
 syncPills();
 fetchPresets();
 applyProfileDefaults();
-const saved = localStorage.getItem(storageKey);
-if (saved) {
-  restoring = true;
-  sync(saved).then(() => { if (!job) projects(); });
-} else projects();
+checkRestart().finally(() => {
+  const saved = localStorage.getItem(storageKey);
+  if (saved) {
+    restoring = true;
+    sync(saved).then(() => { if (!job) projects(); });
+  } else projects();
+  render();
+});
+setInterval(checkRestart, 5000);
 render();
