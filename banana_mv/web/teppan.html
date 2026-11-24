@@ -99,7 +99,10 @@
         </div>
         <progress id="progress" aria-label="本次片段完成進度" hidden></progress>
       </div>
-      <button id="new-project" type="button" class="chip" hidden>新開一桌</button>
+      <div class="head-actions">
+        <button id="new-project" type="button" class="chip" hidden>新開一桌</button>
+        <button id="restart-kitchen" type="button" class="chip" hidden title="重啟本機丹爐（ComfyUI 與短片服務）；重啟後新開一桌">↻ 重啟丹爐</button>
+      </div>
     </header>
 
     <main id="chat" aria-live="polite" aria-label="和蕉彌的對話">
