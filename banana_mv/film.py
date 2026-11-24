@@ -250,8 +250,44 @@ def validate_manual_sound(text, seconds, sound_mode):
         raise ValueError('無對白模式不可使用說話者標記或 <d> 台詞。')
 
 
+_SHOT_MARK=re.compile(r'\[Shot\s+(\d+)\]')
+_SHOT_AT=re.compile(r'\s*At\s+(\d{2}):(\d{2})\.(\d{3})\s*,?')
+
+
+def fill_shot_times(text,seconds):
+    """9B 偶爾漏寫某一鏡的「At MM:SS.mmm」：取前後兩鏡時間的中點補上，不整段退稿。"""
+    head,sep,rest=text.partition('detailed_description:')
+    body,tail=(rest.split('overall_soundscape:',1)+[''])[:2] if sep else (text,'')
+    shots=list(_SHOT_MARK.finditer(body))
+    if len(shots)<2:return text
+    times=[]
+    for index,match in enumerate(shots):
+        found=_SHOT_AT.match(body,match.end())
+        times.append(None if index==0 else
+                     (int(found[1])*60+int(found[2])+int(found[3])/1000 if found else None))
+    if all(t is not None for t in times[1:]):return text
+    filled=list(times);filled[0]=0.0
+    for index in range(1,len(filled)):
+        if filled[index] is not None:continue
+        after=next((filled[j] for j in range(index+1,len(filled)) if filled[j] is not None),float(seconds))
+        gap=next(j for j in range(index+1,len(filled)+1) if j==len(filled) or filled[j] is not None)-index+1
+        filled[index]=filled[index-1]+(after-filled[index-1])/gap
+    pieces=[];last=0
+    for index,match in enumerate(shots):
+        if index and times[index] is None:
+            value=filled[index];minute=int(value//60);sec=value-minute*60
+            pieces.append(body[last:match.end()]+f' At {minute:02d}:{int(sec):02d}.{int(round((sec-int(sec))*1000))%1000:03d},')
+            last=match.end()
+    pieces.append(body[last:])
+    logging.getLogger(__name__).warning('9B 漏寫切鏡時間，已自動補上第 %s 鏡。',
+                                        '、'.join(str(i+1) for i,t in enumerate(times) if i and t is None))
+    body=''.join(pieces)
+    return head+sep+body+('overall_soundscape:'+tail if sep and 'overall_soundscape:' in rest else tail) if sep else body
+
+
 def validate_film_format(text,seconds,sound_mode):
     """Deterministic MiniMax H3 format checks; no plot or camera-style judgement."""
+    text=fill_shot_times(text,seconds)
     if text.lstrip().startswith('subject_definitions:'):
         from banana_mv.direction_contract import validate_h3_sections
         validate_h3_sections(text)
@@ -706,6 +742,9 @@ def write_prompt(cfg,job,seg,originals,tail=None,correction=None,base=None,dest=
             if n not in withheld:
                 pictures.extend([('text', f'<Picture {n}>:'), _pictures([path])[1]])
     if dest:atomic_json(Path(dest)/(artifact_prefix+'repair_request.json'),{'system':system,'user':text})
+    if seg.get('force_thinking'):
+        # 使用者對卡住的這段按了「蕉彌開 Thinking 重寫」：只有這段開思考。
+        cfg=dict(cfg,rewriter=dict(cfg['rewriter'],thinking=True,max_length=16384))
     for attempt in range(req['rewrite_retries']+1):
         call_cfg=cfg
         if attempt and cfg.get('rewriter',{}).get('thinking'):
@@ -1239,7 +1278,7 @@ def worker(job,cfg,originals,song=None,drive=None):
                 else:
                     prompt=write_prompt(cfg,job,seg,originals,tail)
                 prompt_file.write_text(prompt,encoding='utf-8')
-                seg.pop('prompt_id',None);seg.pop('refresh_prompt',None)
+                seg.pop('prompt_id',None);seg.pop('refresh_prompt',None);seg.pop('force_thinking',None)
             from banana_mv.film_manual import protect_chain5_opening, protect_render_tail
             guarded = protect_chain5_opening(prompt) if prefix else prompt
             guarded = protect_render_tail(guarded, seg['frames'], opening_render_frames(job, seg), prefix)

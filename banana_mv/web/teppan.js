@@ -500,6 +500,26 @@ async function act(path, data) {
     render();
   }
 }
+function stuckBubble(clip, position) {
+  const prompt = el('textarea', {className: 'prompt-edit', attrs: {rows: '8',
+    placeholder: '9B 還沒寫出草稿。可以直接貼一份完整的 H3 提示詞，或按下面請蕉彌開 Thinking 重寫。',
+    'aria-label': `片段 ${position + 1} 的 H3 提示詞`}});
+  prompt.value = clip.draft ?? '';
+  const editor = el('div', {className: 'clip-editor'}, [prompt, el('div', {className: 'actions'}, [
+    btn('用這個提示詞炒', () => {
+      if (!prompt.value.trim()) return showFeedback('先貼上或補好這段的提示詞。');
+      act('film/kitchen/clip_prompt', {index: clip.index, prompt: prompt.value});
+    }, true),
+    btn('蕉彌開 Thinking 重寫', () => act('film/kitchen/clip_rethink', {index: clip.index}))
+  ])]);
+  return bubble('bot', [
+    el('div', {className: 'raw-dish', attrs: {role: 'img', 'aria-label': '一盤還沒熟的菜'}, text: '🥩'}),
+    para(`第 ${position + 1} 段還沒熟！要自己補調味，還是叫蕉彌開大火重炒？`),
+    para(clip.draft ? '下面是 9B 最後一版草稿，改好按「用這個提示詞炒」；或讓蕉彌只為這段開 Thinking 重寫。'
+      : '這段還沒有草稿：可以直接貼提示詞，或讓蕉彌只為這段開 Thinking 重寫。', 'meta'),
+    editor
+  ], 'wide stuck');
+}
 function castBubble(refs) {
   const fitting = refs.every(ref => ref.source === 'fitting');
   return bubble('bot', [
@@ -581,6 +601,8 @@ function buildMessages() {
           nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
             para(workingText())]));
         } else if (!ready && lastDish && lastAttempt && paused.has(job.status) && !job.kitchen?.serving) {
+          const stuck = clips.find(clip => clip && clip.status !== 'done');
+          if (stuck) nodes.push(stuckBubble(stuck, clips.indexOf(stuck)));
           nodes.push(bubble('bot', [
             para(job.status === 'error' ? '鐵板出了點狀況，完成的毛片都保存了。' : '已停爐，完成的毛片都保存了。'),
             job.error ? para(job.error, 'meta') : null,
@@ -643,7 +665,7 @@ function renderChat() {
   const signature = JSON.stringify([job?.id, status, job?.error, job?.video, job?.final_versions?.length, job?.kitchen,
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
     pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().map(ref => ref.src), job?.cast_refs?.length,
-    job?.pending_takes, job?.retake, job?.kitchen?.cast_log?.length,
+    job?.pending_takes, job?.retake, job?.kitchen?.cast_log?.length, (job?.segments ?? []).map(seg => seg.draft?.length ?? 0),
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => (job.segments[i]?.takes ?? []).map(t => [t.id, t.status]))))]);
   if (signature === chatSignature) return;
   const chat = $('chat');
