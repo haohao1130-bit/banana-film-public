@@ -119,7 +119,7 @@ def _sections(prompt):
 
 
 def best_shot(prompt, character, seconds):
-    """回傳角色最單獨入鏡那個鏡頭的取樣時間（秒），找不到回傳 None。"""
+    """回傳角色單獨入鏡（鏡頭裡沒有其他 Subject）那個鏡頭的取樣時間（秒）；沒有單人鏡頭回傳 None。"""
     definitions, details = _sections(prompt)
     subjects = {int(n): line for n, line in
                 ((m[1], m[0]) for m in _SUBJECT_LINE.finditer(definitions))}
@@ -139,8 +139,10 @@ def best_shot(prompt, character, seconds):
             continue
         following = _SHOT_TIME.match(details[shots[index + 1].end():]) if index + 1 < len(shots) else None
         end = int(following[1]) * 60 + float(following[2]) if following else seconds
-        others = len(tags - own)
-        score = (others, 0 if _CLOSE.search(body) else 1, -(end - start))
+        if tags - own:
+            # 同框還有別人：抽出來的格子會把別的角色（例如小巫）一起當成這個人的長相，不抓。
+            continue
+        score = (0 if _CLOSE.search(body) else 1, -(end - start))
         if best is None or score < best[0]:
             best = (score, start, end)
     if best is None:
@@ -153,20 +155,27 @@ def grab_from_clip(app, cfg, job, seg, part, prompt, originals, command):
     """A：段拍完後，替這段第一次出場、還沒有圖的角色抽一格當提示圖。"""
     if not job['request'].get('auto_cast_frames') or not prompt:
         return []
-    added = []
+    added, moments = [], []
+    used = {ref.get('sha256') for ref in job.get('cast_refs', [])}
     for character in unbound_cast(job.get('shared_setup')):
         if free_slots(job) < 1:
             break
         if not mentioned(character['role'], seg['director_plan']['event']):
             continue
         moment = best_shot(prompt, character, seg['seconds'])
-        if moment is None:
-            continue
+        if moment is None or any(abs(moment - other) < 0.5 for other in moments):
+            continue          # 沒有單人鏡頭，或跟別的角色抓到同一格：等之後更好的段再抓
         frame = app.job_dir(job['id']) / f'{seg["index"]:02d}_cast_{character["role"].lower()}.png'
         command(['ffmpeg', '-y', '-v', 'error', '-ss', f'{moment:.3f}', '-i', str(part),
                  '-frames:v', '1', str(frame)])
         if not frame.is_file():
             continue
+        digest = hashlib.sha256(frame.read_bytes()).hexdigest()
+        if digest in used:
+            frame.unlink(missing_ok=True)
+            continue
+        used.add(digest)
+        moments.append(moment)
         added.append(add_reference(app, cfg, job, originals, character, frame, 'frame', seg['index']))
     return added
 
