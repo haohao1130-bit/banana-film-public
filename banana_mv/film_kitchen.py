@@ -395,3 +395,34 @@ def edit_cast(body, action):
         return describe(job)
     finally:
         app.GPU_LOCK.release()
+
+
+def fix_stuck_clip(body, action):
+    """沒炒成的段：使用者手動補好提示詞，或叫 9B 只為這段開思考重寫，然後接著炒。"""
+    job = app.read_state(body['id'])
+    _require_kitchen_idle(job)
+    if job['status'] == 'kitchen_ready':
+        raise ValueError('這道菜已經炒完了，請用已出菜那段的「沒熟重炒」。')
+    clips = latest(job)['clips']
+    index = body.get('index')
+    if type(index) is not int or index not in clips:
+        raise ValueError('請選擇這道菜裡的片段。')
+    seg = job['segments'][index]
+    if seg.get('status') == 'done':
+        raise ValueError('這段已經炒好了，請用「沒熟重炒」。')
+    seg.pop('prompt_id', None)
+    if action == 'clip_prompt':
+        prompt = body.get('prompt')
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 30000:
+            raise ValueError('請貼上這段完整的 H3 提示詞。')
+        offset = int(job['request'].get('mode') == 'chain' and clips.index(index) > 0)
+        prompt = film.validate_film_format(
+            film.normalize_prompt(prompt, len(job.get('images_comfy', [])) + offset),
+            seg['seconds'], job['request']['sound_mode'])
+        (app.job_dir(job['id']) / f'{index:02d}_prompt_v1.txt').write_text(prompt, encoding='utf-8')
+        seg.pop('refresh_prompt', None)
+        seg.pop('force_thinking', None)
+    else:
+        seg.update(refresh_prompt=True, force_thinking=True)
+    app.write_state(job)
+    return app.resume(job['id'])
