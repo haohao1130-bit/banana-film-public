@@ -171,23 +171,40 @@ def grab_from_clip(app, cfg, job, seg, part, prompt, originals, command):
     return added
 
 
+_GHOST = re.compile(r'半透明|透明|靈魂|幽靈|鬼魂|亡魂|冤魂|translucent|transparent|ghost|spirit', re.I)
+
+
 def fitting_prompt(character, shared):
     style = ' '.join(line.strip() for line in (shared or '').splitlines()
                      if _STYLE.search(line) and '<Picture' not in line)[:400]
     description = character['description'] or character['name']
+    if _GHOST.search(f"{character['name']} {description}"):
+        # 半透明角色站在素色背景前看不出透明感，H3 會拍成實體：改用有景物的背景，並用英文明講要透出背景。
+        look = ("<Subject 1> is a translucent ghost: the whole body, face, hair and clothing are semi-transparent, "
+                "and the background is clearly visible through the body.")
+        summary = ("A short character fitting shot: translucent <Subject 1> stands alone in a softly lit room with "
+                   "wooden furniture and warm lamps behind, which show through the semi-transparent body.")
+        shot = ("[Shot 1] A steady frontal medium shot of translucent <Subject 1> alone, centered, face and upper "
+                "body in frame, soft warm light, a room with wooden furniture and lamps behind that stays visible "
+                "through the semi-transparent body. " + look + " <Subject 1> stands still and looks into the camera "
+                "with a calm, natural expression, then turns slightly to a three-quarter view and back to face the "
+                "camera. No other people, no props, no text.")
+    else:
+        summary = ("A short character fitting shot: <Subject 1> stands alone in front of a plain, softly lit "
+                   "backdrop and faces the camera so the face, hair, body shape and clothing are clearly visible.")
+        shot = ("[Shot 1] A steady frontal medium shot of <Subject 1> alone, centered, face and upper body fully in "
+                "frame, even soft light, plain neutral background. <Subject 1> stands still and looks into the camera "
+                "with a calm, natural expression, then turns slightly to a three-quarter view and back to face the "
+                "camera. No other people, no props, no text.")
     return (
         f"subject_definitions:\n<Subject 1> is {character['name']} ({character['role']}), a character with no "
         f"reference image, created from this description: {description}\n\n"
-        "summary:\nA short character fitting shot: <Subject 1> stands alone in front of a plain, softly lit "
-        "backdrop and faces the camera so the face, hair, body shape and clothing are clearly visible.\n\n"
+        f"summary:\n{summary}\n\n"
         "retention_analysis:\n<Subject 1> (appears in [Shot 1]): newly created from the description; this exact "
         "look will be reused for later shots.\n\n"
         "detailed_description:\n"
         + (f"Visual style: {style}\n" if style else '')
-        + "[Shot 1] A steady frontal medium shot of <Subject 1> alone, centered, face and upper body fully in frame, "
-        "even soft light, plain neutral background. <Subject 1> stands still and looks into the camera with a calm, "
-        "natural expression, then turns slightly to a three-quarter view and back to face the camera. No other people, "
-        "no props, no text.\n\n"
+        + shot + "\n\n"
         "overall_soundscape:\nQuiet room tone.\n\n"
         "non_diegetic_music:\nNone."
     )
