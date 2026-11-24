@@ -594,9 +594,31 @@ def kitchen_absent_pictures(brief, fixed):
     return roles.keys() - present
 
 
-def kitchen_workflow_refs(job, seg, prompt, first):
+def segment_originals(job, seg, originals):
+    """換角前已拍好的段：重拍時用它當時的參考圖，不換成新角色。"""
+    sources = seg.get('reference_sources')
+    if not sources or sources == job['sources']['images']:
+        return originals
+    return [app.backend.safe_child(app.job_dir(job['id']), rel) for rel in sources]
+
+
+def segment_images(cfg, job, seg):
+    """ComfyUI 上這段要用的參考圖檔名；換角前的段用內容雜湊命名上傳，不會被新圖蓋掉。"""
+    sources = seg.get('reference_sources')
+    if not sources or sources == job['sources']['images'] or cfg is None:
+        return job['images_comfy']
+    names = []
+    for path in segment_originals(job, seg, []):
+        data = path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()[:12]
+        names.append(app.backend.upload_comfy_image(
+            cfg, f'banana_film_{job["id"]}_ref_{digest}{path.suffix}', data, 'application/octet-stream'))
+    return names
+
+
+def kitchen_workflow_refs(job, seg, prompt, first, cfg=None):
     """Use dense picture numbers for H3 while keeping stored prompts editable."""
-    images = job['images_comfy']
+    images = segment_images(cfg, job, seg)
     if not job.get('kitchen') or seg.get('manual_h3_prompt'):
         return images, prompt
     offset = int(bool(first))
@@ -1252,7 +1274,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             first=None
             if tail:
                 first=app.backend.upload_comfy_image(cfg,f'banana_film_{job["id"]}_tail_{i}.png',tail.read_bytes(),'image/png')
-            images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+            images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first, cfg)
             graph=app.build_workflow(images,None,*job['size'],opening_render_frames(job,seg),graph_prompt,
                                      (job['seed']+i)%(2**48),first,**app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])
@@ -1271,7 +1293,7 @@ def worker(job,cfg,originals,song=None,drive=None):
             if prefix:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'],prefix_frames=prefix)
             else:trim_native(work/f'{i:02d}_raw_v1.mp4',part,seg['frames'])
             if not app.valid_part(part,seg,job['size']):raise ValueError('短片影格或尺寸驗證失敗。')
-            seg['status']='done'
+            seg['status']='done';seg.pop('redo',None)
             guide_source = face_refine.chained_part(app, cfg, job, seg, part, originals)
             if kitchen:
                 from banana_mv import cast_refs
