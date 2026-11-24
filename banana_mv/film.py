@@ -288,6 +288,12 @@ def validate_film_format(text,seconds,sound_mode):
             raise ValueError('retention_analysis 不應使用說話者 (Sx) 標記。')
     speakers=re.findall(r'\(S(\d+)\)',text)
     dialogue=re.search(r'<d>.*?</d>',text,re.S)
+    if speakers and not dialogue:
+        # 9B 把劇本的演員代號 S1 抄成 H3 的發聲標記 (S1)；整段沒台詞時這些標記沒有意義，直接刪掉不退稿。
+        logging.getLogger(__name__).warning('整段沒有 <d> 台詞，刪掉 9B 多寫的 (Sx) 發聲標記：%s',
+                                            '、'.join(f'S{n}' for n in dict.fromkeys(speakers)))
+        text=re.sub(r'[ \t]*\(S\d+\)','',text)
+        speakers=[]
     if sound_mode=='ambient' and (speakers or dialogue):
         raise ValueError('環境音模式不可加入說話者 ID 或對白。')
     if speakers and not dialogue:
