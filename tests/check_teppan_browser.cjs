@@ -77,7 +77,9 @@ const server = http.createServer((req, res) => {
   await new Promise(resolve => server.listen(0, resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
-  const page = await browser.newPage({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, hasTouch: true});
+  const context = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, hasTouch: true});
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const snap = async name => { if (shots) await page.screenshot({path: path.join(shots, name + '.png')}); };
@@ -85,6 +87,18 @@ const server = http.createServer((req, res) => {
   await page.waitForSelector('.msg.bot');
   assert.match(await page.locator('#profile').textContent(), /9:16 · 首尾幀 · 480P · 6步 · 蕉彌估/);
   await snap('1-welcome');
+
+  // 點單規則＋一鍵複製給 AI
+  await page.click('#open-guide');
+  await page.waitForSelector('#sheet-guide:not([hidden])');
+  assert.match(await page.locator('#sheet-guide').textContent(), /ACT 01｜00:00–00:10/);
+  await page.click('#copy-ai-guide');
+  await page.waitForFunction(() => document.getElementById('copy-ai-status').textContent !== '');
+  const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => document.getElementById('ai-guide-fallback').value));
+  assert.match(copied, /【輸出一：共同設定】/);
+  assert.match(copied, /S1\(語氣\):「台詞」/);
+  await snap('1b-guide');
+  await page.click('#sheet-guide [data-close]');
 
   // 加圖 → 出現在輸入框上方與共同設定
   const png = path.join(require('node:os').tmpdir(), 'teppan-ref.png');
@@ -200,5 +214,5 @@ const server = http.createServer((req, res) => {
   assert.deepEqual(errors, []);
   await browser.close();
   server.close();
-  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve, restart to a new table.');
+  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve, restart to a new table, guide + copy for AI.');
 })().catch(error => { console.error(error); process.exit(1); });
