@@ -137,8 +137,11 @@ class DynamicFilmTests(unittest.TestCase):
         self.assertEqual(film.validate_film_format(silent,8,'ambient'),silent)
         dialogue='[Shot 1] <Subject 2> (S1) says <d>[English] Hello.</d>'
         self.assertEqual(film.validate_film_format(dialogue,8,'dialogue'),dialogue)
+        # 沒台詞時 9B 多寫的 (Sx) 直接刪掉，不退稿。
+        for mode in ('dialogue','ambient'):
+            self.assertEqual(film.validate_film_format('[Shot 1] <Subject 2> (S1) watches <Subject 3> (S6) silently.',8,mode),
+                             '[Shot 1] <Subject 2> watches <Subject 3> silently.')
         wrong=[
-            ('[Shot 1] <Subject 2> (S1) watches silently.', 'dialogue'),
             ('[Shot 1] <Subject 2> (S1) says <d>[English] Hello.</d>','ambient'),
             ('[Shot 1] <Subject 2> (S1) says <d>[English] Hi.</d> '
              '<Subject 3> (S1) says <d>[English] Hey.</d>', 'dialogue')

@@ -40,7 +40,7 @@
     },
     {
       "path": "banana_mv/cast_refs.py",
-      "sha256": "a16b6f4268108a7a39594fd8ef028f1fc2731d5d524b3d216fb1ade078ad7c8e"
+      "sha256": "096bc28267521a2c323f77c81ff8a0c7913a624cdc3b7cbc29023ba793fcc931"
     },
     {
       "path": "banana_mv/comfy.py",
@@ -64,7 +64,7 @@
     },
     {
       "path": "banana_mv/film.py",
-      "sha256": "e2c7a7cfedb759f49efc81fc6fda44a615bd2e939467f91703ac3448069da457"
+      "sha256": "fcb8b24bf75834f187620e97026ecd7b6d4059a09dae1e52e98637f0aa3d377b"
     },
     {
       "path": "banana_mv/film_act.py",
@@ -264,7 +264,7 @@
     },
     {
       "path": "tests/test_cast_refs.py",
-      "sha256": "b54569deeeb969f8311fab46d9f1ebeb37bfd0bbc36a15846b0f89d00195c01e"
+      "sha256": "1aff2395aec038dbb1149c3a1642c873197a1b61e0f4f08b10b6d8d5b6c42e0f"
     },
     {
       "path": "tests/test_chain5_audio.py",
@@ -312,7 +312,7 @@
     },
     {
       "path": "tests/test_film_dynamic.py",
-      "sha256": "1ee5dd489d8f406dd02bf9edf7a0a9da840305dfa4617531d623a86efa76fb51"
+      "sha256": "998019dd29f2d86d96393d31395f22ed11081ecab243bff0c2bcfd8c1857e59b"
     },
     {
       "path": "tests/test_film_manual_director.py",

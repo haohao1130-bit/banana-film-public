@@ -81,6 +81,17 @@ class CastRefsTests(unittest.TestCase):
         self.assertAlmostEqual(cast_refs.best_shot(PROMPT, girl, 10.0), 8.35)    # Shot 3：只跟一個人同框
         self.assertIsNone(cast_refs.best_shot(PROMPT, {'role': 'S7', 'name': '年輕男子靈魂', 'description': ''}, 10.0))
 
+    def test_fitting_prompt_keeps_ghosts_translucent_against_a_visible_room(self):
+        ghost, girl = cast_refs.unbound_cast(SHARED)
+        prompt = cast_refs.fitting_prompt(ghost, SHARED)
+        self.assertIn('translucent ghost', prompt)
+        self.assertIn('visible through the semi-transparent body', prompt)
+        self.assertNotIn('plain neutral background', prompt)
+        self.assertNotIn('clothing are clearly visible', prompt)
+        plain = cast_refs.fitting_prompt({'role': 'S9', 'name': '店員', 'description': '短髮、穿圍裙'}, '')
+        self.assertIn('plain neutral background', plain)
+        self.assertNotIn('translucent', plain)
+
     def test_free_slots_reserve_the_tail_frame_in_chain_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(cast_refs.free_slots(job_for(tmp, 'chain', 6)), 2)
