@@ -175,6 +175,7 @@ def update(body, action):
                 raise ValueError('請選擇目前這道菜的毛片版本。')
             indices = current['attempts'][selection]['clips']
             from banana_mv.takes import take_source
+            commit_pending(job, indices)
             for index in indices:
                 take_source(job, index)
             if not indices:
@@ -230,3 +231,167 @@ def update(body, action):
     finally:
         if not started:
             app.GPU_LOCK.release()
+
+
+def commit_pending(job, indices):
+    """試菜選的回爐版本（pending）直接變成這段的採用版。"""
+    pending = job.get('pending_takes', {})
+    for index in indices:
+        take = pending.pop(str(index), None)
+        if take:
+            job['segments'][index]['selected_take'] = take
+
+
+def _require_kitchen_idle(job):
+    kitchen = job.get('kitchen')
+    if not kitchen or kitchen.get('serving'):
+        raise ValueError('請從還在試菜的鐵板燒專案操作。')
+    if job['status'] not in ('kitchen_ready', 'error', 'cancelled', 'interrupted'):
+        raise ValueError('蕉彌還在忙，請先按停止。')
+    if app.GPU_LOCK.locked():
+        raise ValueError('鐵板正在使用中，請等這次生成完成。')
+    return kitchen
+
+
+def continue_from(body):
+    """這段 OK：採用它試菜選的版本，後面已拍的段全部依新的尾幀重拍，再接著炒。"""
+    job = app.read_state(body['id'])
+    _require_kitchen_idle(job)
+    clips = latest(job)['clips']
+    index = body.get('index')
+    if index is None:
+        keep = clips
+    else:
+        if type(index) is not int or index not in clips:
+            raise ValueError('請選擇這道菜裡的片段。')
+        keep = clips[:clips.index(index) + 1]
+        if job['segments'][index].get('status') != 'done':
+            raise ValueError('這段還沒炒好，按「繼續製作」就好。')
+    commit_pending(job, keep)
+    redo = [i for i in clips if i not in keep]
+    pending = job.get('pending_takes', {})
+    for i in redo:
+        seg = job['segments'][i]
+        pending.pop(str(i), None)
+        for field in ('takes', 'selected_take', 'prompt_id', 'opening_sha256', 'motion_context', 'reference_sources'):
+            seg.pop(field, None)
+        seg.update(status='waiting', refresh_prompt=True, redo=True)
+        seg['fixed_reference_settings'] = job['shared_setup']
+    if not redo and all(job['segments'][i].get('status') == 'done' for i in clips):
+        job['status'] = 'kitchen_ready'
+        app.write_state(job)
+        return job
+    if job['status'] == 'kitchen_ready':
+        job['status'] = 'interrupted'
+    app.write_state(job)
+    return app.resume(job['id'])
+
+
+def edit_cast(body, action):
+    """換角指令或手動改共同設定：只改共同設定文字與參考圖，下一段開始生效。"""
+    import shutil
+    import uuid
+    from banana_mv import cast_refs, film, teppan_cast
+    if not app.GPU_LOCK.acquire(blocking=False):
+        raise ValueError('鐵板正在使用中，請等這次生成完成。')
+    try:
+        job = app.read_state(body['id'])
+        kitchen = job.get('kitchen')
+        if not kitchen or kitchen.get('serving'):
+            raise ValueError('請從還在試菜的鐵板燒專案操作。')
+        if job['status'] not in ('kitchen_ready', 'error', 'cancelled', 'interrupted'):
+            raise ValueError('蕉彌還在忙，請先按停止。')
+        count = len(job['sources']['images'])
+        limit = count + cast_refs.free_slots(job)
+        display = teppan_cast.to_display(job.get('shared_setup', ''))
+        image = None
+        if action == 'shared':
+            text = body.get('shared')
+            if not isinstance(text, str) or not text.strip() or len(text) > 12000:
+                raise ValueError('共同設定需要 1–12000 字。')
+            text = text.strip()
+            for number in teppan_cast._PICTURE.findall(text):
+                value = int(number[0] or number[1])
+                if not 1 <= value <= count:
+                    raise ValueError(f'找不到 @圖片{value}，目前只有 {count} 張參考圖。')
+            command, operation, number, new_count = None, 'shared', None, count
+            reply = '共同設定已更新，下一段開始照新的設定拍。'
+        else:
+            command = body.get('command', '')
+            parsed = teppan_cast.parse(command) if isinstance(command, str) else None
+            if not parsed:
+                raise ValueError('換角指令要用「取代@圖片N」、「新增」或「移除@圖片N」開頭。')
+            operation, number, rest = parsed
+            if operation in ('replace', 'add'):
+                asset_id = body.get('image')
+                if not isinstance(asset_id, str) or not asset_id:
+                    raise ValueError('換角要先放一張新角色的圖。')
+                image = app.backend.safe_child(app.backend.LIBRARY, app.backend.asset(asset_id)['file'])
+            text, new_count, reply = teppan_cast.apply(display, operation, number, rest, count, limit)
+        # 已拍好的段：記住當時的圖，之後重拍舊段不會換成新角色。
+        for seg in job['segments']:
+            if seg.get('status') == 'done' and not seg.get('reference_sources'):
+                seg['reference_sources'] = list(job['sources']['images'])
+        work = app.job_dir(job['id'])
+        cfg = app.backend.project_config(job['request'])
+        if operation in ('replace', 'add'):
+            tag = uuid.uuid4().hex[:8]
+            slot = number - 1 if operation == 'replace' else count
+            relative = f'sources/image_{slot}_swap_{tag}{image.suffix.lower()}'
+            target = app.backend.safe_child(work, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(image, target)
+            uploaded = app.backend.upload_comfy_image(
+                cfg, f'banana_film_{job["id"]}_swap_{tag}{target.suffix}', target.read_bytes(), 'application/octet-stream')
+            if operation == 'replace':
+                job['sources']['images'][slot] = relative
+                job['images_comfy'][slot] = uploaded
+            else:
+                job['sources']['images'].append(relative)
+                job['images_comfy'].append(uploaded)
+            assets = job['request'].get('image_assets') or [None] * count
+            assets = (assets + [None] * count)[:count]
+            if operation == 'replace':
+                assets[slot] = body.get('image')
+            else:
+                assets.append(body.get('image'))
+            job['request']['image_assets'] = assets
+        elif operation == 'remove':
+            del job['sources']['images'][number - 1]
+            del job['images_comfy'][number - 1]
+            assets = job['request'].get('image_assets')
+            if assets and len(assets) >= number:
+                del assets[number - 1]
+        shared = teppan_cast.to_internal(text)
+        job['shared_setup'] = shared
+        job['request']['kitchen_shared_setup'] = text
+        job['request']['image_slots'] = None        # 之後的菜單 @圖片N 直接對應第 N 張
+        refs = []
+        for ref in job.get('cast_refs', []):
+            if operation in ('replace', 'remove') and ref['picture'] == number:
+                continue
+            if operation == 'remove' and ref['picture'] > number:
+                ref.update(picture=ref['picture'] - 1, image_index=ref['image_index'] - 1)
+            refs.append(ref)
+        if 'cast_refs' in job:
+            job['cast_refs'] = refs
+        for seg in job['segments']:
+            if seg.get('status') == 'done':
+                continue
+            if operation == 'remove':
+                seg['director_plan']['event'] = teppan_cast.renumber(seg['director_plan']['event'], number)
+            seg['fixed_reference_settings'] = shared
+            if 'absent_cast_pictures' in seg:
+                seg['absent_cast_pictures'] = sorted(
+                    film.kitchen_absent_pictures(seg['director_plan']['event'], shared))
+            seg['refresh_prompt'] = True
+            seg.pop('prompt_id', None)
+        kitchen.setdefault('cast_log', []).append({
+            'dish': len(kitchen['dishes']) - 1, 'action': operation, 'command': command,
+            'reply': reply, 'picture': (number if operation == 'replace' else new_count if operation == 'add' else None),
+            'image_index': (number - 1 if operation == 'replace' else new_count - 1 if operation == 'add' else None)})
+        app.write_state(job)
+        from banana_mv.takes import describe
+        return describe(job)
+    finally:
+        app.GPU_LOCK.release()

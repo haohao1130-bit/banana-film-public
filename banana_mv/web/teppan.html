@@ -216,7 +216,7 @@
     <h3>這桌的參考圖</h3>
     <p class="muted">圖片依序放進圖片1–8。在菜單或下面的設定裡用 @圖片1 指定是誰，例如「@圖片1=小巫=S1，S1=溫柔甜美女聲」。載入組合後還可以按 ＋ 補這次的客人。</p>
     <div id="references" class="ref-grid"></div>
-    <p id="refs-locked" class="muted" hidden>開桌後參考圖固定；要換圖請新開一桌。</p>
+    <p id="refs-locked" class="muted" hidden>開桌後要換角：停爐或等這道炒完，在輸入框按 ＋ 放新圖，再打「取代@圖片N」或「新增」，下一行寫「@圖片N＝名字＝S代號」和聲音描述；角色退場打「移除@圖片N」。也可以直接改下面的文字按儲存。</p>
     <label for="shared" class="field-label">角色、聲線與畫風（每道菜都沿用）</label>
     <textarea id="shared" rows="4" maxlength="12000" aria-controls="shared-image-list" aria-autocomplete="list"
       placeholder="例：@圖片1 是蕉彌，元氣少年音。@圖片2 是蕉大師，低沉老師傅。真人電影風格。"></textarea>
@@ -224,6 +224,9 @@
       <div id="shared-image-list" class="image-list" role="listbox" aria-label="共同設定參考圖片"></div>
       <p id="shared-image-empty" class="image-empty" role="status" hidden></p>
       <button id="shared-image-add" class="chip image-add" type="button" hidden>加入參考圖</button>
+    </div>
+    <div id="shared-save-row" class="actions" hidden>
+      <button id="save-shared" type="button" class="btn primary">儲存共同設定（下一段開始生效）</button>
     </div>
     <div class="preset-save">
       <label for="preset-name" class="sr-only">組合名稱</label>
