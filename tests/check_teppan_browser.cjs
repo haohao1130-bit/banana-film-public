@@ -50,6 +50,9 @@ const server = http.createServer((req, res) => {
     if (url === '/api/mv/reference') { res.setHeader('Content-Type', 'image/png'); return res.end(PNG); }
     if (url === '/api/film/kitchen/start') { const b = JSON.parse(body); job = makeJob(b.kitchen_menu, b.max_seconds); polls = 0; return json(job); }
     if (url === '/api/mv/retake') { job.retakeBody = JSON.parse(body); return json(job); }
+    if (url === '/api/film/kitchen/clip_prompt' || url === '/api/film/kitchen/clip_rethink') {
+      job.stuckBody = [url, JSON.parse(body)]; job.status = 'running'; delete job.segments[1].draft; return json(job);
+    }
     if (url === '/api/film/kitchen/continue') { job.continueBody = JSON.parse(body); return json(job); }
     if (url === '/api/film/kitchen/cast') {
       const b = JSON.parse(body); job.castBody = b;
@@ -153,6 +156,17 @@ const server = http.createServer((req, res) => {
   assert.equal(await page.locator('.tray-dish').count(), 1);
   assert.equal(await page.getByRole('button', {name: '採用', exact: true}).count(), 0);
   await page.click('.tray-dish');
+  // 第 2 段卡住沒炒成：顯示沒熟的菜＋9B 草稿，可以手動補好再炒
+  job.status = 'error'; job.error = 'ValueError: 第 3 鏡缺少 At MM:SS.mmm 切鏡時間。';
+  job.segments[1].status = 'waiting'; job.segments[1].draft = 'subject_definitions: 草稿';
+  await page.waitForSelector('.stuck .raw-dish', {timeout: 8000});
+  assert.equal(await page.inputValue('.stuck .prompt-edit'), 'subject_definitions: 草稿');
+  await page.fill('.stuck .prompt-edit', 'subject_definitions: 補好了');
+  await snap('4b-stuck');
+  await page.click('.stuck .btn:has-text("用這個提示詞炒")');
+  await page.waitForFunction(() => !document.querySelector('.stuck'));
+  assert.deepEqual(job.stuckBody, ['/api/film/kitchen/clip_prompt', {id: 'job1', index: 1, prompt: 'subject_definitions: 補好了'}]);
+  job.segments[1].status = 'rewriting'; delete job.error;
   finishCooking = true;
   await page.waitForSelector('text=炒好了！', {timeout: 8000});
   assert.equal(await page.locator('#dish-preview-0-0 video').count(), 2);
@@ -214,5 +228,5 @@ const server = http.createServer((req, res) => {
   assert.deepEqual(errors, []);
   await browser.close();
   server.close();
-  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve, restart to a new table, guide + copy for AI.');
+  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve, restart to a new table, guide + copy for AI, stuck clip fix.');
 })().catch(error => { console.error(error); process.exit(1); });

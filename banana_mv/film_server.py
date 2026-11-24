@@ -103,6 +103,8 @@ class Handler(app.Handler):
                     return self.send_json(film_kitchen.update(body, action))
                 if action == 'continue':
                     return self.send_json(film_kitchen.continue_from(body))
+                if action in ('clip_prompt', 'clip_rethink'):
+                    return self.send_json(film_kitchen.fix_stuck_clip(body, action))
                 if action in ('cast', 'shared'):
                     return self.send_json(film_kitchen.edit_cast(body, action))
                 return self.send_json({'error': '找不到此操作。'}, 404)

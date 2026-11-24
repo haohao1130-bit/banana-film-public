@@ -125,12 +125,15 @@ class DynamicFilmTests(unittest.TestCase):
         for bad in [
             '[Shot 1] Setup.\n[Shot 2] At 00:09.000, late shot.',
             '[Shot 1] Setup.\n[Shot 2] At 00:03.500, cut.\n[Shot 3] At 00:02.500, backward.',
-            '[Shot 1] Setup.\n[Shot 2] An untimed cut.',
             '[Shot 1] At 00:00.000, not the official opening form.',
             '[Shot 1] Setup.\n[Shot 3] At 00:02.500, skipped index.'
         ]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 film.validate_film_format(bad,8,'ambient')
+
+    def test_missing_cut_time_is_filled_at_the_midpoint(self):
+        fixed=film.validate_film_format('[Shot 1] Setup.\n[Shot 2] An untimed cut.\n[Shot 3] At 00:08.000, end.',10,'ambient')
+        self.assertIn('[Shot 2] At 00:04.000, An untimed cut.',fixed)
 
     def test_native_film_speaker_ids_are_vocal_not_shot_local(self):
         silent='[Shot 1] <Subject 2> watches <Subject 3> act.'

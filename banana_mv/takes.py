@@ -124,6 +124,14 @@ def describe(job):
                         take['prompt'] = filming.read_text(encoding='utf-8')
                     elif take['id']==seg.get('selected_take','original'):
                         take['prompt'] = seg.get('prompt','')
+    if job.get('kitchen') and job['status'] in ('error','cancelled','interrupted'):
+        # 卡住沒炒成的段：把 9B 最後一版草稿給試菜頁，讓使用者手動補或叫 9B 開思考重寫。
+        for i,seg in enumerate(result['segments']):
+            if seg.get('status')=='done':continue
+            drafts=sorted(work.glob(f'{i:02d}_rewrite_raw_*.txt'),key=lambda p:p.stat().st_mtime)
+            saved=work/f'{i:02d}_prompt_v1.txt'
+            source=saved if saved.is_file() and not seg.get('refresh_prompt') else (drafts[-1] if drafts else None)
+            if source:seg['draft']=source.read_text(encoding='utf-8')
     return result
 
 

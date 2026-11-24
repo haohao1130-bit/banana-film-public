@@ -175,5 +175,35 @@ class ContinueTests(unittest.TestCase):
         self.assertEqual(job['status'], 'kitchen_ready')
 
 
+
+class StuckClipTests(unittest.TestCase):
+    H3 = ('subject_definitions:\n<Subject 1> is the hostess in <Picture 1>.\n\nsummary:\nShe waits.\n\n'
+          'retention_analysis:\n<Subject 1>: fully_preserved.\n\ndetailed_description:\n'
+          '[Shot 1] <Subject 1> waits.\n[Shot 2] <Subject 1> smiles.\n\n'
+          'overall_soundscape:\nQuiet.\n\nnon_diegetic_music:\nNone.')
+
+    def test_manual_prompt_for_a_stuck_clip_is_saved_with_filled_times_then_resumes(self):
+        work = Path(tempfile.mkdtemp())
+        job = kitchen_job(work, 3)
+        job['request']['sound_mode'] = 'ambient'
+        job['segments'][3]['refresh_prompt'] = True
+        with patch.object(app, 'read_state', return_value=job), patch.object(app, 'write_state'), \
+                patch.object(app, 'job_dir', return_value=work), patch.object(app, 'resume', return_value='ok') as resume:
+            film_kitchen.fix_stuck_clip({'id': 'job1', 'index': 3, 'prompt': self.H3}, 'clip_prompt')
+        resume.assert_called_once()
+        saved = (work / '03_prompt_v1.txt').read_text(encoding='utf-8')
+        self.assertIn('[Shot 2] At 00:05.000,', saved)
+        self.assertNotIn('refresh_prompt', job['segments'][3])
+
+    def test_rethink_marks_only_that_clip_for_thinking(self):
+        job = kitchen_job(Path(tempfile.mkdtemp()), 3)
+        with patch.object(app, 'read_state', return_value=job), patch.object(app, 'write_state'), \
+                patch.object(app, 'resume', return_value='ok'):
+            film_kitchen.fix_stuck_clip({'id': 'job1', 'index': 3}, 'clip_rethink')
+        self.assertTrue(job['segments'][3]['force_thinking'] and job['segments'][3]['refresh_prompt'])
+        with patch.object(app, 'read_state', return_value=job), self.assertRaises(ValueError):
+            film_kitchen.fix_stuck_clip({'id': 'job1', 'index': 0}, 'clip_rethink')     # 已炒好的段用沒熟重炒
+
+
 if __name__ == '__main__':
     unittest.main()
