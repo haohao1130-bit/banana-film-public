@@ -40,7 +40,7 @@
     },
     {
       "path": "banana_mv/cast_refs.py",
-      "sha256": "096bc28267521a2c323f77c81ff8a0c7913a624cdc3b7cbc29023ba793fcc931"
+      "sha256": "30a355ed7b6bf03b0934ec6c0e8c2333edfa81c8f5f5b331981fad4c870a6f9c"
     },
     {
       "path": "banana_mv/comfy.py",
@@ -264,7 +264,7 @@
     },
     {
       "path": "tests/test_cast_refs.py",
-      "sha256": "1aff2395aec038dbb1149c3a1642c873197a1b61e0f4f08b10b6d8d5b6c42e0f"
+      "sha256": "beba837834afb207aa5241616ffa9e22cd406ad2c3c62f0c2610ca2faf93463f"
     },
     {
       "path": "tests/test_chain5_audio.py",

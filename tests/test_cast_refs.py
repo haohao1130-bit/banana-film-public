@@ -78,7 +78,7 @@ class CastRefsTests(unittest.TestCase):
     def test_best_shot_prefers_a_solo_close_up_and_matches_short_names(self):
         elder, girl = cast_refs.unbound_cast(SHARED)
         self.assertAlmostEqual(cast_refs.best_shot(PROMPT, elder, 10.0), 5.35)   # Shot 2：00:04–00:07 單人特寫
-        self.assertAlmostEqual(cast_refs.best_shot(PROMPT, girl, 10.0), 8.35)    # Shot 3：只跟一個人同框
+        self.assertIsNone(cast_refs.best_shot(PROMPT, girl, 10.0))               # 只有雙人鏡頭：不抓，免得把別人當長相
         self.assertIsNone(cast_refs.best_shot(PROMPT, {'role': 'S7', 'name': '年輕男子靈魂', 'description': ''}, 10.0))
 
     def test_fitting_prompt_keeps_ghosts_translucent_against_a_visible_room(self):
@@ -103,19 +103,28 @@ class CastRefsTests(unittest.TestCase):
             job, app, originals = job_for(tmp), fake_app(tmp), [Path(tmp) / 'a.png', Path(tmp) / 'b.png']
             seg = job['segments'][0]
             added = cast_refs.grab_from_clip(app, {}, job, seg, Path(tmp) / 'part.mp4', PROMPT, originals, fake_ffmpeg)
-            self.assertEqual(added, [3, 4])
-            self.assertEqual(job['images_comfy'][2:], ['banana_film_abc_2.png', 'banana_film_abc_3.png'])
-            self.assertEqual(len(originals), 4)
+            self.assertEqual(added, [3])                                  # S8 只有雙人鏡頭：等之後再抓
+            self.assertEqual(job['images_comfy'][2:], ['banana_film_abc_2.png'])
+            self.assertEqual(len(originals), 3)
             self.assertIn('<Picture 3>＝白髮老人靈魂＝S6（外觀參考：第 1 段畫面', job['shared_setup'])
-            self.assertEqual(cast_refs.unbound_cast(job['shared_setup']), [])
             later = job['segments'][1]
             self.assertIn('<Picture 3>', later['fixed_reference_settings'])
             self.assertTrue(later['refresh_prompt'])
             self.assertNotIn(3, later['absent_cast_pictures'])        # S6 有出場：新圖要給
-            self.assertIn(4, later['absent_cast_pictures'])           # S8 沒出場：新圖不給
             self.assertNotIn('<Picture 3>', job['segments'][0]['fixed_reference_settings'])  # 拍好的段不動
-            self.assertEqual([r['role'] for r in job['cast_refs']], ['S6', 'S8'])
+            self.assertEqual([r['role'] for r in job['cast_refs']], ['S6'])
             self.assertEqual(Path(tmp, job['sources']['images'][2]).read_bytes(), b'png-5.350')
+            self.assertEqual([c['role'] for c in cast_refs.unbound_cast(job['shared_setup'])], ['S8'])
+
+    def test_grab_never_gives_two_roles_the_same_frame(self):
+        prompt = PROMPT.replace('[Shot 3] At 00:07.000, a two-shot of <Subject 1> and <Subject 3>.',
+                                '[Shot 3] At 00:07.000, a close-up of <Subject 3> alone.')
+        with tempfile.TemporaryDirectory() as tmp:
+            job, app = job_for(tmp), fake_app(tmp)
+            same = lambda args: Path(args[-1]).write_bytes(b'same-frame')
+            added = cast_refs.grab_from_clip(app, {}, job, job['segments'][0], Path(tmp) / 'p.mp4', prompt, [], same)
+            self.assertEqual(added, [3])                  # 第二位抓到一模一樣的畫面：不給
+            self.assertEqual(len({r['sha256'] for r in job['cast_refs']}), 1)
 
     def test_grab_respects_switch_and_picture_limit(self):
         with tempfile.TemporaryDirectory() as tmp:
