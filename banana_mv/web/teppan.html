@@ -100,6 +100,7 @@
         <progress id="progress" aria-label="本次片段完成進度" hidden></progress>
       </div>
       <div class="head-actions">
+        <button id="open-guide" type="button" class="chip" aria-haspopup="dialog" aria-controls="sheet-guide">📖 點單規則</button>
         <button id="new-project" type="button" class="chip" hidden>新開一桌</button>
         <button id="restart-kitchen" type="button" class="chip" hidden title="重啟本機丹爐（ComfyUI 與短片服務）；重啟後新開一桌">↻ 重啟丹爐</button>
       </div>
@@ -208,6 +209,74 @@
     <input type="hidden" id="resolution" value="480">
     <input type="hidden" id="steps" value="6">
     <input type="hidden" id="sound" value="auto">
+  </section>
+
+  <section id="sheet-guide" class="sheet guide" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+    <div class="sheet-head"><h2 id="guide-title">點單規則</h2><button type="button" class="chip" data-close>完成</button></div>
+    <div class="actions guide-copy">
+      <button id="copy-ai-guide" type="button" class="btn primary">🤖 一鍵複製給 AI</button>
+      <span id="copy-ai-status" class="muted" role="status"></span>
+    </div>
+    <p class="muted">複製後貼給 ChatGPT、Claude 等 AI，再說你想拍什麼，它就會照下面的格式幫你寫好「共同設定」和「菜單」。</p>
+    <textarea id="ai-guide-fallback" rows="6" readonly hidden aria-label="無法自動複製時，請手動複製這段"></textarea>
+
+    <h3>1. 開桌：放圖＋共同設定</h3>
+    <ol>
+      <li>按輸入框左邊的 ＋ 放角色圖、場景圖，最多 8 張，依序是圖片1～8。</li>
+      <li>按「共同設定」，寫每部片都沿用的設定：誰是誰、聲音、畫風。可以存成組合，下次一鍵載入。</li>
+      <li>綁圖一行一個：<code>@圖片1＝小巫＝S1</code>；場景圖不用 S 代號：<code>@圖片6＝居酒屋場景</code>。</li>
+      <li>沒有圖的新角色：<code>S6＝白髮老人靈魂</code>，<b>下一行緊接著</b>寫外觀和聲音（最多 5 行、中間不空行），角色之間空一行。</li>
+    </ol>
+
+    <h3>2. 點菜：一次 2～3 個 ACT 最好改</h3>
+    <pre class="guide-example">ACT 01｜00:00–00:10｜食堂亮起燈火
+入鏡：S1
+不入鏡：所有其他角色
+背景：無人物
+
+00:00–00:04
+低機位廣角，S1 推開木門走進店裡。
+
+00:04–00:10
+切至 S1 胸口以上近景，S1 看著畫面右側的客人微笑。
+S1(溫柔地說):「歡迎光臨。」
+說話時 S1 視線看著客人，不看鏡頭。
+
+音效：木門聲、腳步聲。
+BGM：溫柔鋼琴。</pre>
+    <ul>
+      <li>ACT 從 01 開始連號，時間從 00:00 接續、不重疊；每個 ACT 6～10 秒。</li>
+      <li>每段寫清楚「入鏡／不入鏡／背景」，沒入鏡的角色就不會出現。整段沒人時寫「不入鏡：所有角色」。</li>
+      <li>台詞固定寫 <code>S1(語氣):「台詞」</code>；只有說話的人才寫括號語氣。沒台詞的段不要寫 <code>(S1)</code> 這種括號標記。</li>
+      <li>寫清楚視線：看誰、看哪裡、「不看鏡頭」；聽的人寫「嘴巴閉合不說話」。</li>
+      <li>動作做到一半就切鏡（例如「在蹲下的動作尚未完成時切鏡」），會有電影剪接感。</li>
+    </ul>
+
+    <h3>3. 試菜、沒熟重炒</h3>
+    <ul>
+      <li>按送出 → 蕉彌估價 → 按「開炒」。炒好先試看：滿意按「採用」，再點下一道；全部好了按「上菜」合成整部。</li>
+      <li>拍到一半發現不對：按紅色 ■ 停爐，點開那段的「✏️ 提示詞／沒熟重炒」：寫修改意見讓蕉彌重寫，或直接改提示詞，按「沒熟，重炒」。</li>
+      <li>那段 OK 了，按「這段 OK，後面接著重炒」，後面的段會從新畫面接著重拍。</li>
+    </ul>
+
+    <h3>4. 中途換角色</h3>
+    <ul>
+      <li>停爐或等這道炒完，按 ＋ 放新角色的圖，在輸入框打：</li>
+    </ul>
+    <pre class="guide-example">取代@圖片3
+@圖片3＝小狐＝S9
+活潑清脆的少女聲線。</pre>
+    <ul>
+      <li>加人用「新增」（下一行寫 <code>@圖片N＝名字＝S代號</code>，N＝目前張數＋1）；角色退場打「移除@圖片N」（不用放圖）。</li>
+      <li>會換掉綁定行，以及行首是那個 S 代號的段落（到下一個 S 代號或 ■ 為止）。改完打開「共同設定」確認，也可以直接手改按儲存。</li>
+    </ul>
+
+    <h3>5. 小撇步</h3>
+    <ul>
+      <li>參數建議：末五幀、8 步、關掉 9B Thinking（開了容易自己加戲、換衣服）。</li>
+      <li>半透明幽靈這類角色，用「從影片抓一格」比定裝照準。</li>
+      <li>右上「↻ 重啟丹爐」重啟後會新開一桌，舊的桌從「繼續之前的桌」打開。</li>
+    </ul>
   </section>
 
   <section id="sheet-shared" class="sheet" role="dialog" aria-modal="true" aria-labelledby="shared-title" hidden>
