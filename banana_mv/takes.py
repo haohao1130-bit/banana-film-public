@@ -135,7 +135,7 @@ def preview(job,index,take_id='current'):
 
 
 def require_idle(job,cfg,check_queue=True):
-    if job['status'] not in TERMINAL:raise ValueError('請先等這爐完成，或停止後再回爐／選丹。')
+    if job['status'] not in TERMINAL+(('kitchen_ready',) if job.get('kitchen') else ()):raise ValueError('請先等這爐完成，或停止後再回爐／選丹。')
     if check_queue:
         queue=app.backend.comfy(cfg,'/queue')
         if queue.get('queue_running') or queue.get('queue_pending'):
@@ -320,6 +320,10 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             saved=existing_file(job,i,base,'prompt.txt')
             prompt=saved.read_text(encoding='utf-8') if saved.is_file() else (seg.get('prompt') or (work/f'{i:02d}_prompt.txt').read_text(encoding='utf-8'))
             take['status']='generating';job['retake']['current']=i;app.write_state(job)
+            seg_originals=originals
+            if originals is not None and job['request'].get('production')=='film':
+                from banana_mv.film import segment_originals
+                seg_originals=segment_originals(job,seg,originals)
             name=f'banana_retake_{job["id"]}_{take["id"]}.wav';inp=Path(cfg['comfy_input_dir'])
             native=job['request'].get('production')=='film'
             if not native:
@@ -365,13 +369,13 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
                 from banana_mv.film import write_prompt
                 take['status'] = 'rewriting'
                 app.write_state(job)
-                prompt = write_prompt(cfg, job, seg, originals,
+                prompt = write_prompt(cfg, job, seg, seg_originals,
                                       correction=take.get('correction'), dest=dest,
                                       artifact_prefix=f'{i:02d}_v{take["version"]}_')
             elif take.get('correction'):
                 take['status']='rewriting';app.write_state(job)
                 take['base_prompt_sha256']=hashlib.sha256(prompt.encode()).hexdigest()
-                prompt=repair_prompt(cfg,job,seg,prompt,take['correction'],originals,frame if first else None,dest,prefix=f'{i:02d}_v{take["version"]}_')
+                prompt=repair_prompt(cfg,job,seg,prompt,take['correction'],seg_originals,frame if first else None,dest,prefix=f'{i:02d}_v{take["version"]}_')
             if native and prefix:
                 from banana_mv.film_manual import protect_chain5_opening
                 prompt=protect_chain5_opening(prompt)
@@ -385,7 +389,7 @@ def retake_worker(job,cfg,song,drive,batch,old_status,originals=None):
             images, graph_prompt = job['images_comfy'], prompt
             if native and job.get('kitchen'):
                 from banana_mv.film import kitchen_workflow_refs
-                images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first)
+                images, graph_prompt = kitchen_workflow_refs(job, seg, prompt, first, cfg)
             graph=app.build_workflow(images,None if native else name,*job['size'],model_frames,graph_prompt,take['seed'],first,
                                      **app.graph_options(job['request'],seg['seconds'],seg))
             if context_names:add_motion_guide(graph,context_names,seg['frames'])

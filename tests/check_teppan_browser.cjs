@@ -47,6 +47,13 @@ const server = http.createServer((req, res) => {
     }
     if (url === '/api/mv/reference') { res.setHeader('Content-Type', 'image/png'); return res.end(PNG); }
     if (url === '/api/film/kitchen/start') { const b = JSON.parse(body); job = makeJob(b.kitchen_menu, b.max_seconds); polls = 0; return json(job); }
+    if (url === '/api/mv/retake') { job.retakeBody = JSON.parse(body); return json(job); }
+    if (url === '/api/film/kitchen/continue') { job.continueBody = JSON.parse(body); return json(job); }
+    if (url === '/api/film/kitchen/cast') {
+      const b = JSON.parse(body); job.castBody = b;
+      job.kitchen.cast_log = [{dish: 0, action: 'replace', command: b.command, reply: '@圖片1 換成 小狐（S9）。', picture: 1, image_index: 0}];
+      job.shared_setup = '<Picture 1>＝小狐＝S9'; return json(job);
+    }
     if (url === '/api/film/kitchen/adopt') { job.kitchen.dishes.at(-1).selected = JSON.parse(body).attempt; return json(job); }
     if (url === '/api/film/kitchen/repeat') {
       const b = JSON.parse(body); job.kitchen.dishes.at(-1).attempts.push({menu: b.menu, seconds: b.seconds, clips: []});
@@ -143,6 +150,34 @@ const server = http.createServer((req, res) => {
   assert.equal(start.cast_fitting, false);
   await snap('5-cooked');
 
+  // 沒熟重炒：點開提示詞、改提示詞、重炒；這段 OK 後面接著重炒
+  await page.click('#dish-preview-0-0 .clip:first-child summary');
+  await page.fill('#dish-preview-0-0 .clip:first-child .prompt-edit', 'subject_definitions: 改過');
+  await page.locator('#dish-preview-0-0 .clip:first-child .clip-editor').scrollIntoViewIfNeeded();
+  await snap('5a-clip-editor');
+  await page.click('#dish-preview-0-0 .clip:first-child .btn:has-text("沒熟，重炒")');
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(job.retakeBody, {id: 'job1', indices: [0], prompts: {0: 'subject_definitions: 改過'}});
+  await page.evaluate(() => { document.querySelector('#dish-preview-0-0 .clip:first-child details').open = true; });
+  await page.click('#dish-preview-0-0 .clip:first-child .btn:has-text("這段 OK，後面接著重炒")');
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(job.continueBody, {id: 'job1', index: 0});
+
+  // 換角：開桌後 ＋ 放新圖，打「取代@圖片1」
+  assert.equal(await page.isHidden('#add-image'), false);
+  await page.setInputFiles('#image-picker', png);
+  await page.waitForSelector('.attachment img[alt="換角新圖"]');
+  await page.fill('#menu', '取代@圖片1\n@圖片1＝小狐＝S9\n活潑清脆的少女聲線。');
+  await page.click('#cook');
+  await page.waitForSelector('text=@圖片1 換成 小狐（S9）。');
+  assert.equal(job.castBody.command, '取代@圖片1\n@圖片1＝小狐＝S9\n活潑清脆的少女聲線。');
+  assert.match(job.castBody.image, /^a\d+$/);
+  await page.click('#open-shared');
+  assert.equal(await page.inputValue('#shared'), '@圖片1＝小狐＝S9');
+  assert.equal(await page.isHidden('#shared-save-row'), false);
+  await snap('5b-cast-swap');
+  await page.click('#sheet-shared [data-close]');
+
   // 採用 → 出菜區多一道 → 上菜
   await page.click('.msg.bot .btn.primary:has-text("採用")');
   await page.waitForSelector('.tray-dish');
@@ -154,5 +189,5 @@ const server = http.createServer((req, res) => {
   assert.deepEqual(errors, []);
   await browser.close();
   server.close();
-  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, adopt tray, serve.');
+  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve.');
 })().catch(error => { console.error(error); process.exit(1); });

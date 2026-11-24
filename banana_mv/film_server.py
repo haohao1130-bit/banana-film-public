@@ -49,7 +49,7 @@ class Handler(app.Handler):
             except ValueError as error:
                 return self.send_json({'error':str(error)},400)
             view=describe(job)
-            if job.get('kitchen') and job['status'] in ('planning_story', 'casting', 'running'):
+            if job.get('kitchen') and job['status'] in ('planning_story', 'casting', 'running', 'retaking'):
                 view['comfy_progress']=self.comfy_progress(job_id)
             return self.send_json(view)
         if path=='/api/film/kitchen/presets':
@@ -101,6 +101,10 @@ class Handler(app.Handler):
                     return self.send_json(film.start(defaults | body | {'kitchen_mode': True}))
                 if action in ('append', 'repeat', 'adopt', 'serve'):
                     return self.send_json(film_kitchen.update(body, action))
+                if action == 'continue':
+                    return self.send_json(film_kitchen.continue_from(body))
+                if action in ('cast', 'shared'):
+                    return self.send_json(film_kitchen.edit_cast(body, action))
                 return self.send_json({'error': '找不到此操作。'}, 404)
             except Exception as error:
                 return self.send_json({'error': str(error)}, 400)

@@ -804,8 +804,8 @@ def resume(job_id,rewrite_retries=None):
             segments = [] if job['kitchen'].get('serving') else [segments[i] for i in latest(job)['clips']]
         for seg in segments:
             part=adopted_part(job,seg)
-            usable=valid_part(part,seg,job['size'])
-            if not usable and seg.get('takes'):raise ValueError('採用版片段遺失或損壞，請恢復該版本或另選版本。')
+            usable=not seg.get('redo') and valid_part(part,seg,job['size'])
+            if not usable and seg.get('takes') and not seg.get('redo'):raise ValueError('採用版片段遺失或損壞，請恢復該版本或另選版本。')
             if usable and job['request'].get('production')=='film':
                 from banana_mv.film_media import require_audio
                 try:require_audio(part)

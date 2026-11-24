@@ -11,6 +11,8 @@ let localSlots = Array(SLOT_COUNT).fill(null);
 let presets = [], activePreset = '';
 let pendingOrder = loadPending();
 let chatSignature = '';
+let castImage = null, sharedDirty = false;   // 開桌後換角用的新圖；共同設定框是否有尚未儲存的修改
+const CAST_COMMAND = /^\s*(?:(?:取代|替換|換掉|移除|刪除)\s*[@＠]|新增\s*(?:\n|$))/;
 
 const dishMenu = [
   ['🍗', '宮保雞丁'], ['🍲', '三杯雞'], ['🍤', '鳳梨蝦球'], ['🐟', '清蒸石斑'],
@@ -76,6 +78,10 @@ function post(action, data, stage = '送出操作') {
 
 /* ---------- 參考圖 ---------- */
 function imageReferences() {
+  if (job?.sources?.images) {
+    return job.sources.images.map((source, index) => ({slot: index + 1,
+      src: 'api/mv/reference?' + new URLSearchParams({id: job.id, image: String(index), v: source})}));
+  }
   if (job) {
     let image = 0;
     return (job.request?.image_slots ?? []).flatMap((asset, index) => {
@@ -120,7 +126,11 @@ function renderReferences() {
   attachments.replaceChildren(...refs.map(ref => el('div', {className: 'attachment'}, [
     el('img', {attrs: {src: ref.src, alt: '圖片' + ref.slot}}), el('span', {text: '圖片' + ref.slot})
   ])));
-  attachments.hidden = Boolean(job) || !refs.length;
+  if (job) {
+    attachments.replaceChildren(...(castImage ? [el('div', {className: 'attachment'}, [
+      el('img', {attrs: {src: castImage.src, alt: '換角新圖'}}), el('span', {text: '換角新圖'})])] : []));
+  }
+  attachments.hidden = job ? !castImage : !refs.length;
   const grid = $('references');
   const bySlot = new Map(refs.map(ref => [ref.slot, ref]));
   grid.replaceChildren();
@@ -163,6 +173,15 @@ function takePicked() {
   if (!files.length) return;
   const images = files.filter(file => /^image\/(png|jpeg|webp)$/i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name));
   if (images.length < files.length) showFeedback('只支援 PNG、JPG、WebP 圖片；其他格式已略過。');
+  if (job) {
+    // 開桌後：這張圖給換角指令用（取代@圖片N／新增）。
+    releaseSlot(castImage);
+    castImage = images[0] ? fileSlot(images[0]) : null;
+    if (castImage) showFeedback('新圖放好了，打「取代@圖片N」或「新增」，下一行寫「@圖片N＝名字＝S代號」。');
+    picker.value = '';
+    renderReferences();
+    return;
+  }
   if (pickTarget !== null && images[0]) setSlot(pickTarget, images[0]);
   else addImages(images);
   pickTarget = null;
@@ -396,7 +415,90 @@ function workingText() {
     return p ? `蕉彌正在幫 ${p.name}（${p.role}）拍定裝照，${p.index} / ${p.total} 位…` : '蕉彌正在幫新角色拍定裝照…';
   }
   if (status === 'running') return `蕉彌正在炒菜，${done} / ${clips.length} 段完成。`;
+  if (status === 'retaking') {
+    const list = (job.retake?.indices ?? []).map(i => clipNumber(i)).join('、');
+    return `蕉彌正在重炒第 ${list} 段…`;
+  }
   return '蕉彌正在準備鐵板…';
+}
+function clipNumber(index) {
+  const clips = latestDish()?.attempts.at(-1).clips ?? [];
+  const position = clips.indexOf(index);
+  return position < 0 ? index + 1 : position + 1;
+}
+function clipEditable(lastDish, lastAttempt, dish) {
+  if (!lastDish || !lastAttempt || job.kitchen?.serving) return false;
+  return paused.has(job.status) || (job.status === 'kitchen_ready' && dish.selected === undefined);
+}
+function shownTake(clip) {
+  const id = clip.pending_take ?? clip.selected_take ?? 'original';
+  return (clip.takes ?? []).find(take => take.id === id && take.status === 'ready');
+}
+function clipEditor(clip, i, clips) {
+  const take = shownTake(clip);
+  const original = take?.prompt ?? clip.prompt ?? '';
+  const prompt = el('textarea', {className: 'prompt-edit', attrs: {rows: '8', 'aria-label': `片段 ${i + 1} 的 H3 提示詞`}});
+  prompt.value = original;
+  const note = el('textarea', {className: 'note-edit', attrs: {rows: '2', maxlength: '3000',
+    placeholder: '哪裡沒熟？例如：小狸不要出現、S5 要看著麻糬', 'aria-label': `片段 ${i + 1} 的修改意見`}});
+  const index = clip.index;
+  const box = el('div', {className: 'clip-editor'}, [prompt, note]);
+  const actions = el('div', {className: 'actions'}, [
+    btn('蕉彌照意見重寫', () => {
+      if (!note.value.trim()) return showFeedback('先寫一句哪裡要改，蕉彌才知道怎麼重寫。');
+      act('mv/retake', {indices: [index], instructions: {[index]: note.value.trim()}});
+    }),
+    btn('沒熟，重炒', () => {
+      const edited = prompt.value.trim();
+      act('mv/retake', edited && edited !== original.trim()
+        ? {indices: [index], prompts: {[index]: edited}} : {indices: [index]});
+    })
+  ]);
+  const position = clips.indexOf(clip);
+  if (position < clips.length - 1) {
+    actions.append(btn('這段 OK，後面接著重炒', () => act('film/kitchen/continue', {index}), true));
+  }
+  box.append(actions);
+  return box;
+}
+function takeChips(clip) {
+  const ready = (clip.takes ?? []).filter(take => take.status === 'ready');
+  if (ready.length < 2) return null;
+  const current = clip.pending_take ?? clip.selected_take ?? 'original';
+  return el('div', {className: 'actions takes'}, ready.map(take => {
+    const chip = btn('V' + (take.version ?? 1), () => act('mv/select-take', {index: clip.index, take: take.id}), take.id === current);
+    chip.setAttribute('aria-pressed', String(take.id === current));
+    return chip;
+  }));
+}
+function castLogBubbles(d) {
+  return (job.kitchen?.cast_log ?? []).filter(entry => entry.dish === d).flatMap(entry => {
+    const user = bubble('user', [el('span', {className: 'tag', text: entry.action === 'shared' ? '改共同設定' : '換角'})]);
+    if (entry.image_index !== null && entry.image_index !== undefined && entry.action !== 'remove') {
+      user.append(el('div', {className: 'thumbs'}, [el('img', {attrs: {
+        src: `api/mv/reference?id=${encodeURIComponent(job.id)}&image=${entry.image_index}&v=${encodeURIComponent(job.sources?.images?.[entry.image_index] ?? '')}`,
+        alt: '@圖片' + entry.picture}})]));
+    }
+    user.append(para(entry.command || '手動修改共同設定'));
+    return [user, bubble('bot', [para(entry.reply), para('共同設定已更新，可以按下面「共同設定」打開確認。', 'meta')])];
+  });
+}
+async function act(path, data) {
+  if (pending || restoring || !job) return false;
+  pending = true;
+  showFeedback('');
+  render();
+  try {
+    await post(path, {id: job.id, ...data});
+    await sync(job.id);
+    return true;
+  } catch (error) {
+    showFeedback(error.message);
+    return false;
+  } finally {
+    pending = false;
+    render();
+  }
 }
 function castBubble(refs) {
   const fitting = refs.every(ref => ref.source === 'fitting');
@@ -449,9 +551,15 @@ function buildMessages() {
             : accepted ? `${icon} 已採用這版「${fallback}」`
             : dish.selected !== undefined ? '這版沒有採用。'
             : `炒好了！${clips.length} 段、共 ${total.toFixed(1)} 秒` + (attempt.native_h3 ? '（H3 全咒直上）' : '') + '，先試試看：';
+          const editable = clipEditable(lastDish, lastAttempt, dish);
           const grid = el('div', {className: 'clips'}, previews.map(({clip, i}) => {
-            const box = el('div', {className: 'clip'}, [videoNode(clip.preview), el('span', {className: 'meta', text: `片段 ${i + 1} · ${clip.seconds.toFixed(1)} 秒`})]);
-            if (clip.prompt) box.append(el('details', {}, [el('summary', {text: 'H3 提示詞'}), el('pre', {text: clip.prompt})]));
+            const take = shownTake(clip);
+            const box = el('div', {className: 'clip'}, [videoNode(take?.preview ?? clip.preview),
+              el('span', {className: 'meta', text: `片段 ${i + 1} · ${clip.seconds.toFixed(1)} 秒` + (take?.version > 1 ? ` · V${take.version}` : '')})]);
+            if (editable) box.append(takeChips(clip) ?? document.createTextNode(''));
+            const prompt = take?.prompt ?? clip.prompt;
+            if (editable) box.append(el('details', {}, [el('summary', {text: '✏️ 提示詞／沒熟重炒'}), clipEditor(clip, i, clips)]));
+            else if (prompt) box.append(el('details', {}, [el('summary', {text: 'H3 提示詞'}), el('pre', {text: prompt})]));
             return box;
           }));
           const children = [para(head), grid];
@@ -476,8 +584,9 @@ function buildMessages() {
           nodes.push(bubble('bot', [
             para(job.status === 'error' ? '鐵板出了點狀況，完成的毛片都保存了。' : '已停爐，完成的毛片都保存了。'),
             job.error ? para(job.error, 'meta') : null,
+            para('沒熟的段：點開「✏️ 提示詞／沒熟重炒」修好，再按「這段 OK，後面接著重炒」。要換角：在輸入框放圖打「取代@圖片N」。', 'meta'),
             el('div', {className: 'actions'}, [
-              btn('繼續製作', () => perform('resume'), true),
+              btn('繼續製作', () => act('film/kitchen/continue', {}), true),
               btn('改菜單再炒', () => editMenu(attempt))
             ])
           ], 'error'));
@@ -485,7 +594,14 @@ function buildMessages() {
           nodes.push(bubble('bot', [para('這版沒有炒完。')]));
         }
       });
+      nodes.push(...castLogBubbles(d));
     });
+    if (job.status === 'retaking') {
+      nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
+        para(workingText())]));
+    } else if (job.retake?.status === 'error' && job.retake.error) {
+      nodes.push(bubble('bot', [para('重炒沒成功：'), para(job.retake.error, 'meta')], 'error'));
+    }
     const dish = latestDish();
     if (job.status === 'kitchen_ready' && dish?.selected !== undefined && !job.kitchen?.serving) {
       nodes.push(bubble('bot', [
@@ -526,7 +642,9 @@ function renderChat() {
   const dishes = job?.kitchen?.dishes ?? [];
   const signature = JSON.stringify([job?.id, status, job?.error, job?.video, job?.final_versions?.length, job?.kitchen,
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
-    pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().length, job?.cast_refs?.length]);
+    pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().map(ref => ref.src), job?.cast_refs?.length,
+    job?.pending_takes, job?.retake, job?.kitchen?.cast_log?.length,
+    dishes.map(dish => dish.attempts.map(a => a.clips.map(i => (job.segments[i]?.takes ?? []).map(t => [t.id, t.status]))))]);
   if (signature === chatSignature) return;
   const chat = $('chat');
   const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
@@ -553,7 +671,7 @@ function renderTray() {
 }
 function renderComfyProgress(status, segment) {
   const panel = $('comfy-progress');
-  panel.hidden = !['planning_story', 'casting', 'running'].includes(status);
+  panel.hidden = !['planning_story', 'casting', 'running', 'retaking'].includes(status);
   if (panel.hidden) return;
   const task = job.comfy_progress;
   const writing = task?.node === 'TextGenerate';
@@ -561,7 +679,7 @@ function renderComfyProgress(status, segment) {
   const measured = task?.state === 'running' && (writing || sampling) && Number.isInteger(task.value) &&
     Number.isInteger(task.max) && task.max > 0 && task.value >= 0 && task.value <= task.max;
   let label = status === 'planning_story' ? '9B 規劃菜單' : status === 'casting' ? 'H3 拍定裝照'
-    : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : 'H3 影片生成';
+    : segment?.status === 'rewriting' ? '9B 撰寫分鏡' : status === 'retaking' ? 'H3 重炒' : 'H3 影片生成';
   if (task?.state === 'queued') label += ' · 排隊中';
   else if (task?.state === 'finished') label = '正在整理生成結果';
   else if (task?.state === 'failed') label = 'ComfyUI 回報錯誤';
@@ -593,6 +711,7 @@ function render() {
     planning_story: '蕉彌正在讀菜單…', running: (rewriting ? '備料中 · ' : '炒菜中 · ') + count + ' / ' + clips.length + ' 段',
     kitchen_ready: dish?.selected !== undefined ? '可以點下一道或上菜' : '炒好了，等你試菜',
     assembling: '上菜中・合成影片', upscaling_1080p: '升頻 2K 中', done: '上菜完成',
+    retaking: '重炒中',
     error: '製作暫停', cancelled: '已停爐', interrupted: '製作中斷'
   };
   $('status').textContent = messages[status] || (working ? '準備鐵板中…' : '鐵板就位');
@@ -607,9 +726,11 @@ function render() {
   $('menu').placeholder = !job ? '跟蕉彌說你想拍什麼…輸入 @ 選圖'
     : status === 'done' ? '這桌已上菜，按右上「新開一桌」再點'
     : !canOrder() ? '蕉彌忙著，等這道炒完…'
-    : nextAction() === 'repeat' ? '不滿意？直接寫新菜單重炒這道…' : '下一道想拍什麼？';
+    : nextAction() === 'repeat' ? '不滿意？直接寫新菜單重炒這道…（換角：＋放圖，打「取代@圖片N」）'
+    : '下一道想拍什麼？（換角：＋放圖，打「取代@圖片N」）';
   if ($('menu').disabled) closeMenuMention();
-  $('add-image').hidden = Boolean(job);
+  $('add-image').hidden = Boolean(job) && !canOrder();
+  $('add-image').setAttribute('aria-label', job ? '放一張換角用的新圖' : '加入參考圖');
   $('stop').hidden = !job || idle.has(status);
   $('stop').disabled = pending;
   $('new-project').hidden = !job || working;
@@ -617,8 +738,13 @@ function render() {
   $('profile').textContent = profileText();
   $('sheet-settings').classList.toggle('locked', Boolean(job));
   $('settings-locked').hidden = !job;
-  $('shared').disabled = Boolean(job);
-  if (job) $('shared').value = job.request?.kitchen_shared_setup ?? '';
+  const sharedEditable = Boolean(job) && canOrder() && !job.kitchen?.serving;
+  $('shared').disabled = Boolean(job) && !sharedEditable;
+  $('shared-save-row').hidden = !sharedEditable;
+  if (job && !sharedDirty) {
+    $('shared').value = job.shared_setup ? job.shared_setup.replace(/<Picture\s+(\d+)>/g, '@圖片$1')
+      : (job.request?.kitchen_shared_setup ?? '');
+  }
   renderReferences();
   renderPresets();
   renderChat();
@@ -819,9 +945,10 @@ async function savePreset() {
   }
   $('save-preset').disabled = true;
   try {
-    const slots = job ? (job.request?.image_slots ?? []).slice(0, SLOT_COUNT) : await uploadSlots(presetFeedback);
+    const slots = job ? (job.request?.image_slots ?? job.request?.image_assets ?? []).slice(0, SLOT_COUNT)
+      : await uploadSlots(presetFeedback);
     while (slots.length < SLOT_COUNT) slots.push(null);
-    const shared = job ? (job.request?.kitchen_shared_setup ?? '') : $('shared').value;
+    const shared = job ? $('shared').value : $('shared').value;
     const replacing = presets.some(preset => preset.name === name);
     presets = await post('film/kitchen/preset_save', {name, shared, slots}, '儲存組合');
     activePreset = name;
@@ -871,6 +998,7 @@ $('menu-form').onsubmit = event => {
   event.preventDefault();
   const menu = $('menu').value.trim();
   if (!menu || !canOrder()) return;
+  if (job && CAST_COMMAND.test(menu)) return castOrder(menu);
   placeOrder(menu);
 };
 $('menu').addEventListener('keydown', event => {
@@ -882,6 +1010,55 @@ $('menu').addEventListener('keydown', event => {
   }
 });
 $('stop').onclick = () => perform('stop');
+async function castOrder(command) {
+  const needsImage = !/^\s*(?:移除|刪除)/.test(command);
+  if (needsImage && !castImage) return showFeedback('換角要先按 ＋ 放一張新角色的圖。');
+  if (pending) return;
+  pending = true;
+  render();
+  try {
+    let image = null;
+    if (needsImage) {
+      if (!castImage.id) {
+        const bytes = await castImage.file.arrayBuffer();
+        const asset = await api('api/upload', {method: 'POST',
+          headers: {'X-Filename': encodeURIComponent(castImage.file.name)}, body: bytes}, '上傳換角新圖');
+        castImage.id = asset.id;
+      }
+      image = castImage.id;
+    }
+    await post('film/kitchen/cast', {id: job.id, command, image}, '換角');
+    releaseSlot(castImage);
+    castImage = null;
+    $('menu').value = '';
+    autoGrow();
+    sharedDirty = false;
+    showFeedback('');
+    await sync(job.id);
+    $('chat').scrollTop = $('chat').scrollHeight;
+  } catch (error) {
+    showFeedback(error.message);
+  } finally {
+    pending = false;
+    render();
+  }
+}
+$('shared').addEventListener('input', () => { if (job) sharedDirty = true; });
+$('save-shared').onclick = async () => {
+  if (!job || pending) return;
+  pending = true;
+  try {
+    await post('film/kitchen/shared', {id: job.id, shared: $('shared').value}, '儲存共同設定');
+    sharedDirty = false;
+    presetFeedback('共同設定已儲存，下一段開始照新的設定拍。');
+    await sync(job.id);
+  } catch (error) {
+    presetFeedback(error.message);
+  } finally {
+    pending = false;
+    render();
+  }
+};
 $('upscale').onchange = render;
 $('restore-project').onchange = () => {
   const id = $('restore-project').value;
@@ -898,6 +1075,9 @@ $('new-project').onclick = () => {
   pendingOrder = null;
   savePending();
   clearSlots();
+  releaseSlot(castImage);
+  castImage = null;
+  sharedDirty = false;
   activePreset = '';
   presetFeedback('');
   $('menu').value = '';
