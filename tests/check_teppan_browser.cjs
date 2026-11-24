@@ -7,7 +7,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 let job = null, polls = 0, uploads = 0, presets = [];
 const requests = [];
-let finishCooking = false;
+let finishCooking = false, instance = 'i1', restarts = 0;
 function makeJob(menu, seconds) {
   return {id: 'job1', title: '鐵板測試', status: 'planning_story', request: {aspect: '9:16', width: 480, sampling_steps: 6,
     image_slots: ['a1', null, null, null, null, null, null, null, null], kitchen_shared_setup: '@圖片1 是蕉彌'},
@@ -37,6 +37,8 @@ const server = http.createServer((req, res) => {
     const json = data => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); };
     if (url.startsWith('/api/')) requests.push([url, body]);
     if (url === '/api/film/kitchen/projects') return json([]);
+    if (url === '/api/health') return json({service: 'banana-film', restart_available: true, busy: false, instance});
+    if (url === '/api/film/restart') { restarts++; setTimeout(() => { instance = 'i2'; }, 300); return json({ok: true}); }
     if (url === '/api/film/kitchen/estimate') return json({seconds: 16, windows: [10, 6], clips: 2, render_seconds: 180, source: 'estimate', native_h3: false});
     if (url === '/api/upload') return json({id: 'a' + (++uploads)});
     if (url === '/api/film/kitchen/presets') return json(presets);
@@ -186,8 +188,17 @@ const server = http.createServer((req, res) => {
   await page.click('.msg.bot .btn.primary:has-text("上菜")');
   await page.waitForSelector('text=滿漢全席上桌');
   await snap('7-served');
+
+  // 一鍵重啟：重啟後預設新開一桌
+  await page.waitForSelector('#restart-kitchen:not([hidden]):not([disabled])');
+  page.once('dialog', dialog => dialog.accept());
+  await page.click('#restart-kitchen');
+  await page.waitForSelector('text=老闆歡迎光臨', {timeout: 15000});
+  assert.equal(restarts, 1);
+  assert.equal(await page.evaluate(() => localStorage.getItem('banana_teppan_job')), null);
+  assert.equal(await page.evaluate(() => localStorage.getItem('banana_teppan_instance')), 'i2');
   assert.deepEqual(errors, []);
   await browser.close();
   server.close();
-  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve.');
+  console.log('Teppan chat checks passed: attach, save/load preset + guest image, defaults, estimate bubble, cook, clip retake, continue, cast swap, adopt tray, serve, restart to a new table.');
 })().catch(error => { console.error(error); process.exit(1); });
