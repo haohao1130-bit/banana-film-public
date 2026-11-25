@@ -65,8 +65,26 @@ const server = http.createServer((req, res) => {
       job.status = 'planning_story'; polls = 0; return json(job);
     }
     if (url === '/api/film/kitchen/serve') {
-      job.kitchen.serving = true; job.status = 'done'; job.video = '/final.mp4'; return json(job);
+      job.kitchen.serving = true; job.status = 'done'; job.video = '/final.mp4'; job.current_master = 1; job.selection_revision = 'r1';
+      for (const seg of job.segments) if (seg.status === 'done') {
+        seg.selected_take = 'original';
+        seg.takes = [{id: 'original', status: 'ready', version: 1, preview: '/clip.mp4'}];
+      }
+      return json(job);
     }
+    if (url === '/api/mv/upscale-clip') {
+      const b = JSON.parse(body); job.upscaleClipBody = b;
+      job.clip_upscale = {index: b.index, take: b.take, status: 'running'};
+      setTimeout(() => {
+        job.clip_upscale.status = 'done';
+        job.segments[b.index].takes.find(t => t.id === b.take).download_2k = '/api/mv/clip-2k?index=' + b.index;
+      }, 400);
+      return json(job);
+    }
+    if (url === '/api/mv/select-take') {
+      const b = JSON.parse(body); job.pending_takes = {[b.index]: b.take}; job.segments[b.index].pending_take = b.take; return json(job);
+    }
+    if (url === '/api/mv/condense') { job.condenseBody = JSON.parse(body); job.pending_takes = {}; delete job.segments[0].pending_take; return json(job); }
     if (url === '/api/mv/status') { if (job && ((job.status === 'planning_story' && ++polls > 1) || (job.status === 'running' && finishCooking))) cook(); return json(job); }
     if (url.endsWith('.mp4')) { res.writeHead(404); return res.end(); }
     const file = path.join(web, url === '/' ? 'teppan.html' : url);
@@ -216,6 +234,31 @@ const server = http.createServer((req, res) => {
   await page.click('.msg.bot .btn.primary:has-text("上菜")');
   await page.waitForSelector('text=滿漢全席上桌');
   await snap('7-served');
+
+  // 上菜後：單段下載、單段升 2K、補拍這段再重新上菜
+  const firstClip = '#dish-preview-0-0 .clip:first-child';
+  assert.equal(await page.getAttribute(`${firstClip} a:has-text("下載這段")`, 'href'), '/clip.mp4');
+  await page.click(`${firstClip} .btn:has-text("升級這段 2K")`);
+  await page.waitForSelector(`${firstClip} a:has-text("下載這段 2K")`, {timeout: 8000});
+  assert.deepEqual(job.upscaleClipBody, {id: 'job1', index: 0, take: 'original'});
+  await snap('7a-clip-2k');
+  await page.click(`${firstClip} summary:has-text("補拍這段")`);
+  assert.equal(await page.locator(`${firstClip} .btn:has-text("這段 OK，後面接著重炒")`).count(), 0);
+  await page.fill(`${firstClip} .prompt-edit`, 'subject_definitions: 上菜後補拍');
+  await page.click(`${firstClip} .btn:has-text("沒熟，重炒")`);
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(job.retakeBody, {id: 'job1', indices: [0], prompts: {0: 'subject_definitions: 上菜後補拍'}});
+  job.segments[0].takes.push({id: 'abcdef123456', status: 'ready', version: 2, preview: '/clip2.mp4'});
+  await page.waitForSelector(`${firstClip} .takes .btn:has-text("V2")`, {timeout: 8000}).catch(async () => {
+    await page.evaluate(() => sync('job1'));
+    await page.waitForSelector(`${firstClip} .takes .btn:has-text("V2")`);
+  });
+  await page.click(`${firstClip} .takes .btn:has-text("V2")`);
+  await page.waitForSelector('.btn:has-text("用新版重新上菜")');
+  await page.click('.btn:has-text("用新版重新上菜")');
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(job.condenseBody, {id: 'job1', revision: 'r1'});
+  await snap('7b-reserved');
 
   // 一鍵重啟：重啟後預設新開一桌
   await page.waitForSelector('#restart-kitchen:not([hidden]):not([disabled])');

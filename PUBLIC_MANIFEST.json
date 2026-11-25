@@ -92,7 +92,7 @@
     },
     {
       "path": "banana_mv/film_server.py",
-      "sha256": "d2b7ea1cbf5636cca4b9345f0b37022229b8fe7ed823024e80fac61307b9aa52"
+      "sha256": "127b3b7f4fe559bbbcc3cb15438153f51c06f533ce6e0bd9a369c92aee641640"
     },
     {
       "path": "banana_mv/h3_prompt.py",
@@ -116,7 +116,7 @@
     },
     {
       "path": "banana_mv/nv_upscale.py",
-      "sha256": "c2eb2dc6326e1690f5072bc9aafec01b82bf1641badbecc1a6a8039c2a1f3fde"
+      "sha256": "bd11fce7e46b0580762eee48d54dd0d9928bc5e8eddc36196254c2f8be93d35b"
     },
     {
       "path": "banana_mv/prompt_quality.py",
@@ -128,7 +128,7 @@
     },
     {
       "path": "banana_mv/server.py",
-      "sha256": "c6d64c3b721a762d22f6f41b2b3b3e68adc79166a328a2c94a9b62b8a8686d2b"
+      "sha256": "cd69f62d113b59d54f93275878f37ab6df351fc1767080b151e875e538204f0f"
     },
     {
       "path": "banana_mv/services.py",
@@ -148,7 +148,7 @@
     },
     {
       "path": "banana_mv/takes.py",
-      "sha256": "a086e21a7ec1fd2ff4101827ce16df03c9a590ff24c6f4e892d5b2ee42e60524"
+      "sha256": "4d30c6beb6c7a7568193029f25fe278c34dc939f82f325462dd4a3d5aea04e42"
     },
     {
       "path": "banana_mv/teppan_presets.py",
@@ -188,7 +188,7 @@
     },
     {
       "path": "banana_mv/web/teppan.css",
-      "sha256": "5fb1564b25ca27df57fa6d269ebcec39a9680bcf8b12249aa22e6d221f66e944"
+      "sha256": "6c25c30a6d27ddf0b8568694d8b1f666c12d1fd31379810972b038b1e8be0d78"
     },
     {
       "path": "banana_mv/web/teppan.html",
@@ -196,7 +196,7 @@
     },
     {
       "path": "banana_mv/web/teppan.js",
-      "sha256": "6722a7d794645bff063201d7fcc1f4334f361a8110db23ba3ebce3c9fd4c42df"
+      "sha256": "40bb5024f69e751e4f32fc174d64dae25e45eea6313989632759d0cc87e471e3"
     },
     {
       "path": "docs/clip_review.md",
@@ -240,7 +240,7 @@
     },
     {
       "path": "tests/check_teppan_browser.cjs",
-      "sha256": "2eafd56766feb77d4bde1139da9bb1e1c0d135764d93526b532e32dccd97aef5"
+      "sha256": "11c78806f10fa194d4080507182eec0dcb184c7f6f4d26e52508755bf441776a"
     },
     {
       "path": "tests/check_ui.cjs",
@@ -412,7 +412,7 @@
     },
     {
       "path": "tests/test_takes.py",
-      "sha256": "d63fc2e31ab5b89a47fed2c1262b3c7e3fda4693d7cbf6327cf229b1bf5e5495"
+      "sha256": "2a454ed839ad83015eec0ca8c5f64c3854a2c932b264a8fbae406a86f3c2586d"
     },
     {
       "path": "tests/test_teppan_presets.py",

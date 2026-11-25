@@ -165,6 +165,9 @@ def main():
                     status="interrupted",
                     error="本機後端重啟，已完成片段保留，可續跑。")
                 app.write_state(job)
+            if job.get("clip_upscale", {}).get("status") == "running":
+                job["clip_upscale"].update(status="error", error="本機後端重啟，單段 2K 未完成。")
+                app.write_state(job)
         except (OSError, ValueError, KeyError):
             continue
     print(

@@ -118,6 +118,9 @@ def describe(job):
         for take in seg['takes']:
             if take['status']=='ready':
                 take.update(version=take_version(job,i,take['id']), filename=take_file(job,i,take['id'],'part.mp4').name, preview=clip_url(job,i,take['id']))
+                if take.get('upscaled_2k'):
+                    take['download_2k']='/api/mv/clip-2k?'+urllib.parse.urlencode(
+                        {'id':job['id'],'index':i,'take':take['id']})
                 if job['request'].get('production')=='film':
                     filming = existing_file(job,i,take['id'],'prompt.txt')
                     if filming.is_file():
@@ -269,15 +272,25 @@ def retake(job_id,indices,instructions=None,prompts=None,bases=None):
         app.GPU_LOCK.release();raise
 
 
+def served_indices(job):
+    """鐵板燒整部片只由採用的那幾版組成；沒採用的試炒不進成片。"""
+    if job.get('kitchen'):
+        from banana_mv.film_kitchen import adopted
+        return adopted(job)
+    return list(range(len(job['segments'])))
+
+
 def apply_takes(job,choices,song):
     """Build the new master before replacing any adopted clip; retain all old takes."""
     work=app.job_dir(job['id']);parts=[];prompts={};token=uuid.uuid4().hex[:12]
     for i in range(len(job['segments'])):
         if segment(job,i).get('status')=='done':archive_original(job,i)
     final=work/f'final_{token}_pending.mp4'
-    complete=all(s.get('status')=='done' for s in job['segments'])
+    order=served_indices(job)
+    complete=bool(order) and all(job['segments'][i].get('status')=='done' for i in order)
     try:
-        for i,seg in enumerate(job['segments']):
+        for i in order:
+            seg=job['segments'][i]
             source=take_source(job,i,choices.get(i,'current'))
             if not app.valid_part(source,seg,job['size']):raise ValueError('毛片驗證失敗，保留原版。')
             chosen=choices.get(i,seg.get('selected_take','original'))
@@ -461,7 +474,7 @@ def condense(job_id,revision=None):
         for i,t in choices.items():
             seg=segment(job,i)
             if not app.valid_part(take_source(job,i,t),seg,job['size']):raise ValueError('待採用毛片無效，請重新選丹。')
-        if not all(seg.get('status')=='done' and app.valid_part(take_source(job,i),seg,job['size']) for i,seg in enumerate(job['segments'])):
+        if not all(job['segments'][i].get('status')=='done' and app.valid_part(take_source(job,i),job['segments'][i],job['size']) for i in served_indices(job)):
             raise ValueError('尚有未完成片段，請先續跑完成，再確認凝丹。')
         _,song,_=app.project_inputs(job,cfg);old_status=job['status']
         job.update(status='assembling',retake={'indices':sorted(choices),'status':'selecting','operation':'condense'},resumed=time.time())
