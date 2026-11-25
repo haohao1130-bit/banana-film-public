@@ -872,6 +872,15 @@ class Handler(WebHandler):
                 return self.send_file(preview(job,int(args['index']),args.get('take','current')))
             except (ValueError,KeyError,OSError,RuntimeError) as e:
                 return self.send_json({'error':str(e)},400)
+        if url.path=='/api/mv/clip-2k':
+            try:
+                from banana_mv import nv_upscale
+                args=dict(urllib.parse.parse_qsl(url.query));job=read_state(args['id'])
+                index=int(args['index']);take=args['take']
+                return self.send_file(nv_upscale.clip_file(sys.modules[__name__],job,index,take),
+                                      nv_upscale.clip_download_name(sys.modules[__name__],job,index,take))
+            except (ValueError,KeyError,OSError) as e:
+                return self.send_json({'error':str(e)},400)
         if url.path=='/api/mv/file':
             try:
                 from banana_mv import masters
@@ -906,6 +915,10 @@ class Handler(WebHandler):
                 from banana_mv import nv_upscale
                 body=self.body_json()
                 return self.send_json(nv_upscale.start_finished(sys.modules[__name__], body['id'], body.get('version')), 202)
+            if path=='/api/mv/upscale-clip':
+                from banana_mv import nv_upscale
+                body=self.body_json()
+                return self.send_json(nv_upscale.start_clip(sys.modules[__name__],body['id'],body.get('index'),body.get('take')),202)
             if path=='/api/mv/retake':
                 from banana_mv.takes import retake
                 body=self.body_json()

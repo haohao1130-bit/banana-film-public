@@ -233,6 +233,10 @@ progress { width: 100%; height: 6px; accent-color: var(--gold); margin-top: 4px;
   background: rgba(0, 0, 0, .25); border: 1px solid rgba(255, 255, 255, .15); border-radius: 8px; padding: 6px; resize: vertical; }
 .clip-editor .note-edit { font-size: .85rem; }
 .clip .takes .btn { padding: 2px 10px; min-height: 0; font-size: .8rem; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; color: inherit; }
+a.btn.primary { color: var(--ink); }
+/* 上菜後每段的下載／升 2K：小一號，兩欄也排得下 */
+.clip .actions .btn { min-height: 36px; padding: 0 12px; font-size: .85rem; }
 .head-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .head-actions .chip { min-height: 34px; padding: 0 10px; font-size: .8rem; }
 .guide ol, .guide ul { padding-left: 20px; margin: 6px 0; font-size: .88rem; line-height: 1.7; }

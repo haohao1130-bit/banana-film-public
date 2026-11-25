@@ -67,6 +67,83 @@ class TakeTests(unittest.TestCase):
         takes.condense(job['id'],job.get('selection_revision'))
         return self.run_background()
 
+    def upscale_clip_mocks(self, audio):
+        from banana_mv import nv_upscale, core
+        sizes={}
+        def command(args):
+            dest=Path(args[-1]);dest.write_bytes(b'2k clip')
+            sizes[str(dest)]=sizes.get('encoded',(0,0)) if dest.name!='cropped.mp4' else (32,32)
+            commands.append([str(a) for a in args])
+        def encode(tool,source,target,size,cancelled):
+            target.write_bytes(b'vsr');sizes[str(target)]=sizes['encoded']=size;return True
+        commands=[]
+        self.stack.enter_context(patch.object(nv_upscale,'executable',Mock(return_value='nvenc')))
+        self.stack.enter_context(patch.object(nv_upscale,'encode',Mock(side_effect=encode)))
+        self.stack.enter_context(patch.object(nv_upscale,'video_size',
+                                              Mock(side_effect=lambda p:sizes.get(str(p),(32,32)))))
+        self.stack.enter_context(patch.object(nv_upscale,'has_audio',Mock(return_value=audio)))
+        self.stack.enter_context(patch.object(core,'command',Mock(side_effect=command)))
+        self.stack.enter_context(patch.object(nv_upscale,'Thread',self.thread))
+        self.stack.enter_context(patch.dict('os.environ',{'BANANA_FINISHED_VIDEOS':str(self.root/'videos')}))
+        return commands
+
+    def test_single_clip_2k_upscale_pairs_silent_mv_clip_with_its_song_window(self):
+        from banana_mv import nv_upscale
+        commands=self.upscale_clip_mocks(audio=False)
+        started=nv_upscale.start_clip(app,self.job['id'],2,'original')
+        self.assertEqual(started['clip_upscale']['status'],'running')
+        job=self.run_background()
+        self.assertEqual(job['clip_upscale']['status'],'done',job['clip_upscale'])
+        row=job['segments'][2]['takes'][0]
+        self.assertEqual(row['upscaled_2k']['file'],'02_2k_v1.mp4')
+        self.assertEqual((self.work/'02_2k_v1.mp4').read_bytes(),b'2k clip')
+        mux=commands[-1]
+        self.assertIn(str(self.work/'sources'/'song.wav'),mux)
+        self.assertEqual(mux[mux.index('-ss')+1],'2.000000000')
+        self.assertTrue(Path(row['upscaled_2k']['output_video']).is_file())
+        view=takes.describe(job)
+        self.assertIn('/api/mv/clip-2k?',view['segments'][2]['takes'][0]['download_2k'])
+        self.assertEqual(job['segments'][2]['selected_take'],'original','upscale never changes the cut')
+        self.assertEqual((self.work/'final.mp4').read_bytes(),b'old master')
+
+    def test_single_clip_2k_keeps_native_film_audio_and_refuses_busy_furnace(self):
+        from banana_mv import nv_upscale
+        commands=self.upscale_clip_mocks(audio=True)
+        self.job['status']='running';app.write_state(self.job)
+        with self.assertRaisesRegex(ValueError,'完成或停爐'):
+            nv_upscale.start_clip(app,self.job['id'],1,'original')
+        self.assertFalse(app.GPU_LOCK.locked())
+        self.job['status']='done';app.write_state(self.job)
+        nv_upscale.start_clip(app,self.job['id'],1,'original')
+        job=self.run_background()
+        self.assertEqual(job['clip_upscale']['status'],'done')
+        self.assertNotIn('-ss',commands[-1])
+        self.assertIn('1:a:0',commands[-1])
+
+    def test_single_clip_2k_failure_is_reported_without_touching_takes(self):
+        from banana_mv import nv_upscale
+        self.upscale_clip_mocks(audio=False)
+        nv_upscale.encode.side_effect=RuntimeError('NVEncC 放大失敗：boom')
+        nv_upscale.start_clip(app,self.job['id'],0,'original')
+        job=self.run_background()
+        self.assertEqual(job['clip_upscale']['status'],'error')
+        self.assertIn('boom',job['clip_upscale']['error'])
+        self.assertFalse((self.work/'00_2k_v1.mp4').exists())
+
+    def test_served_kitchen_retake_reserves_only_adopted_clips(self):
+        """鐵板燒上菜後補拍一段，重新上菜只用採用的那幾版。"""
+        self.job['kitchen']={'dishes':[
+            {'selected':1,'attempts':[{'clips':[0]},{'clips':[1]}]},
+            {'selected':0,'attempts':[{'clips':[2,3]}]}]}
+        self.job['duration']=3
+        app.write_state(self.job)
+        takes.retake(self.job['id'],[2]);job=self.run_background()
+        self.assertEqual(job['status'],'done')
+        job=self.choose_latest(job,[2])
+        job=self.finish(job)
+        self.assertEqual(job['status'],'done')
+        self.assertEqual((self.work/'final.mp4').read_bytes(),b'old1|new|old3')
+
     def test_flat_versions_mix_choices_without_overwriting_earlier_media(self):
         (self.work/'00_raw.mp4').write_bytes(b'original raw')
         takes.retake(self.job['id'],[0,2]);job=self.run_background()

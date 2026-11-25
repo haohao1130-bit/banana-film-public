@@ -138,6 +138,8 @@ def main():
         job=json.loads(path.read_text(encoding='utf-8'))
         if job['status'] not in ('done','error','cancelled','interrupted','script_ready','kitchen_ready'):
             job.update(status='interrupted',error='執行階段重啟，已完成片段保留。');app.write_state(job)
+        if job.get('clip_upscale',{}).get('status')=='running':
+            job['clip_upscale'].update(status='error',error='執行階段已重啟，單段 2K 未完成。');app.write_state(job)
     print(f'Banana Film Studio on http://127.0.0.1:{app.backend.PORT}',flush=True)
     ThreadingHTTPServer(('127.0.0.1',app.backend.PORT),Handler).serve_forever()
 
