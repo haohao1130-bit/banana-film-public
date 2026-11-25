@@ -6,6 +6,7 @@ const SLOT_COUNT = 8;
 const idle = new Set(['kitchen_ready', 'done', 'error', 'cancelled', 'interrupted']);
 const paused = new Set(['error', 'cancelled', 'interrupted']);
 let job = null, timer, pending = false, restoring = false, reactionTimer;
+let upscaleAvailable = true;   // Colab 沒有 RTX 升頻，伺服器預設會關掉
 // 每格：null，或 {file, src, name}（剛選的圖）／{id, src, name}（素材庫裡的圖，例如組合載入的）
 let localSlots = Array(SLOT_COUNT).fill(null);
 let presets = [], activePreset = '';
@@ -455,11 +456,30 @@ function clipEditor(clip, i, clips) {
     })
   ]);
   const position = clips.indexOf(clip);
-  if (position < clips.length - 1) {
+  if (position < clips.length - 1 && job.status !== 'done') {
     actions.append(btn('這段 OK，後面接著重炒', () => act('film/kitchen/continue', {index}), true));
   }
   box.append(actions);
   return box;
+}
+// 上菜後：單段下載、單段升 2K，拿去自己剪。
+function servedClipTools(clip, i) {
+  const take = shownTake(clip);
+  if (!take) return [];
+  const upscale = job.clip_upscale;
+  const mine = upscale && upscale.index === clip.index && upscale.take === take.id;
+  const busy = upscale?.status === 'running' || !idle.has(job.status);   // 按下去時 act() 會再擋 pending
+  const nodes = [el('a', {className: 'btn', text: '下載這段',
+    attrs: {href: take.preview, download: `片段${i + 1}_V${take.version ?? 1}.mp4`}})];
+  if (upscaleAvailable) {
+    const raise = btn(mine && upscale.status === 'running' ? '升級 2K 中…' : take.download_2k ? '重升 2K' : '升級這段 2K',
+      () => act('mv/upscale-clip', {index: clip.index, take: take.id}));
+    raise.disabled = busy;
+    nodes.push(raise);
+  }
+  if (take.download_2k) nodes.push(el('a', {className: 'btn primary', text: '下載這段 2K', attrs: {href: take.download_2k, download: ''}}));
+  return [el('div', {className: 'actions'}, nodes),
+    mine && upscale.status === 'error' ? para('2K 升級沒成功：' + upscale.error, 'meta') : null];
 }
 function takeChips(clip) {
   const ready = (clip.takes ?? []).filter(take => take.status === 'ready');
@@ -576,9 +596,13 @@ function buildMessages() {
             const take = shownTake(clip);
             const box = el('div', {className: 'clip'}, [videoNode(take?.preview ?? clip.preview),
               el('span', {className: 'meta', text: `片段 ${i + 1} · ${clip.seconds.toFixed(1)} 秒` + (take?.version > 1 ? ` · V${take.version}` : '')})]);
-            if (editable) box.append(takeChips(clip) ?? document.createTextNode(''));
+            // 已上菜的整桌：每段還能補拍、換版、單獨下載或升 2K。
+            const served = job.status === 'done' && accepted && Boolean(job.video);
+            if (editable || served) box.append(takeChips(clip) ?? document.createTextNode(''));
             const prompt = take?.prompt ?? clip.prompt;
+            if (served) box.append(...servedClipTools(clip, i).filter(Boolean));
             if (editable) box.append(el('details', {}, [el('summary', {text: '✏️ 提示詞／沒熟重炒'}), clipEditor(clip, i, clips)]));
+            else if (served) box.append(el('details', {}, [el('summary', {text: '✏️ 補拍這段'}), clipEditor(clip, i, clips)]));
             else if (prompt) box.append(el('details', {}, [el('summary', {text: 'H3 提示詞'}), el('pre', {text: prompt})]));
             return box;
           }));
@@ -639,13 +663,33 @@ function buildMessages() {
         el('div', {className: 'actions'}, [btn('繼續上菜', () => perform('resume'), true)])], 'error'));
     }
     if (job.video) {
-      const upscale = job.final_versions?.findLast(row => row.reason === 'upscale_1440p');
+      // 只認目前這部的 2K；用新版重新上菜後，舊 2K 不算數。
+      const upscale = job.final_stale ? null : job.final_versions?.findLast(row =>
+        row.reason === 'upscale_1440p' && row.source_master === job.current_master);
       const src = upscale?.download || job.video;
       const links = [el('a', {className: 'btn primary', text: upscale ? '下載 2K 成片' : '下載成片',
         attrs: {href: src, download: ''}})];
       if (upscale) links.push(el('a', {className: 'btn', text: '下載原尺寸母片', attrs: {href: job.video, download: ''}}));
+      const swapped = Object.keys(job.pending_takes ?? {}).length;
+      const idleNow = idle.has(job.status) && job.clip_upscale?.status !== 'running';
+      const redo = [];
+      if (swapped) {
+        const serve = btn('用新版重新上菜', () => act('mv/condense', {revision: job.selection_revision}), true);
+        serve.disabled = !idleNow;
+        redo.push(para(`換了 ${swapped} 段新版，按「用新版重新上菜」合成新的整部片。`, 'meta'), el('div', {className: 'actions'}, [serve]));
+      } else if (!upscale && upscaleAvailable && job.status === 'done') {
+        const whole = btn('整部升級 2K', () => act('mv/upscale', {}));
+        whole.disabled = !idleNow;
+        redo.push(el('div', {className: 'actions'}, [whole]));
+      }
       nodes.push(bubble('bot', [para('滿漢全席上桌！整部片在這裡：'), videoNode(src), el('div', {className: 'actions'}, links),
-        job.upscale_error ? para('2K 升頻未完成，母片可下載。' + job.upscale_error, 'meta') : null], 'wide final'));
+        job.upscale_error ? para('2K 升頻未完成，母片可下載。' + job.upscale_error, 'meta') : null,
+        para('哪段不滿意？點那段的「✏️ 補拍這段」重炒，選好版本再重新上菜；也可以單段下載或升 2K 拿去剪。', 'meta'),
+        ...redo], 'wide final'));
+      if (['assembling', 'upscaling_1080p'].includes(job.status)) {
+        nodes.push(bubble('bot', [el('span', {className: 'typing', attrs: {'aria-hidden': 'true'}}, [el('i'), el('i'), el('i')]),
+          para(job.status === 'upscaling_1080p' ? '蕉彌正在大火收汁，整部升級 2K 中…' : '蕉彌正在用新版重新上菜…')]));
+      }
     }
   }
   if (pendingOrder && (!job || canOrder())) {
@@ -666,7 +710,8 @@ function renderChat() {
     dishes.map(dish => dish.attempts.map(a => a.clips.map(i => [job.segments[i]?.preview, job.segments[i]?.status, Boolean(job.segments[i]?.prompt)]))),
     pendingOrder, Boolean(job) && workingText(), $('upscale').checked, imageReferences().map(ref => ref.src), job?.cast_refs?.length,
     job?.pending_takes, job?.retake, job?.kitchen?.cast_log?.length, (job?.segments ?? []).map(seg => seg.draft?.length ?? 0),
-    dishes.map(dish => dish.attempts.map(a => a.clips.map(i => (job.segments[i]?.takes ?? []).map(t => [t.id, t.status]))))]);
+    job?.clip_upscale, job?.current_master, job?.selection_revision,
+    dishes.map(dish => dish.attempts.map(a => a.clips.map(i => (job.segments[i]?.takes ?? []).map(t => [t.id, t.status, Boolean(t.download_2k)]))))]);
   if (signature === chatSignature) return;
   const chat = $('chat');
   const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 160;
@@ -989,6 +1034,10 @@ $('preset-name').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); savePreset(); }
 });
 
+// 單段升 2K 時狀態仍是已上菜，但要繼續輪詢到升完。
+function stillCooking(state) {
+  return !idle.has(state.status) || state.clip_upscale?.status === 'running';
+}
 async function sync(id) {
   clearTimeout(timer);
   try {
@@ -996,10 +1045,10 @@ async function sync(id) {
     if (!result.kitchen) throw Error('這個專案不屬於蕉彌鐵板燒。');
     job = result;
     localStorage.setItem(storageKey, id);
-    if (!idle.has(result.status)) timer = setTimeout(() => sync(id), 1600);
+    if (stillCooking(result)) timer = setTimeout(() => sync(id), 1600);
   } catch (error) {
     showFeedback(error.message);
-    if (job?.id === id && !idle.has(job.status)) timer = setTimeout(() => sync(id), 5000);
+    if (job?.id === id && stillCooking(job)) timer = setTimeout(() => sync(id), 5000);
   } finally {
     restoring = false;
     render();
@@ -1269,6 +1318,7 @@ async function applyProfileDefaults() {
   if (defaults.sampling_steps) $('steps').value = String(defaults.sampling_steps);
   if (typeof defaults.rewriter_thinking === 'boolean') $('thinking').checked = defaults.rewriter_thinking;
   if (defaults.upscale_available === false) {
+    upscaleAvailable = false;
     $('upscale').checked = false;
     $('upscale').closest('label').hidden = true;
   }
